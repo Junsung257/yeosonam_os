@@ -13,6 +13,18 @@ const terminalizationMigration = readFileSync(
   'supabase/migrations/20260824114843_blog_v4_operation_terminalization.sql',
   'utf8',
 ).toLowerCase();
+const stagingQualityRepairMigration = readFileSync(
+  'supabase/migrations/20260826060456_blog_v4_staging_quality_repair.sql',
+  'utf8',
+).toLowerCase();
+const stagingFailedQualityRepairMigration = readFileSync(
+  'supabase/migrations/20260826062634_blog_v4_staging_quality_repair_failed.sql',
+  'utf8',
+).toLowerCase();
+const revisionQualityDecisionMigration = readFileSync(
+  'supabase/migrations/20260826082731_blog_v4_revision_quality_decision_20260826.sql',
+  'utf8',
+).toLowerCase();
 
 describe('Blog V4 content factory migration contract', () => {
   it('creates the four service-role ledgers with RLS and explicit grants', () => {
@@ -57,6 +69,34 @@ describe('Blog V4 content factory migration contract', () => {
     expect(terminalizationMigration).toContain('lease_expires_at = null');
     expect(terminalizationMigration).toContain('completed_at = coalesce(completed_at, now())');
     expect(terminalizationMigration).toContain('to service_role');
+  });
+
+  it('limits human-review requeue to an explicitly seeded draft-only staging queue', () => {
+    expect(stagingQualityRepairMigration).toContain("v_operation.status = 'human_review'");
+    expect(stagingQualityRepairMigration).toContain("v_queue.source = 'user_seed'");
+    expect(stagingQualityRepairMigration).toContain("v_queue.meta ->> 'blog_v4_staging_seed'");
+    expect(stagingQualityRepairMigration).toContain("v_queue.meta ->> 'publication_disposition' = 'draft_only'");
+    expect(stagingQualityRepairMigration).toContain("status = 'pending_review'");
+    expect(stagingQualityRepairMigration).toContain('to service_role');
+  });
+
+  it('also limits failed-operation recovery to the same staging owner boundary', () => {
+    expect(stagingFailedQualityRepairMigration).toContain("v_operation.status in ('human_review', 'failed')");
+    expect(stagingFailedQualityRepairMigration).toContain("v_queue.source = 'user_seed'");
+    expect(stagingFailedQualityRepairMigration).toContain("v_queue.meta ->> 'blog_v4_staging_seed'");
+    expect(stagingFailedQualityRepairMigration).toContain("v_queue.meta ->> 'publication_disposition' = 'draft_only'");
+    expect(stagingFailedQualityRepairMigration).toContain('to service_role');
+  });
+
+  it('pins one immutable revision to one final quality decision and normalizes operation state', () => {
+    expect(revisionQualityDecisionMigration).toContain('create table if not exists public.blog_content_revisions');
+    expect(revisionQualityDecisionMigration).toContain('create table if not exists public.blog_quality_decisions');
+    expect(revisionQualityDecisionMigration).toContain('blog_quality_decision_pass_consistency');
+    expect(revisionQualityDecisionMigration).toContain('final_revision_id');
+    expect(revisionQualityDecisionMigration).toContain('final_quality_decision_id');
+    expect(revisionQualityDecisionMigration).toContain("'completed'");
+    expect(revisionQualityDecisionMigration).toContain('trg_blog_content_revisions_immutable');
+    expect(revisionQualityDecisionMigration).toContain('to service_role');
   });
 
   it('publishes commercial content and its indexing outbox in one fenced transaction', () => {

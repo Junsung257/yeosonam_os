@@ -28,7 +28,8 @@ export type BlogContentOperationStage =
   | 'research_backlog'
   | 'quarantined'
   | 'failed'
-  | 'cancelled';
+  | 'cancelled'
+  | 'completed';
 
 export type BlogContentOperationStatus =
   | 'queued'
@@ -41,7 +42,8 @@ export type BlogContentOperationStatus =
   | 'published'
   | 'indexed'
   | 'failed'
-  | 'cancelled';
+  | 'cancelled'
+  | 'completed';
 
 export type BlogDemandSignalProviderV4 =
   | 'google_search_console'

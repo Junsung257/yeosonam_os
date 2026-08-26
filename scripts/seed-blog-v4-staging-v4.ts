@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 const BASE_TOPIC = '괌 가족여행에서 투몬과 타무닝 중 숙소 지역을 고르는 판단 기준';
+const STAGING_CANARY_TOPIC = '괌 숙소 지역 비교: 투몬과 타무닝을 고르는 기준';
+const BASE_SLUG = 'guam-tumon-tamuning-family-hotel-areas';
 const DEFAULT_SEED_KEY = 'blog-v4-staging-canary-v1';
 const OFFICIAL_SOURCE_URL = 'https://www.visitguam.com/';
 const SYSTEM_VERIFIER_ID = '00000000-0000-0000-0000-000000000001';
@@ -12,7 +14,17 @@ function topicForSeedKey(seedKey: string): string {
   const normalized = seedKey.trim();
   if (normalized === DEFAULT_SEED_KEY) return BASE_TOPIC;
   const suffix = createHash('sha256').update(normalized).digest('hex').slice(0, 8);
-  return `${BASE_TOPIC} (staging canary ${suffix})`;
+  return `${STAGING_CANARY_TOPIC} (staging canary ${suffix})`;
+}
+
+function stagingCanarySuffix(seedKey: string): string {
+  return createHash('sha256').update(seedKey.trim()).digest('hex').slice(0, 8);
+}
+
+function expectedSlugForSeedKey(seedKey: string): string {
+  const normalized = seedKey.trim();
+  if (normalized === DEFAULT_SEED_KEY) return BASE_SLUG;
+  return `${BASE_SLUG}-staging-${stagingCanarySuffix(normalized)}`;
 }
 
 function argument(name: string): string | null {
@@ -175,12 +187,17 @@ async function seed(db: SupabaseClient, seedKey: string, mode: SeedMode) {
     risk_level: 'LOW',
     publication_disposition: 'draft_only',
     official_source_urls: [OFFICIAL_SOURCE_URL],
-    expected_slug: 'guam-tumon-tamuning-family-hotel-areas',
+    expected_slug: expectedSlugForSeedKey(seedKey),
     micro_angle: 'family_lodging_area_choice',
-    audience: '아이 동반 가족 여행자',
+    // The default seed validates the family audience. Retry canaries use the
+    // general audience and a distinct slug so they never compete with the
+    // already reserved family representative in the Preview branch.
+    audience: seedKey.trim() === DEFAULT_SEED_KEY ? '아이 동반 가족 여행자' : 'general',
     locale: 'ko-KR',
     traveler_nationality: '대한민국',
-    keywords: ['괌 숙소 지역', '투몬 타무닝 숙소 비교', '괌 가족 호텔'],
+    keywords: seedKey.trim() === DEFAULT_SEED_KEY
+      ? ['괌 숙소 지역', '투몬 타무닝 숙소 비교', '괌 가족 호텔']
+      : ['괌 숙소 지역', '투몬 타무닝 숙소 비교', '괌 호텔 지역'],
     seeded_at: now,
   };
 
@@ -212,7 +229,7 @@ async function seed(db: SupabaseClient, seedKey: string, mode: SeedMode) {
         // Keep the queue topic unique per canary, but do not pollute the
         // reader keyword with the staging-only suffix. The suffix is an
         // inventory id, not part of the search intent or article title.
-        primary_keyword: BASE_TOPIC,
+        primary_keyword: seedKey.trim() === DEFAULT_SEED_KEY ? BASE_TOPIC : STAGING_CANARY_TOPIC,
         destination: '괌',
         angle_type: '숙소 지역 비교',
         category: '여행정보',

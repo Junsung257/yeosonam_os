@@ -77,11 +77,18 @@ export function minHashSimilarityV3(left: number[], right: number[]): number {
 
 export type BlogDuplicateDispositionV3 = 'allow' | 'warn' | 'refresh' | 'append' | 'merge' | 'canonical_update' | 'queue_reject';
 
+export const BLOG_CORPUS_VERSION_V3 = 'blog-corpus-v3-opening-window-v1';
+export const BLOG_OPENING_MAX_SIMILARITY_V3 = 0.25;
+
 export interface BlogCorpusCandidateV3 {
   title: string;
   body?: string | null;
   destination?: string | null;
   source?: 'published' | 'draft' | 'queued' | 'representative';
+  id?: string | null;
+  revisionId?: string | null;
+  operationId?: string | null;
+  includeInOpeningComparison?: boolean;
 }
 
 export interface BlogCorpusDiversityEvaluationV3 {
@@ -94,9 +101,19 @@ export interface BlogCorpusDiversityEvaluationV3 {
   reasons: string[];
   comparedCount: number;
   evidence: Array<{ source: string; title: string; metric: string; similarity: number }>;
+  openingEvidence: {
+    threshold: number;
+    window: 'first_body_paragraph';
+    comparedCount: number;
+    nearestMatch: {
+      source: string;
+      title: string;
+      similarity: number;
+    } | null;
+  };
 }
 
-function firstParagraph(value: string): string {
+export function extractBlogOpeningWindowV3(value: string): string {
   return value
     .replace(/^---[\s\S]*?---\s*/u, '')
     .split(/\n\s*\n/u)
@@ -119,12 +136,13 @@ export function evaluateBlogCorpusCandidateV3(
   const candidateSkeleton = normalizeBlogTitleSkeletonV3(candidate.title, entities);
   const candidateHeadings = new Set(extractBlogHeadingTreeV3(candidate.body || '', entities));
   const candidateBody = minHashSignatureV3(candidate.body || '');
-  const candidateOpening = new Set(normalizeBlogCorpusTextV3(firstParagraph(candidate.body || ''), entities).split(/\s+/u).filter(Boolean));
+  const candidateOpening = new Set(normalizeBlogCorpusTextV3(extractBlogOpeningWindowV3(candidate.body || ''), entities).split(/\s+/u).filter(Boolean));
   let exactTitleDuplicate = false;
   let normalizedTitleClusterSize = 0;
   let maxHeadingSimilarity = 0;
   let maxBodySimilarity = 0;
   let maxOpeningSimilarity = 0;
+  let nearestOpeningMatch: BlogCorpusDiversityEvaluationV3['openingEvidence']['nearestMatch'] = null;
   const evidence: BlogCorpusDiversityEvaluationV3['evidence'] = [];
 
   for (const row of corpus) {
@@ -138,16 +156,28 @@ export function evaluateBlogCorpusCandidateV3(
     if (!row.body) continue;
     const headingSimilarity = jaccardSimilarityV3(candidateHeadings, new Set(extractBlogHeadingTreeV3(row.body, entities)));
     const bodySimilarity = minHashSimilarityV3(candidateBody, minHashSignatureV3(row.body));
-    const openingSimilarity = jaccardSimilarityV3(
-      candidateOpening,
-      new Set(normalizeBlogCorpusTextV3(firstParagraph(row.body), entities).split(/\s+/u).filter(Boolean)),
-    );
+    const openingSimilarity = row.includeInOpeningComparison === false
+      ? 0
+      : jaccardSimilarityV3(
+        candidateOpening,
+        new Set(normalizeBlogCorpusTextV3(extractBlogOpeningWindowV3(row.body), entities).split(/\s+/u).filter(Boolean)),
+      );
     maxHeadingSimilarity = Math.max(maxHeadingSimilarity, headingSimilarity);
     maxBodySimilarity = Math.max(maxBodySimilarity, bodySimilarity);
     maxOpeningSimilarity = Math.max(maxOpeningSimilarity, openingSimilarity);
+    if (row.includeInOpeningComparison !== false
+      && (!nearestOpeningMatch || openingSimilarity > nearestOpeningMatch.similarity)) {
+      nearestOpeningMatch = {
+        source,
+        title: row.title,
+        similarity: openingSimilarity,
+      };
+    }
     if (headingSimilarity >= 0.65) evidence.push({ source, title: row.title, metric: 'heading_tree', similarity: headingSimilarity });
     if (bodySimilarity >= 0.72) evidence.push({ source, title: row.title, metric: 'body_minhash', similarity: bodySimilarity });
-    if (openingSimilarity >= 0.75) evidence.push({ source, title: row.title, metric: 'opening', similarity: openingSimilarity });
+    if (openingSimilarity > BLOG_OPENING_MAX_SIMILARITY_V3) {
+      evidence.push({ source, title: row.title, metric: 'opening', similarity: openingSimilarity });
+    }
   }
   const decision = decideBlogDuplicateDispositionV3({
     exactTitle: exactTitleDuplicate,
@@ -155,7 +185,7 @@ export function evaluateBlogCorpusCandidateV3(
     headingSimilarity: maxHeadingSimilarity,
     bodySimilarity: maxBodySimilarity,
   });
-  if (maxOpeningSimilarity >= 0.75) decision.reasons.push('opening_similarity_warning');
+  if (maxOpeningSimilarity > BLOG_OPENING_MAX_SIMILARITY_V3) decision.reasons.push('opening_similarity_blocker');
   return {
     exactTitleDuplicate,
     normalizedTitleClusterSize: normalizedTitleClusterSize + 1,
@@ -166,6 +196,12 @@ export function evaluateBlogCorpusCandidateV3(
     reasons: [...new Set(decision.reasons)],
     comparedCount: corpus.length,
     evidence: evidence.sort((a, b) => b.similarity - a.similarity).slice(0, 20),
+    openingEvidence: {
+      threshold: BLOG_OPENING_MAX_SIMILARITY_V3,
+      window: 'first_body_paragraph',
+      comparedCount: corpus.filter((row) => row.includeInOpeningComparison !== false && Boolean(row.body)).length,
+      nearestMatch: nearestOpeningMatch,
+    },
   };
 }
 

@@ -57,4 +57,27 @@ describe('blog auto repair V4', () => {
     expect(result.markdown).toContain('- 공식 안내를 다시 확인합니다.');
     expect(result.markdown).toContain('- 필요한 기준을 표시합니다.');
   });
+
+  it('can vary a persisted informational opening without adding factual claims', () => {
+    const result = repairBlogQualityV4({
+      blogType: 'info',
+      destination: '괌',
+      title: '괌 숙소 지역 비교',
+      forceOpeningVariation: true,
+      markdown: [
+        '# 괌 숙소 지역 비교',
+        '',
+        '숙소 후보를 개별 호텔 단위로 먼저 고르지 말고, 일정의 중심이 되는 지역부터 정하세요.',
+        '',
+        '## 비교 기준',
+        '',
+        '일정에 맞는 기준을 확인합니다.',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('repaired_opening_variation');
+    expect(result.markdown).toContain('확인된 근거');
+    expect(result.markdown).not.toContain('개별 호텔 단위로 먼저 고르지');
+  });
 });

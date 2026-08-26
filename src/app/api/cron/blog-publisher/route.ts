@@ -53,7 +53,11 @@ import { buildBlogPackageCtaUrl, sanitizeBlogCtaLinks } from '@/lib/blog-cta';
 import { boundBlogWriterOutput } from '@/lib/blog-writer-output-boundary';
 import { repairBlogLiteralNewlines } from '@/lib/blog-literal-newline-repair';
 import { repairBlogPublishFormattingV3 } from '@/lib/blog-safe-publish-repair-v3';
-import { repairBlogQualityV4 } from '@/lib/blog-auto-repair-v4';
+import {
+  buildBlogOpeningRepairCandidatesV4,
+  repairBlogQualityV4,
+  replaceBlogOpeningWindowV4,
+} from '@/lib/blog-auto-repair-v4';
 import {
   fetchApprovedReviewSnippets,
   formatReviewQuotesAppendMarkdown,
@@ -215,6 +219,7 @@ import {
   readLatestBlogModelCallAttemptNumberV4,
   nextBlogModelCallAttemptNumberV4,
   recordBlogGenerationAttemptV4,
+  readReusableApprovedBlogGenerationAttemptV4,
   reserveBlogAiBudgetBeforeCallV4,
   settleBlogAiBudgetReservationV4,
 } from '@/lib/blog-generation-run-v4';
@@ -228,10 +233,21 @@ import {
   probeBlogRuntimeSchemaWithSupabaseV3,
 } from '@/lib/blog-runtime-readiness-v3';
 import {
+  BLOG_OPENING_MAX_SIMILARITY_V3,
+  BLOG_CORPUS_VERSION_V3,
   evaluateBlogCorpusCandidateV3,
   type BlogCorpusCandidateV3,
   type BlogCorpusDiversityEvaluationV3,
 } from '@/lib/blog-corpus-diversity-v3';
+import {
+  buildBlogFinalQualityDecisionV1,
+  buildBlogOperationStateV1,
+} from '@/lib/blog-quality-decision-v1';
+import {
+  markBlogContentRevisionImmutableV1,
+  persistBlogContentRevisionV1,
+  persistBlogQualityDecisionV1,
+} from '@/lib/blog-content-revision-v1';
 import { belongsToBlogReplacementLineage } from '@/lib/blog-corpus-lineage-v3';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 import { buildRecentInfoDuplicateScope } from '@/lib/blog-info-duplicate-scope';
@@ -445,7 +461,7 @@ async function loadBlogCorpusDiversityV3(input: {
   const [creativesResult, queueResult, representativesResult] = await Promise.all([
     supabaseAdmin
       .from('content_creatives')
-      .select('id, seo_title, title, blog_html, destination, status, generation_meta')
+      .select('id, seo_title, title, blog_html, destination, status, review_status, generation_meta')
       .eq('channel', 'naver_blog')
       .in('status', ['published', 'draft']),
     supabaseAdmin
@@ -470,11 +486,26 @@ async function loadBlogCorpusDiversityV3(input: {
       meta: row.generation_meta,
       replacementTargetCreativeId: input.replacementTargetCreativeId,
     })) continue;
+    const meta = row.generation_meta && typeof row.generation_meta === 'object' && !Array.isArray(row.generation_meta)
+      ? row.generation_meta as Record<string, unknown>
+      : null;
+    const finalDecision = meta?.final_quality_decision
+      && typeof meta.final_quality_decision === 'object'
+      && !Array.isArray(meta.final_quality_decision)
+      ? meta.final_quality_decision as Record<string, unknown>
+      : null;
+    const isAcceptedDraft = row.status === 'draft'
+      && row.review_status === 'approved'
+      && finalDecision?.passed === true;
     corpus.push({
       title: String(row.seo_title || row.title || ''),
       body: typeof row.blog_html === 'string' ? row.blog_html : null,
       destination: typeof row.destination === 'string' ? row.destination : null,
       source: row.status === 'draft' ? 'draft' : 'published',
+      id: String(row.id),
+      revisionId: typeof meta?.final_revision_id === 'string' ? meta.final_revision_id : null,
+      includeInOpeningComparison: row.status === 'published'
+        || isAcceptedDraft,
     });
   }
   for (const row of queueResult.data || []) {
@@ -487,6 +518,7 @@ async function loadBlogCorpusDiversityV3(input: {
       title: String(row.topic || ''),
       destination: typeof row.destination === 'string' ? row.destination : null,
       source: 'queued',
+      includeInOpeningComparison: false,
     });
   }
   for (const row of representativesResult.data || []) {
@@ -496,6 +528,7 @@ async function loadBlogCorpusDiversityV3(input: {
       title: String(row.canonical_slug).replace(/-/g, ' '),
       destination: typeof row.destination_id === 'string' ? row.destination_id : null,
       source: 'representative',
+      includeInOpeningComparison: false,
     });
   }
   return {
@@ -3316,7 +3349,7 @@ async function processQueueItem(
       }
     }
 
-    const publishQuality = await runGeneratedPublishQuality(generated, item, blogType, primaryKeyword);
+    let publishQuality = await runGeneratedPublishQuality(generated, item, blogType, primaryKeyword);
 
     if (!publishQuality.passed) {
       console.log(`[blog-publisher] publish quality failed; preserving generated content as a private review draft (${publishQuality.summary})`);
@@ -3324,7 +3357,7 @@ async function processQueueItem(
 
     qa = publishQuality.qualityGate;
     seoScore = publishQuality.seoScore;
-    const readability = publishQuality.readability;
+    let readability = publishQuality.readability;
     const now = new Date().toISOString();
     const successfulQueueMeta = {
       ...buildBlogQueueSuccessMeta({
@@ -3448,7 +3481,7 @@ async function processQueueItem(
     const sourceFreshness = Number.isFinite(latestMetricMs)
       ? Math.max(0, 1 - (Date.now() - latestMetricMs) / (90 * 24 * 60 * 60 * 1000))
       : (demandPreflight.acceptedProviders.length > 0 ? 1 : 0);
-    const corpusDiversity = await loadBlogCorpusDiversityV3({
+    let corpusDiversity = await loadBlogCorpusDiversityV3({
       queueItemId: item.id,
       excludeCreativeId: promoteDraftId,
       replacementTargetCreativeId: privateRegenerationRequest?.contentCreativeId ?? null,
@@ -3456,6 +3489,72 @@ async function processQueueItem(
       body: generated.blog_html,
       destination: item.destination,
     });
+    let openingRepairEvidence: Record<string, unknown> | null = corpusDiversity.report?.openingEvidence
+      ? { ...corpusDiversity.report.openingEvidence }
+      : null;
+    if (blogType === 'info'
+      && corpusDiversity.report
+      && corpusDiversity.report.maxOpeningSimilarity > BLOG_OPENING_MAX_SIMILARITY_V3) {
+      const originalMarkdown = generated.blog_html;
+      const candidates = buildBlogOpeningRepairCandidatesV4({
+        title: generated.seo_title,
+        primaryKeyword: contentBriefV3.primaryQuery,
+        destination: item.destination,
+      });
+      let selected: { markdown: string; diversity: typeof corpusDiversity } | null = null;
+      for (const candidate of candidates) {
+        const replaced = replaceBlogOpeningWindowV4(originalMarkdown, candidate);
+        if (!replaced.changed) continue;
+        const candidateDiversity = await loadBlogCorpusDiversityV3({
+          queueItemId: item.id,
+          excludeCreativeId: promoteDraftId,
+          replacementTargetCreativeId: privateRegenerationRequest?.contentCreativeId ?? null,
+          title: generated.seo_title,
+          body: replaced.markdown,
+          destination: item.destination,
+        });
+        if (candidateDiversity.report
+          && candidateDiversity.report.maxOpeningSimilarity <= BLOG_OPENING_MAX_SIMILARITY_V3) {
+          selected = { markdown: replaced.markdown, diversity: candidateDiversity };
+          break;
+        }
+      }
+      if (selected) {
+        generated.blog_html = selected.markdown;
+        generated.generation_meta = {
+          ...(generated.generation_meta || {}),
+          auto_quality_repair_v4: {
+            applied: true,
+            changes: ['repaired_opening_variation'],
+            mode: 'deterministic_opening_candidates',
+            candidateCount: candidates.length,
+            applied_at: new Date().toISOString(),
+          },
+        };
+        corpusDiversity = selected.diversity;
+        openingRepairEvidence = corpusDiversity.report?.openingEvidence
+          ? { ...corpusDiversity.report.openingEvidence }
+          : openingRepairEvidence;
+        // The visible body changed, so rerun all customer/publication gates
+        // before the V3 evaluator and before persisting the final decision.
+        publishQuality = await runGeneratedPublishQuality(generated, item, blogType, primaryKeyword);
+        qa = publishQuality.qualityGate;
+        seoScore = publishQuality.seoScore;
+        readability = publishQuality.readability;
+      } else {
+        generated.generation_meta = {
+          ...(generated.generation_meta || {}),
+          auto_quality_repair_v4: {
+            applied: false,
+            changes: [],
+            mode: 'deterministic_opening_candidates',
+            candidateCount: candidates.length,
+            failure: 'opening_similarity_threshold_not_met',
+            attempted_at: new Date().toISOString(),
+          },
+        };
+      }
+    }
     const issueCodes = claimValidation.issues.map((issue) => issue.code);
     const unsupportedNumberCount = countUnsupportedNumericBlogInformationClaims(claimValidation);
     const staleClaimCount = issueCodes.filter((code) => code === 'stale_evidence').length;
@@ -3622,6 +3721,7 @@ async function processQueueItem(
       failure_evidence: qualityRouteV4.reasons,
       evaluated_at: now,
     };
+    let persistedGenerationRunId: string | null = null;
     if (generationReceipt && typeof generationReceipt.model === 'string') {
       const attemptPersistence = await recordBlogGenerationAttemptV4({
         queueId: item.id,
@@ -3663,6 +3763,7 @@ async function processQueueItem(
           : null,
         receipt: generationReceipt,
       });
+      persistedGenerationRunId = attemptPersistence.runId;
       if (attemptPersistence.error) {
         logWarning('[cron/blog-publisher] V4 generation attempt persistence failed', {
           queueId: item.id,
@@ -3682,6 +3783,11 @@ async function processQueueItem(
     generationMeta.corpus_diversity_v3 = corpusDiversity.error
       ? { passed: false, error: corpusDiversity.error }
       : diversityReport;
+    generationMeta.opening_similarity_evidence = openingRepairEvidence;
+    const autoQualityRepair = generated.generation_meta?.auto_quality_repair_v4;
+    if (autoQualityRepair && typeof autoQualityRepair === 'object' && !Array.isArray(autoQualityRepair)) {
+      generationMeta.auto_quality_repair_v4 = autoQualityRepair;
+    }
     generationMeta.quality_evaluation_v3 = qualityEvaluationV3;
     if (['rewrite_pro_high', 'rewrite_pro_max', 'reresearch', 'quarantine'].includes(qualityRouteV4.route)) {
       const researchAttempts = Number(previousOrchestration?.research_attempts || 0)
@@ -3721,16 +3827,17 @@ async function processQueueItem(
         reason,
       };
     }
+    const qualityEligibilityPassed = publishQuality.passed
+      && qa.passed
+      && claimValidation.passed
+      && contentBriefV3.passed
+      && corpusDiversity.error === null
+      && qualityEvaluationV3.passed
+      && qualityRouteV4.publishable
+      && demandScoreV3.eligible;
     const autopublishDecision = evaluateBlogAutopublishDecisionV3(BLOG_AUTOPUBLISH_POLICY_V3, {
       reviewStatus: contentReviewStatus,
-      allGatesPassed: publishQuality.passed
-        && qa.passed
-        && claimValidation.passed
-        && contentBriefV3.passed
-        && corpusDiversity.error === null
-        && qualityEvaluationV3.passed
-        && qualityRouteV4.publishable
-        && demandScoreV3.eligible,
+      allGatesPassed: qualityEligibilityPassed,
       deterministicFallback: generated.generation_meta?.private_diagnostic_fallback === true
         || generated.generation_meta?.deterministic_info_fallback === true,
       riskLevel: contentBriefV3.riskLevel,
@@ -3753,13 +3860,13 @@ async function processQueueItem(
       rejected_count: demandPreflight.rejectedCount,
       evaluated_at: now,
     };
-    const contentRequiresHumanReview = blogType === 'info'
+    const contentRequiresHumanReview = Boolean(blogType === 'info'
       && ((!publishedAtomicUpgrade && privateRegenerationRequest !== null) || requiresClaimReview || plannedHumanReview || isHighRiskInformationalTopic({
         title: generated.seo_title ?? item.topic ?? null,
         category: item.category ?? null,
         contentType: item.source === 'pillar' ? 'pillar' : 'guide',
         topic: item.topic ?? null,
-      }));
+      })));
     const approvedForDeferredPublication = Boolean(
       options.deferPublication
       && generationReceipt
@@ -3767,9 +3874,14 @@ async function processQueueItem(
       && autopublishDecision.publish
       && !contentRequiresHumanReview,
     );
+    const policyOnlyAutopublishReasons = new Set([
+      'autopublish_mode_draft_only',
+      'daily_publish_cap_reached',
+      'weather_share_cap_exceeded',
+      'archetype_saturation_cap_reached',
+    ]);
     const requiresHumanReview = contentRequiresHumanReview
-      || !autopublishDecision.publish
-      || Boolean(options.deferPublication && !approvedForDeferredPublication);
+      || autopublishDecision.reasons.some((reason) => !policyOnlyAutopublishReasons.has(reason));
     const publishAllowed = autopublishDecision.publish
       && !contentRequiresHumanReview
       && !options.deferPublication;
@@ -3962,7 +4074,11 @@ async function processQueueItem(
       angle_type: normalizeAngleType(item.angle_type),
       status: publishAllowed ? 'published' : 'draft',
       published_at: publishAllowed ? publicationTimestamp : null,
-      review_status: (publishAllowed || approvedForDeferredPublication) ? contentReviewStatus : 'pending_review',
+      // A draft-only policy is not a quality failure and must not manufacture
+      // a human-review task. Only content eligibility/risk requires review.
+      review_status: requiresHumanReview
+        ? 'pending_review'
+        : (publishAllowed || approvedForDeferredPublication) ? contentReviewStatus : 'none',
       quality_gate: publishQuality.readingTimeMinutes == null
         ? qa
         : withPersistedBlogReadingTime(qa, publishQuality.readingTimeMinutes),
@@ -4017,6 +4133,115 @@ async function processQueueItem(
       creativeId = inserted?.[0]?.id as string;
     }
 
+    // Persist the exact revision that was evaluated before any publication
+    // decision is recorded. The legacy quality_gate remains only a
+    // compatibility projection of this final decision.
+    let finalRevisionId: string;
+    let finalQualityDecisionId: string;
+    let finalQualityDecision: ReturnType<typeof buildBlogFinalQualityDecisionV1>;
+    let finalQualityGate: Record<string, unknown>;
+    try {
+      const repairMeta = generated.generation_meta?.auto_quality_repair_v4;
+      const revisionType = repairMeta
+        && typeof repairMeta === 'object'
+        && !Array.isArray(repairMeta)
+        && (repairMeta as Record<string, unknown>).applied === true
+        ? 'opening_repair'
+        : String(generationMeta.ai_orchestration_v4 && typeof generationMeta.ai_orchestration_v4 === 'object'
+          ? (generationMeta.ai_orchestration_v4 as Record<string, unknown>).stage || ''
+          : '') === 'draft_flash'
+          ? 'generation'
+          : 'full_rewrite';
+      const revision = await persistBlogContentRevisionV1({
+        creativeId,
+        operationId: options.operationProgress?.operationId ?? null,
+        revisionType,
+        slug: String(rowPayload.slug ?? generated.slug),
+        title: generated.seo_title,
+        description: generated.seo_description,
+        blogHtml: generated.blog_html,
+        claimFingerprint: typeof item.meta?.claim_fingerprint === 'string'
+          ? item.meta.claim_fingerprint
+          : null,
+      });
+      finalRevisionId = revision.id;
+      finalQualityDecision = buildBlogFinalQualityDecisionV1({
+        revisionId: revision.id,
+        evaluatedContentHash: revision.contentHash,
+        comparisonCorpusVersion: BLOG_CORPUS_VERSION_V3,
+        qualityEvaluation: {
+          passed: qualityEvaluationV3.passed,
+          score: qualityEvaluationV3.score,
+          hardBlockers: qualityEvaluationV3.hardBlockers,
+          failureReasons: qualityEvaluationV3.failureReasons,
+        },
+        publishQuality: {
+          passed: publishQuality.passed,
+          score: Math.min(
+            publishQuality.blogQualityScore.score,
+            publishQuality.publicCustomerQuality.score,
+          ),
+          failureReasons: publishQualityFailureReasons,
+        },
+        claimValidationPassed: claimValidation.passed,
+        preflightPassed: qa.passed,
+        humanReviewRequired: contentRequiresHumanReview,
+        warnings: [
+          ...(options.deferPublication ? ['publication_suppressed_by_policy'] : []),
+          ...(corpusDiversity.error ? ['corpus_evidence_unavailable'] : []),
+        ],
+        evaluatedAt: now,
+      });
+      finalQualityDecisionId = await persistBlogQualityDecisionV1({ decision: finalQualityDecision });
+      await markBlogContentRevisionImmutableV1(revision.id);
+      finalQualityGate = withPersistedBlogReadingTime({
+        ...qa,
+        passed: finalQualityDecision.passed,
+        score: finalQualityDecision.overallScore,
+        decision: finalQualityDecision.decision,
+        hard_blockers: finalQualityDecision.hardBlockers,
+        final_quality_decision_id: finalQualityDecisionId,
+        final_revision_id: finalRevisionId,
+        evaluated_content_hash: finalQualityDecision.evaluatedContentHash,
+        comparison_corpus_version: finalQualityDecision.comparisonCorpusVersion,
+      }, publishQuality.readingTimeMinutes ?? 3);
+      generationMeta.final_revision_id = finalRevisionId;
+      generationMeta.final_quality_decision_id = finalQualityDecisionId;
+      generationMeta.final_quality_decision = finalQualityDecision;
+      generationMeta.final_quality_gate = finalQualityGate;
+      rowPayload.quality_gate = finalQualityGate;
+      rowPayload.generation_meta = generationMeta;
+      const { error: finalProjectionError } = await supabaseAdmin
+        .from('content_creatives')
+        .update({ quality_gate: finalQualityGate, generation_meta: generationMeta })
+        .eq('id', creativeId);
+      if (finalProjectionError) throw new Error(`blog_final_quality_projection_failed:${finalProjectionError.message}`);
+
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      logWarning('[cron/blog-publisher] final quality persistence failed; keeping draft private', {
+        queueId: item.id,
+        creativeId,
+        error: reason,
+      });
+      await supabaseAdmin.from('content_creatives').update({
+        status: 'draft',
+        published_at: null,
+        review_status: 'pending_review',
+      }).eq('id', creativeId);
+      await handleFailure(item, `blog_final_quality_persistence_failed:${reason}`, qa, true, {
+        final_quality_persistence_error: reason,
+        content_creative_id: creativeId,
+      });
+      return {
+        id: item.id,
+        topic: item.topic,
+        status: 'quarantined',
+        reason: `blog_final_quality_persistence_failed:${reason}`,
+        creativeId,
+      };
+    }
+
     const decisionReasons = [
       ...autopublishDecision.reasons,
       ...contentBriefV3.issues,
@@ -4030,6 +4255,10 @@ async function processQueueItem(
       supabaseAdmin.from('blog_quality_evaluations').insert({
         creative_id: creativeId,
         queue_id: item.id,
+        revision_id: finalRevisionId,
+        content_hash: finalQualityDecision.evaluatedContentHash,
+        corpus_version: finalQualityDecision.comparisonCorpusVersion,
+        opening_evidence: openingRepairEvidence,
         evaluator_version: qualityEvaluationV3.version,
         passed: qualityEvaluationV3.passed,
         score: qualityEvaluationV3.score,
@@ -4045,6 +4274,8 @@ async function processQueueItem(
         decision: publishAllowed ? 'published' : (requiresHumanReview ? 'pending_review' : 'draft'),
         gate_evidence: {
           autopublish: autopublishDecision,
+          final_quality_decision: finalQualityDecision,
+          revision_id: finalRevisionId,
           quality: qualityEvaluationV3,
           diversity: corpusDiversity.error ? { error: corpusDiversity.error } : diversityReport,
           claims: claimValidationSummary,
@@ -4060,25 +4291,57 @@ async function processQueueItem(
         creativeId,
         error: auditPersistenceError,
       });
-      if (publishAllowed) {
-        await supabaseAdmin.from('content_creatives').update({
-          status: 'draft',
-          published_at: null,
-          review_status: 'pending_review',
-        }).eq('id', creativeId);
-        await supabaseAdmin.from('blog_topic_queue').update({
-          status: 'pending_review',
-          content_creative_id: creativeId,
-          last_error: `v3_decision_evidence_persistence_failed:${auditPersistenceError}`,
-        }).eq('id', item.id);
-        return {
-          id: item.id,
-          topic: item.topic,
-          status: 'pending_review',
-          reason: 'v3_decision_evidence_persistence_failed',
-          creativeId,
-        };
-      }
+      await supabaseAdmin.from('content_creatives').update({
+        status: 'draft',
+        published_at: null,
+        review_status: 'pending_review',
+      }).eq('id', creativeId);
+      await supabaseAdmin.from('blog_topic_queue').update({
+        status: 'pending_review',
+        content_creative_id: creativeId,
+        last_error: `v3_decision_evidence_persistence_failed:${auditPersistenceError}`,
+      }).eq('id', item.id);
+      return {
+        id: item.id,
+        topic: item.topic,
+        status: 'pending_review',
+        reason: 'v3_decision_evidence_persistence_failed',
+        creativeId,
+      };
+    }
+
+    const operationState = buildBlogOperationStateV1({
+      generationSucceeded: true,
+      finalQualityDecision,
+      finalQualityDecisionId,
+      reviewRequired: contentRequiresHumanReview,
+      publicationSuppressed: Boolean(
+        options.deferPublication || BLOG_AUTOPUBLISH_POLICY_V3.mode === 'draft_only',
+      ),
+      publicationAttempted: false,
+      indexingAttempted: false,
+    });
+    if (options.operationProgress) {
+      const operationStatus = finalQualityDecision.passed ? 'completed' : 'human_review';
+      const operationStage = finalQualityDecision.passed ? 'completed' : 'human_review';
+      await recordBlogContentOperationStageV4({
+        supabase: supabaseAdmin,
+        operationId: options.operationProgress.operationId,
+        fencingToken: options.operationProgress.fencingToken,
+        leaseOwner: options.operationProgress.leaseOwner,
+        eventKey: `publisher:final-quality:${finalQualityDecisionId}:v1`,
+        stage: operationStage,
+        eventStatus: 'succeeded',
+        operationStatus,
+        generationRunId: persistedGenerationRunId,
+        creativeId,
+        evidence: {
+          finalRevisionId,
+          finalQualityDecisionId,
+          finalQualityDecision,
+          operationState,
+        },
+      });
     }
 
     let reviewClaimValidation = claimValidation;
@@ -4203,7 +4466,7 @@ async function processQueueItem(
       };
     }
 
-    if (representativeIdentity && !requiresHumanReview) {
+    if (representativeIdentity && publishAllowed && !requiresHumanReview) {
       await publishBlogInformationAtomically({
         creativeId,
         contentFingerprint: createBlogInformationContentFingerprint({
@@ -4349,6 +4612,49 @@ async function processQueueItem(
         topic: item.topic,
         status: 'pending_review',
         reason: humanReviewReason,
+        creativeId,
+      };
+    }
+
+    // Generation-only mode is a successful private handoff, not a published
+    // article. Keep the queue observable without creating a review task when
+    // the only suppression is the configured draft-only policy.
+    if (!publishAllowed) {
+      const publicationSuppressedByPolicy = Boolean(
+        options.deferPublication || BLOG_AUTOPUBLISH_POLICY_V3.mode === 'draft_only',
+      );
+      const privateStatus = publicationSuppressedByPolicy
+        ? 'suppressed_by_draft_only'
+        : 'not_eligible';
+      const privateReason = publicationSuppressedByPolicy
+        ? 'suppressed_by_draft_only'
+        : finalQualityDecision.hardBlockers.join(',') || 'publication_not_eligible';
+      const { error: privateQueueError } = await supabaseAdmin.from('blog_topic_queue')
+        .update({
+          status: 'pending_review',
+          content_creative_id: creativeId,
+          last_error: null,
+          attempts: 0,
+          meta: {
+            ...successfulQueueMeta,
+            ai_orchestration_v4: generationMeta.ai_orchestration_v4,
+            final_revision_id: finalRevisionId,
+            final_quality_decision_id: finalQualityDecisionId,
+            publication_deferred_v4: {
+              status: privateStatus,
+              reason: privateReason,
+            },
+          },
+        })
+        .eq('id', item.id);
+      if (privateQueueError) {
+        logWarning('[cron/blog-publisher] private draft queue handoff failed', privateQueueError);
+      }
+      return {
+        id: item.id,
+        topic: item.topic,
+        status: 'pending_review',
+        reason: privateReason,
         creativeId,
       };
     }
@@ -5203,6 +5509,122 @@ async function generateFromTopic(
           includeChecklist: contentBriefV3.includeChecklist,
         },
       });
+
+  const stagingDraftOnly = Boolean(
+    typeof item.meta?.blog_v4_staging_seed === 'string'
+    && item.meta.blog_v4_staging_seed.trim()
+    && item.meta?.publication_disposition === 'draft_only',
+  );
+  if (stagingDraftOnly && latestModelCallAttemptNumber >= 2) {
+    // A retry must not spend a second Pro call after the durable candidate
+    // ledger has already exhausted its Flash+Pro allowance. If this queue has
+    // a prior approved attempt, reuse it as an ordinary private draft and run
+    // every current publication gate against it below. This is not an
+    // approval shortcut: a changed claim packet, slug, or public gate still
+    // blocks the draft.
+    const reusable = await readReusableApprovedBlogGenerationAttemptV4(item.id);
+    const reusableOutput = reusable?.output;
+    const reusableAudit = reusableOutput?.audit;
+    const reusableQuality = reusableAudit?.quality_evaluation_v3;
+    const reusableClaimValidation = reusableAudit?.claim_validation;
+    const reusableClaims = reusableAudit?.writer_claim_ledger;
+    const claimEntries = Array.isArray(reusableClaims)
+      ? reusableClaims
+      : reusableClaims && typeof reusableClaims === 'object' && !Array.isArray(reusableClaims)
+        ? (reusableClaims as Record<string, unknown>).claims
+        : null;
+    const reusableMarkdown = typeof reusableOutput?.markdown === 'string'
+      ? reusableOutput.markdown.trim()
+      : '';
+    const reusableQualityPassed = reusableQuality
+      && typeof reusableQuality === 'object'
+      && !Array.isArray(reusableQuality)
+      && (reusableQuality as Record<string, unknown>).passed === true;
+    const reusableClaimsPassed = reusableClaimValidation
+      && typeof reusableClaimValidation === 'object'
+      && !Array.isArray(reusableClaimValidation)
+      && (reusableClaimValidation as Record<string, unknown>).passed === true;
+    if (
+      reusable
+      && reusableOutput
+      && reusableMarkdown
+      && reusableQualityPassed === true
+      && reusableClaimsPassed === true
+    ) {
+      const reusableRepair = repairBlogQualityV4({
+        markdown: reusableMarkdown,
+        blogType: 'info',
+        title: reusableOutput.title || contentBriefV3.metadata.title,
+        primaryKeyword: contentBriefV3.primaryQuery,
+        destination: item.destination,
+        category: item.category,
+        forceOpeningVariation: true,
+      });
+      console.warn('[blog-publisher] reusing a previously approved staging generation before the candidate call cap', {
+        queueId: item.id,
+        sourceAttemptNumber: reusable.attemptNumber,
+        sourceQualityScore: reusable.qualityScore,
+      });
+      return {
+        blog_html: reusableRepair.markdown,
+        slug: typeof reusableOutput.slug === 'string' && reusableOutput.slug.trim()
+          ? reusableOutput.slug
+          : queueSlug,
+        seo_title: typeof reusableOutput.title === 'string' && reusableOutput.title.trim()
+          ? reusableOutput.title
+          : contentBriefV3.metadata.title,
+        seo_description: typeof reusableOutput.description === 'string'
+          ? reusableOutput.description
+          : contentBriefV3.metadata.description,
+        og_image_url: null,
+        generation_meta: {
+          writer: 'info_writer',
+          content_brief: {
+            title: contentBrief.title,
+            primary_keyword: contentBrief.primaryKeyword,
+            secondary_keywords: contentBrief.secondaryKeywords,
+            search_intent: contentBrief.searchIntent,
+            intent_type: contentBrief.plan.intent,
+            destination_id: contentBrief.plan.destinationId,
+            audience: contentBrief.plan.audience,
+            locale: contentBrief.plan.locale,
+            traveler_nationality: contentBrief.plan.travelerNationality,
+            risk_level: contentBrief.plan.riskLevel,
+            required_sections: contentBrief.requiredSections,
+            required_facts: contentBrief.plan.requiredFacts,
+            planned_tables: contentBrief.plan.plannedTables,
+            faq_questions: contentBrief.plan.faqQuestions,
+            missing_inputs: contentBrief.plan.missingInputs,
+            requires_human_review: contentBrief.plan.requiresHumanReview,
+            source_policy: contentBrief.plan.sourcePolicy,
+            forbidden_angles: contentBrief.forbiddenAngles,
+            source_requirements: contentBrief.sourceRequirements,
+            evidence: contentBrief.evidence,
+            claim_ledger_policy: contentBrief.claimLedgerPolicy,
+            editorial_variation: item.meta?.editorial_variation ?? null,
+          },
+          content_brief_v3: contentBriefV3,
+          writer_claim_ledger: {
+            version: 'v1',
+            claims: Array.isArray(claimEntries) ? claimEntries : [],
+            issues: [],
+          },
+          auto_quality_repair_v4: {
+            applied: reusableRepair.changed,
+            changes: reusableRepair.changes,
+            applied_at: new Date().toISOString(),
+          },
+          reused_approved_generation_v4: {
+            applied: true,
+            sourceAttemptNumber: reusable.attemptNumber,
+            sourceQualityScore: reusable.qualityScore,
+            reason: 'candidate_model_call_cap',
+            revalidatedAt: new Date().toISOString(),
+          },
+        },
+      };
+    }
+  }
   const generation = await generatePublisherBlogText(generationPrompt, generationStage === 'draft_flash'
     ? {
         model: BLOG_DEEPSEEK_MODELS.draft,
