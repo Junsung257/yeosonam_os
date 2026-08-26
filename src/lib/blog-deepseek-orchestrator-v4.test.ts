@@ -596,6 +596,11 @@ describe('blog DeepSeek orchestrator V4', () => {
       primaryDecision: '여행 시기를 선택한다',
       approvedClaims: claims,
     })).toHaveLength(6);
+    expect(selectDecisionRelevantRewriteClaimsV4({
+      primaryQuery: '괌 9월 날씨와 옷차림',
+      primaryDecision: '괌의 월별 날씨와 옷차림은 어떻게 준비해야 하나요?',
+      approvedClaims: claims,
+    })).toHaveLength(12);
   });
 
   it('normalizes only an exact plain fixed title into an H1', () => {

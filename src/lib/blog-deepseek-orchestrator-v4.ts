@@ -158,7 +158,11 @@ export function selectDecisionRelevantRewriteClaimsV4(input: {
   const claims = itineraryOrRoute && !asksForPhysicalDimension && nonDimensionClaims.length >= 3
     ? nonDimensionClaims
     : input.approvedClaims;
-  const isCompleteMonthlyClimateAssignment = /(?:월별|12\s*개월)/i.test(input.primaryQuery)
+  // A brief can phrase the monthly assignment in the reader decision while
+  // keeping the primary query focused on one month (for example, "괌 9월
+  // 날씨"). Treat either field as authoritative so a 12-row climate packet
+  // is not silently reduced to the generic six-claim rewrite limit.
+  const isCompleteMonthlyClimateAssignment = /(?:월별|12\s*개월)/i.test(decisionText)
     && claims.length <= 12
     && claims.every((claim) => claim.claimType === 'climate');
   if (isCompleteMonthlyClimateAssignment) return claims;
