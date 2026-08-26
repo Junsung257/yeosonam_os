@@ -50,6 +50,12 @@ describe('blog publisher V4 orchestration wiring', () => {
     expect(source).toContain('Boolean(generated.generation_meta?.content_brief_v3)');
   });
 
+  it('preserves a valid research packet when an editorial quality retry is requested', () => {
+    expect(source).toContain('const researchPreflightPassed = (');
+    expect(source).toContain('researchValid: researchPreflightPassed');
+    expect(source).toContain("qualityRouteV4.route === 'reresearch' && !researchPreflightPassed");
+  });
+
   it('publishes only the immutable selected attempt, never whichever attempt happens to be latest', () => {
     expect(controller).toContain('selected_attempt_id,latest_quality_score');
     expect(controller).toContain(".eq('id', selectedAttemptId)");

@@ -3547,6 +3547,9 @@ async function processQueueItem(
     ].filter((value, index, values) => value && values.indexOf(value) === index);
     const previousOrchestration = item.meta?.ai_orchestration_v4 as Record<string, unknown> | undefined;
     const aiOrchestrationMeta = generationMeta.ai_orchestration_v4 as Record<string, unknown> | undefined;
+    const researchPreflightPassed = (
+      generated.generation_meta?.information_research_preflight as Record<string, unknown> | undefined
+    )?.passed === true;
     const orchestrationAttempt = Math.max(1, Math.min(BLOG_QUALITY_MAX_ATTEMPTS_V4, Number(
       aiOrchestrationMeta?.attempt || Number(item.attempts || 0) + 1,
     )));
@@ -3563,7 +3566,7 @@ async function processQueueItem(
           researchAttempts: Number(previousOrchestration?.research_attempts || 0),
           riskLevel: contentBriefV3.riskLevel,
           humanApproved: contentReviewStatus === 'approved',
-          researchValid: (generated.generation_meta?.information_research_preflight as Record<string, unknown> | undefined)?.passed === true,
+          researchValid: researchPreflightPassed,
           claimLedgerValid: claimValidation.passed && writerClaimLedgerIssues.length === 0,
           lastStage: typeof aiOrchestrationMeta?.stage === 'string'
             ? aiOrchestrationMeta.stage as BlogDeepSeekStage
@@ -3669,7 +3672,11 @@ async function processQueueItem(
           failure_evidence: qualityRouteV4.reasons,
           last_attempted_at: now,
         },
-        ...(qualityRouteV4.route === 'reresearch'
+        // A valid research packet is still reusable when the failure is editorial
+        // (for example template saturation or an internal-link gate). Clearing it
+        // here forces the next workflow retry through an unnecessary provider
+        // research call and can turn a rewrite into a research timeout.
+        ...(qualityRouteV4.route === 'reresearch' && !researchPreflightPassed
           ? {
               [BLOG_INFORMATION_RESEARCH_META_KEY]: null,
               auto_research: null,
