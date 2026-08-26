@@ -188,6 +188,20 @@ function incrementCounts(
   counts.byType[type] = (counts.byType[type] ?? 0) + 1;
 }
 
+export function scopeBlogContentOperationIdempotencyKeyV4(input: {
+  baseKey: string;
+  candidateId: string;
+  metadata?: Record<string, unknown> | null;
+  environment?: string | null;
+}): string {
+  const stagingCanary = input.environment?.trim().toLowerCase() === 'staging'
+    && typeof input.metadata?.blog_v4_staging_seed === 'string'
+    && input.metadata.blog_v4_staging_seed.trim().length > 0;
+  return stagingCanary
+    ? `${input.baseKey}:staging-canary:${input.candidateId}`
+    : input.baseKey;
+}
+
 export async function materializeBlogContentOperationsV4(input: {
   supabase: SupabaseClient;
   now?: Date;
@@ -400,7 +414,28 @@ export async function materializeBlogContentOperationsV4(input: {
       quota.reasons.forEach(skip);
       continue;
     }
-    const persisted = await persistBlogDemandMaterializationV4({ supabase: input.supabase, decision });
+    // A staging canary deliberately creates a fresh queue row while keeping
+    // the reader-facing query stable. Scope only that explicit staging seed's
+    // idempotency key to its queue so an earlier canary for the same query
+    // cannot hand the new run an unrelated operation. Production retains the
+    // normal same-day cluster idempotency contract.
+    const stagingCanary = process.env.BLOG_V4_ENVIRONMENT?.trim().toLowerCase() === 'staging'
+      && typeof candidate.meta?.blog_v4_staging_seed === 'string'
+      && candidate.meta.blog_v4_staging_seed.trim().length > 0;
+    const persisted = await persistBlogDemandMaterializationV4({
+      supabase: input.supabase,
+      decision: stagingCanary
+        ? {
+            ...decision,
+            idempotencyKey: scopeBlogContentOperationIdempotencyKeyV4({
+              baseKey: decision.idempotencyKey,
+              candidateId: candidate.id,
+              metadata: candidate.meta,
+              environment: process.env.BLOG_V4_ENVIRONMENT,
+            }),
+          }
+        : decision,
+    });
     operationIds.push(persisted.operationId);
     if (persisted.operationCreated) {
       materialized += 1;

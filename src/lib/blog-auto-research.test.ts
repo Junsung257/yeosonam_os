@@ -871,6 +871,34 @@ describe('buildGuamHotelAreasPayload', () => {
     expect(payload?.claims?.filter((claim) => claim.claimType === 'price')).toHaveLength(3);
     expect(payload?.claims?.filter((claim) => claim.claimType === 'factual')).toHaveLength(5);
   });
+
+  it('keeps the canary usable when Agoda is unavailable but Booking and KAYAK are reviewed', () => {
+    const payload = buildGuamHotelAreasPayload([
+      {
+        url: 'https://www.booking.com/family/country/gu.ko.html',
+        title: '괌 가족 호텔',
+        text: [
+          'The Tsubaki Tower투몬 가족 호텔 설명 더 보기1박 최저 ₩543,251',
+          'Slice of Paradise with Private BeachAgat 가족 호텔 설명 더 보기1박 최저 ₩425,791',
+          'Ocean View Agat Marina Private AccommodationAgat 가족 호텔 설명 더 보기1박 최저 ₩536,497',
+        ].join(' '),
+      },
+      {
+        url: 'https://www.kayak.com/Guam-Hotels.98.dc.html',
+        title: 'Guam hotels on KAYAK',
+        text: [
+          'Grand Plaza HotelTumon7.0Good Parking Pool Spa$77+Check availability',
+          'Hoshino Resorts Risonare GuamTamuning, Guam7.8Good Parking Pool$140+Check availability',
+          'Dededo/Finest Guam Golf And ResortDededo, Guam7.9Good Parking Pool$88+Check availability',
+        ].join(''),
+      },
+    ], '괌');
+
+    expect(payload?.sources).toHaveLength(2);
+    expect(payload?.claims?.filter((claim) => claim.claimType === 'price')).toHaveLength(3);
+    expect(payload?.claims?.filter((claim) => claim.claimType === 'factual')).toHaveLength(3);
+    expect(payload?.sources?.map((source) => source.publisher)).toEqual(['Booking.com', 'KAYAK']);
+  });
 });
 
 describe('buildGuamCurrencyPaymentPayload', () => {
