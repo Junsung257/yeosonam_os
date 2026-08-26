@@ -189,6 +189,13 @@ describe('blog publish quality', () => {
     expect(getBlogPublishDecisionScore(report)).toBe(100);
   });
 
+  it('normalizes a failed publish contract to a fail-closed decision score', () => {
+    expect(getBlogPublishDecisionScore({
+      passed: false,
+      publicCustomerQuality: { passed: true, score: 100, issues: [] },
+    } as unknown as import('./blog-publish-quality').BlogPublishQualityReport)).toBe(0);
+  });
+
   it('records the V4 evaluation beside existing generation metadata without clobbering it', async () => {
     const report = await evaluateBlogPublishQuality({
       blog_html: '# 테스트 글\n\n검증된 본문입니다.',
