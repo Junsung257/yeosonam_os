@@ -244,6 +244,7 @@
     "repair:unmatched-queue-state:apply": "npx tsx scripts/repair-unmatched-queue-state.ts --apply",
     "benchmark:product-ocr": "npx tsx scripts/benchmark-product-ocr-candidates.ts",
     "benchmark:product-ocr:ci": "npx tsx scripts/benchmark-product-ocr-candidates.ts --strict",
+    "prepare:product-ocr-shadow": "npx tsx scripts/prepare-product-ocr-shadow-candidate.ts",
     "verify:product-registration-learning": "node scripts/verify-product-registration-learning-engine.mjs",
     "verify:product-registration-learning:live": "node scripts/verify-product-registration-learning-engine.mjs --live",
     "verify:product-registration-learning:full": "node scripts/verify-product-registration-learning-engine.mjs --live --build",
