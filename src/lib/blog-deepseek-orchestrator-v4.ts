@@ -688,6 +688,8 @@ export function buildDeepSeekRewritePromptV4(input: {
     '- Add no new fact, number, source, experience, destination, or factual recommendation. Do not expand the original topic scope.',
     '- You may reorder or rename sections only to satisfy the original brief and its section purposes.',
     '- Fix every failure listed below; remove unsupported prose instead of replacing it with a plausible claim.',
+    '- For a weather or clothing topic, the first paragraph must explicitly contain the primary query and one of 기온, 강수, 옷차림, 준비물, or 예보. Use source-neutral reader guidance; do not add a new measurement.',
+    '- Do not add a standalone caveat such as "이 값은 평년 기준이므로 실제 방문 시점의 날씨는 달라질 수 있습니다." unless it is an approved claim. Prefer an imperative reader action such as checking the latest official forecast.',
     '- Return Markdown only. Preserve exactly one hidden claim-ledger envelope at the end:',
     '<!-- INFORMATION_CLAIM_LEDGER_START',
     '{"claims":[{"claim_text":"exact factual sentence copied from the visible article","claim_type":"factual","risk_level":"MEDIUM"}]}',

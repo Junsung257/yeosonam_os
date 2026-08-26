@@ -1093,6 +1093,53 @@ function applyFinalCustomerSurfaceRepair(
   return surfaceRepair.changes;
 }
 
+/**
+ * Keep informational openings answer-first even when a model starts with a
+ * generic planning sentence. This is deliberately source-neutral: it adds
+ * no measurement, date, price, or operational assertion, and the full claim
+ * and publication gates still run after the repair.
+ */
+function applyInformationalAnswerFirstRepair(
+  generated: GeneratedBlog,
+  item: any,
+  primaryKeyword?: string | null,
+): string[] {
+  if (item.product_id) return [];
+  const context = `${item.topic || ''} ${item.category || ''} ${primaryKeyword || ''}`;
+  if (!/(날씨|옷차림|준비물|체크리스트|강수|우기|건기)/i.test(context)) return [];
+
+  const blocks = generated.blog_html.trim().split(/\n\s*\n/);
+  const paragraphIndex = blocks.findIndex((block) => {
+    const value = block.trim();
+    return Boolean(value)
+      && !value.startsWith('#')
+      && !value.startsWith('|')
+      && !value.startsWith('![')
+      && !value.startsWith('<!--');
+  });
+  if (paragraphIndex < 0) return [];
+  const firstParagraph = blocks[paragraphIndex]!.trim();
+  if (/(기온|강수|옷차림|준비물|예보)/i.test(firstParagraph)) return [];
+
+  const subject = String(item.destination || primaryKeyword || '여행 일정')
+    .replace(/\d+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim() || '여행 일정';
+  const lead = `${subject} 날씨를 판단할 때는 평년 기온·강수와 출발 직전 공식 예보를 나눠 확인하세요.`;
+  blocks[paragraphIndex] = `${lead}\n\n${firstParagraph}`;
+  generated.blog_html = blocks.join('\n\n').trim();
+  generated.generation_meta = {
+    ...(generated.generation_meta || {}),
+    answer_first_surface_repair_v4: {
+      applied: true,
+      changes: ['added_source_neutral_weather_answer_signal'],
+      subject,
+      applied_at: new Date().toISOString(),
+    },
+  };
+  return ['added_source_neutral_weather_answer_signal'];
+}
+
 function buildDeterministicInfoFallbackMarkdown(item: any, primaryKeyword?: string | null): string {
   const keyword = String(primaryKeyword || item.primary_keyword || item.topic || item.destination || '여행 준비');
   const destination = item.destination || extractDestination(String(item.topic || keyword)) || keyword.split(/\s+/)[0] || '여행지';
@@ -3096,6 +3143,14 @@ async function processQueueItem(
       utmSource: 'naver_blog',
     });
     applyFinalCustomerSurfaceRepair(generated, item, primaryKeyword);
+    const answerFirstRepairChanges = applyInformationalAnswerFirstRepair(
+      generated,
+      item,
+      primaryKeyword,
+    );
+    if (answerFirstRepairChanges.length > 0) {
+      console.log(`[blog-publisher] informational answer-first repair: ${answerFirstRepairChanges.join(', ')}`);
+    }
 
     const applyFinalResearchStructureRepair = (): void => {
       // Claim validation blocks publication; it does not synthesize prose.

@@ -77,6 +77,7 @@ export function buildInformationalQualityBlock(input: {
     '## Current quality contract',
     '- Internal micro-angle ids and English planning labels must never appear in the H1, headings, or body.',
     `- The opening must directly answer the reader task for: ${input.primaryKeyword}.`,
+    '- For weather, clothing, packing, or preparation queries, the first paragraph must include the primary query wording and an answer signal such as 기온, 강수, 옷차림, 준비물, or 예보. This is reader guidance only; do not add unsupported values.',
     '- A table must have a header, separator, and at least three real body rows. Use a checklist when fewer supported rows exist.',
     '- Do not use ==highlight==, <mark>, fake emphasis syntax, or unexplained placeholders.',
     '- Link to official or primary sources for policy, entry, weather, airport, transport, insurance, customs, ticket, or other changeable conditions.',
@@ -85,6 +86,7 @@ export function buildInformationalQualityBlock(input: {
       : '- Stay destination-neutral only when the content brief explicitly permits a generic guide.',
     '- Use the primary keyword only where it reads naturally. Never repeat it to satisfy a count.',
     '- Do not add a sales or action block; the public renderer owns that surface.',
+    '- Before returning, append the required hidden claim-ledger envelope after the Markdown body. Never omit it because the body is long; if there are no factual claims, emit {"claims":[]}.',
   ].join('\n');
 }
 

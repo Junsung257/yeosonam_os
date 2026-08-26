@@ -187,6 +187,15 @@ describe('V3 editorial decision guidance classification', () => {
     });
   });
 
+  it('keeps a normal-period weather variability caveat out of the factual ledger', () => {
+    expect(classifyBlogInformationStatement(
+      '이 값은 평년 기준이므로 실제 방문 시점의 날씨는 달라질 수 있습니다.',
+    )).toMatchObject({
+      category: 'navigation_boilerplate',
+      factualClassification: null,
+    });
+  });
+
   it.each([
     '가족 동반이라면 아이가 참여할 활동이 예약제인지 미리 확인하는 것이 숙소 권역 선택보다 우선할 수 있습니다.',
     '투몬 지역 숙소의 확인일 표시 가격을 나란히 비교하면 예산 범위를 좁히는 데 도움이 됩니다.',

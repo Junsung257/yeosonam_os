@@ -112,6 +112,7 @@ export function buildInfoWriterPromptBlock(brief: InfoGuideBrief, voice: Editori
     `- Destination required unless intentionally generic: ${brief.destination_required ? 'yes' : 'no'}`,
     structureContract,
     '- First paragraph must sound like a Korean travel editor answering a real question. Do not repeat the exact same opening pattern across posts.',
+    '- For weather, clothing, packing, or preparation questions, name the reader\'s subject in the first paragraph and use at least one answer signal such as 기온, 강수, 옷차림, 준비물, or 예보. Do not invent a value to satisfy this rule.',
     '- For risky or changeable facts such as visa, fees, weather, airport, insurance, refund, ticketing, customs, or baggage rules, avoid hard certainty and explain that official/current conditions should be checked.',
     '- Keep mobile paragraphs short: usually 1-3 Korean sentences per paragraph, with lists/tables only where they help the reader save or compare.',
     '- CTA policy: do not write CTA sections, CTA URLs, package links, consultation links, or community links. The public renderer selects verified contextual CTAs after the article body.',
