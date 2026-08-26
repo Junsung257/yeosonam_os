@@ -57,6 +57,8 @@ describe('blog-ai-caller — 공개 API', () => {
   beforeEach(async () => {
     delete process.env.DEEPSEEK_API_KEY;
     delete process.env.DEEPSEEK_BLOG_PROD_API_KEY;
+    delete process.env.DEEPSEEK_STAGING_API_KEY;
+    delete process.env.BLOG_V4_ENVIRONMENT;
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.GEMINI_API_KEY;
     mocks.OpenAICtor.mockClear();
@@ -139,6 +141,24 @@ describe('blog-ai-caller — 공개 API', () => {
 
     expect(mocks.OpenAICtor).toHaveBeenCalledWith(expect.objectContaining({
       apiKey: 'blog-production-key',
+      baseURL: 'https://api.deepseek.com',
+    }));
+  });
+
+  it('staging 환경에서는 Preview 전용 DeepSeek 키가 production/generic 키보다 우선한다', async () => {
+    process.env.BLOG_V4_ENVIRONMENT = 'staging';
+    process.env.DEEPSEEK_STAGING_API_KEY = 'staging-key';
+    process.env.DEEPSEEK_BLOG_PROD_API_KEY = 'blog-production-key';
+    process.env.DEEPSEEK_API_KEY = 'generic-key';
+    mocks.dsCreate.mockResolvedValue({
+      choices: [{ finish_reason: 'stop', message: { content: 'staging response long enough' } }],
+    });
+
+    const { generateBlogTextWithReceipt } = await import('./blog-ai-caller');
+    await generateBlogTextWithReceipt('prompt', { model: 'deepseek-v4-flash' });
+
+    expect(mocks.OpenAICtor).toHaveBeenCalledWith(expect.objectContaining({
+      apiKey: 'staging-key',
       baseURL: 'https://api.deepseek.com',
     }));
   });

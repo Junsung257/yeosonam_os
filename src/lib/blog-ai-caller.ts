@@ -272,6 +272,15 @@ let cachedDeepseek: OpenAI | null = null;
  * compatibility fallback for local and pre-control-plane environments.
  */
 function getBlogDeepSeekApiKey(): string | null {
+  const isStaging = process.env.BLOG_V4_ENVIRONMENT?.trim().toLowerCase() === 'staging';
+  if (isStaging) {
+    // Preview must never fall back to a production-scoped blog key when a
+    // staging-only credential is available. The generic key remains a
+    // compatibility fallback for older local/preview deployments.
+    return getSecret('DEEPSEEK_STAGING_API_KEY')
+      ?? getSecret('DEEPSEEK_BLOG_PROD_API_KEY')
+      ?? getProviderApiKey('deepseek');
+  }
   return getSecret('DEEPSEEK_BLOG_PROD_API_KEY') ?? getProviderApiKey('deepseek');
 }
 
