@@ -315,6 +315,15 @@ describe('blog publisher quota recovery contract', () => {
     );
   });
 
+  it('does not label a V3 legacy SEO aggregate diagnostic as a public publish blocker', () => {
+    const source = routeSource();
+
+    expect(source).toContain('legacy SEO aggregate diagnostic below publish floor');
+    expect(source).toContain('V3 SEO hard gate failed');
+    expect(source).toContain('isBlogSeoDetailBlockingForPublish(detail.name, flexibleV3Seo)');
+    expect(source).not.toContain('SEO score ${seoScore.score}/${seoScore.maxScore} - public publish blocked');
+  });
+
   it('normalizes literal newline escapes at every final quality boundary', () => {
     const source = routeSource();
 

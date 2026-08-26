@@ -3274,8 +3274,17 @@ async function processQueueItem(
     let seoScore = computeSeoScore(buildSeoScoreInput());
 
     if (!seoScore.passed) {
-      const failedDetails = seoScore.details.filter(d => d.status === 'fail').map(d => d.name).join(', ');
-      console.log(`[blog-publisher] SEO score ${seoScore.score}/${seoScore.maxScore} - public publish blocked; private draft retained (${failedDetails || seoScore.summary})`);
+      const flexibleV3Seo = Boolean(generated.generation_meta?.content_brief_v3);
+      const seoBlockingDetails = seoScore.details
+        .filter((detail) => detail.status === 'fail'
+          && isBlogSeoDetailBlockingForPublish(detail.name, flexibleV3Seo))
+        .map((detail) => detail.name);
+
+      if (seoBlockingDetails.length > 0) {
+        console.log(`[blog-publisher] V3 SEO hard gate failed: ${seoBlockingDetails.join(', ')}`);
+      } else {
+        console.log(`[blog-publisher] legacy SEO aggregate diagnostic below publish floor; V3 dedicated gates continue (${seoScore.summary})`);
+      }
     }
 
     const publishQuality = await runGeneratedPublishQuality(generated, item, blogType, primaryKeyword);
