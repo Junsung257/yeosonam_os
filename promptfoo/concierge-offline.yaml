@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+description: Yeosonam concierge recorded-answer challenger (offline, zero cost)
+
+prompts:
+  - id: recorded-answer
+    raw: '{{candidate_answer}}'
+
+providers:
+  - id: echo
+    label: committed-answer
+
+defaultTest:
+  options:
+    disableVarExpansion: true
+  assert:
+    - type: javascript
+      value: file://assertions/concierge-contract.cjs
+      metric: deterministic-contract
+
+tests: file://load-concierge-tests.cjs
+
+commandLineOptions:
+  share: false
+  cache: false
+  write: false
+  maxConcurrency: 1

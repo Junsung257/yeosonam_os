@@ -156,9 +156,31 @@ npm run verify:jarvis-readiness
 npm run verify:jarvis-all-scenarios
 npm run verify:customer-inquiry
 npm run eval:jarvis
+npm run eval:concierge:promptfoo
 npm run audit:jarvis-rag
 npx vitest run src/lib/automation-command-center.test.ts src/app/admin/control-tower/_components/AutomationCommandCenterCard.test.tsx
 npm run type-check
 ```
 
 For blog, product registration, settlement, affiliate, or marketing AI behavior, also run that domain's SSOT verification checks.
+
+### Promptfoo challenger lane
+
+`npm run eval:concierge:promptfoo` is an advisory challenger beside the existing
+`eval:concierge` gate. It evaluates the committed concierge corpus through
+Promptfoo's zero-cost `echo` provider and the repository-owned deterministic
+assertion. It does not call a model, customer API, database, or production
+surface, and it must not replace `verify:customer-inquiry` or the Jarvis gates.
+The first run may access npm only to download the exact pinned CLI package.
+
+- Promptfoo is pinned to `0.122.0`; do not use `@latest` in automation.
+- Sharing, cache/result writes, telemetry, update checks, remote generation,
+  template environment variables, and local debug/error logs are disabled by default.
+- Only reviewed repository configs and assertion files may be executed because
+  Promptfoo custom code runs with the local process permissions and is not a sandbox.
+- A real-model comparison is an explicit operator run only. It requires the
+  domain provider policy, cost reservation, redacted fixtures, and a non-production
+  endpoint or provider override; never add API keys to YAML or exported results.
+- The manual `Concierge Promptfoo Challenger` workflow remains non-blocking until
+  the corpus is expanded and its score is proven stable against the authoritative
+  customer-inquiry gate.
