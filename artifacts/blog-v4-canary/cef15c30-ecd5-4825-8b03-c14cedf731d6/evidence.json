@@ -1,0 +1,2013 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-26T00:55:19.226Z",
+  "operationId": "457c3e88-f1c9-427d-950c-a19a650dd56e",
+  "queueId": "cef15c30-ecd5-4825-8b03-c14cedf731d6",
+  "generationRunId": "22c1cdf0-675a-45ef-8f59-0427a59a6751",
+  "candidateCount": 1,
+  "topic": "괌 가족여행에서 투몬과 타무닝 중 숙소 지역을 고르는 판단 기준 (staging canary b51bd1ab)",
+  "disposition": "human_review",
+  "status": "human_review",
+  "currentStage": "human_review",
+  "title": "괌 가족여행에서 투몬과 타무닝 중 숙소 지역을 고르는 판단 기준: 괌 지역부터 고르는 기준",
+  "metaDescription": "괌 가족여행에서 투몬과 타무닝 중 숙소 지역을 고르는 판단 기준을 찾는 분을 위해 먼저 지역을 고르는 기준과 여행자 유형별 판단 조건을 정리했습니다. 확인된 정보로 장단점을 비교해 내 일정에 맞는 숙소 후보를 좁혀 보세요.",
+  "qualityScore": 98.7,
+  "qualityGate": {
+    "gates": [
+      {
+        "gate": "length",
+        "passed": true,
+        "evidence": {
+          "min": null,
+          "type": "info",
+          "length": 1114,
+          "policy": "v3_intent_and_evidence_no_fixed_length"
+        }
+      },
+      {
+        "gate": "cliche",
+        "passed": true,
+        "evidence": {
+          "hits": [],
+          "maxAllowed": 8,
+          "totalCount": 0
+        }
+      },
+      {
+        "gate": "duplicate",
+        "passed": true
+      },
+      {
+        "gate": "keyword_density",
+        "passed": true,
+        "evidence": {
+          "max": 1.8,
+          "count": 2,
+          "policy": "v3_natural_query_use_without_density_target",
+          "density": 6.28,
+          "keyword": "괌 가족여행에서 투몬과 타무닝 중 숙소 지역을 고르는 판단 기준",
+          "advisory": true
+        }
+      },
+      {
+        "gate": "hook",
+        "passed": true,
+        "evidence": {
+          "policy": "v3_answer_first_without_forced_numeric_hook",
+          "intro_preview": "숙소 지역은 개별 호텔을 먼저 고르기 전에 일정의 중심 동선과 가족 구성원의 휴식 조건을 기준으로 정하세요. 아래 제시된 검증된 선택지의 위치와",
+          "hasDecisionAnswer": true,
+          "hasDecisionGrouping": false
+        }
+      },
+      {
+        "gate": "cta",
+        "passed": true,
+        "evidence": {
+          "sample": [
+            "https://www.agoda.com/ko-kr/travel-guides/guam/where-to-stay-in-guam-best-hotels/",
+            "https://www.agoda.com/ko-kr/travel-guides/guam/where-to-stay-in-guam-best-hotels/",
+            "https://www.agoda.com/ko-kr/travel-guides/guam/where-to-stay-in-guam-best-hotels/"
+          ],
+          "utm_tiered": 0,
+          "total_links": 7
+        }
+      },
+      {
+        "gate": "cta_destination_integrity",
+        "passed": true,
+        "evidence": {
+          "issues": [],
+          "expectedDestination": "괌"
+        }
+      },
+      {
+        "gate": "links",
+        "passed": true,
+        "evidence": {
+          "total": 7,
+          "external": 6,
+          "internal": 1,
+          "min_external": 2
+        }
+      },
+      {
+        "gate": "readability",
+        "passed": true,
+        "evidence": {
+          "score": 100,
+          "avg_sentence_len": 39.7,
+          "duplicate_phrases": [],
+          "long_sentence_count": 0,
+          "double_negative_count": 0
+        }
+      },
+      {
+        "gate": "ai_readability",
+        "passed": true,
+        "evidence": {
+          "score": 3,
+          "criteria": [
+            {
+              "ok": true,
+              "key": "h2_density",
+              "h2Count": 4,
+              "h2Range": {
+                "max": 9,
+                "min": 2
+              }
+            },
+            {
+              "ok": true,
+              "key": "definition_paragraph",
+              "intro_preview": "숙소 지역은 개별 호텔을 먼저 고르기 전에 일정의 중심 동선과 가족 구성원의 휴식 조건을 기준으로 정하세요. 아래 제시된 검증된 선택지의 위치와"
+            },
+            {
+              "ok": true,
+              "key": "section_scanability",
+              "h2Count": 4,
+              "paragraphCount": 17
+            }
+          ]
+        }
+      },
+      {
+        "gate": "render_integrity",
+        "passed": true,
+        "evidence": {
+          "artifacts": [],
+          "artifactCount": 0,
+          "artifactSamples": [],
+          "markdownImageCount": 0,
+          "renderedImageCount": 0,
+          "renderedTableCount": 0,
+          "markdownHeadingCount": 5,
+          "renderedHeadingCount": 5,
+          "markdownTableRowCount": 0
+        }
+      },
+      {
+        "gate": "structure_integrity",
+        "passed": true,
+        "evidence": {
+          "score": 100,
+          "issues": [],
+          "issueCount": 0,
+          "criticalCount": 0
+        }
+      },
+      {
+        "gate": "table_integrity",
+        "passed": true,
+        "evidence": {
+          "issues": []
+        }
+      },
+      {
+        "gate": "article_quality_v2",
+        "passed": true,
+        "evidence": {
+          "issues": [],
+          "blogType": "info"
+        }
+      },
+      {
+        "gate": "accent_density",
+        "passed": true,
+        "evidence": {
+          "h2Count": 5,
+          "h3Count": 0,
+          "markCount": 0,
+          "strongNumCount": 3,
+          "longestParagraph": 182,
+          "legacyMarkerCount": 0
+        }
+      },
+      {
+        "gate": "topic_fit",
+        "passed": true,
+        "evidence": {
+          "score": 100,
+          "issues": [],
+          "warningCount": 0,
+          "criticalCount": 0
+        }
+      },
+      {
+        "gate": "intent_quality",
+        "passed": true,
+        "evidence": {
+          "score": 100,
+          "intent": {
+            "mode": "info",
+            "evidence": [
+              "cost terms in body"
+            ],
+            "confidence": 70,
+            "infoSubtype": "cost",
+            "readerIntent": "book",
+            "productSubtype": null
+          },
+          "issues": [],
+          "warningCount": 0,
+          "criticalCount": 0
+        }
+      },
+      {
+        "gate": "engine_v2",
+        "passed": true,
+        "evidence": {
+          "score": 100,
+          "writer": "info_writer",
+          "metrics": {
+            "naturalness": 100,
+            "faithfulness": 100,
+            "sales_pressure": 100,
+            "source_support": 100,
+            "task_completion": 100,
+            "customer_language": 100,
+            "product_decision_helpfulness": 100
+          },
+          "evaluation": {
+            "brief": {
+              "cta_policy": "runtime_contextual",
+              "destination": "괌",
+              "reader_task": "어느 지역이 일정에 맞는가?",
+              "writer_type": "info_writer",
+              "answer_first": "괌 가족여행에서 투몬과 타무닝 중 숙소 지역을 고르는 판단 기준은 개별 호텔보다 숙소 지역을 먼저 고르게 한다.",
+              "evidence_items": [
+                {
+                  "kind": "serp_intent",
+                  "label": "comparison",
+                  "source": "content_brief"
+                },
+                {
+                  "kind": "internal_insight",
+                  "label": "source:user_seed",
+                  "source": "content_brief.evidence"
+                },
+                {
+                  "kind": "internal_insight",
+                  "label": "destination:괌",
+                  "source": "content_brief.evidence"
+                },
+                {
+                  "kind": "internal_insight",
+                  "label": "intent:hotel_areas",
+                  "source": "content_brief.evidence"
+                }
+              ],
+              "primary_keyword": "괌 가족여행에서 투몬과 타무닝 중 숙소 지역을 고르는 판단 기준",
+              "forbidden_claims": [
+                "상품 DB에 없는 호텔명",
+                "확정되지 않은 항공/일정/혜택",
+                "근거 없는 여소남 데이터",
+                "허위 희소성/마감 임박",
+                "상단 강한 예약 CTA"
+              ],
+              "risk_or_change_notes": [
+                "검증 가능한 claim의 출처 연결률은 최소 90%여야 함",
+                "정확한 가격·비율·시간·정책 수치는 출처 URL, 확인일, 단위, 적용 조건이 없으면 사용 금지",
+                "허용 출처 유형: official_map, field_research, reputable_booking_data, reputable_local_source"
+              ],
+              "official_sources_required": false
+            },
+            "score": 100,
+            "passed": true,
+            "metrics": {
+              "naturalness": 100,
+              "faithfulness": 100,
+              "sales_pressure": 100,
+              "source_support": 100,
+              "task_completion": 100,
+              "customer_language": 100,
+              "product_decision_helpfulness": 100
+            },
+            "failure_bucket": "passed",
+            "category_scores": [
+              {
+                "id": "reader_task_completion",
+                "label": "검색 의도 답변 완성도",
+                "score": 100,
+                "passed": true
+              },
+              {
+                "id": "customer_language",
+                "label": "고객 언어와 한국어 자연스러움",
+                "score": 100,
+                "passed": true
+              },
+              {
+                "id": "naturalness",
+                "label": "AI 티/반복 템플릿 억제",
+                "score": 100,
+                "passed": true
+              },
+              {
+                "id": "evidence_faithfulness",
+                "label": "근거 충실도와 출처 지원",
+                "score": 100,
+                "passed": true
+              },
+              {
+                "id": "sales_pressure_control",
+                "label": "정보성 상단 강CTA 억제",
+                "score": 100,
+                "passed": true
+              }
+            ],
+            "repair_recommendation": null
+          },
+          "evidence_count": 4,
+          "failure_bucket": "passed",
+          "category_scores": [
+            {
+              "id": "reader_task_completion",
+              "label": "검색 의도 답변 완성도",
+              "score": 100,
+              "passed": true
+            },
+            {
+              "id": "customer_language",
+              "label": "고객 언어와 한국어 자연스러움",
+              "score": 100,
+              "passed": true
+            },
+            {
+              "id": "naturalness",
+              "label": "AI 티/반복 템플릿 억제",
+              "score": 100,
+              "passed": true
+            },
+            {
+              "id": "evidence_faithfulness",
+              "label": "근거 충실도와 출처 지원",
+              "score": 100,
+              "passed": true
+            },
+            {
+              "id": "sales_pressure_control",
+              "label": "정보성 상단 강CTA 억제",
+              "score": 100,
+              "passed": true
+            }
+          ]
+        }
+      },
+      {
+        "gate": "editorial_quality",
+        "passed": true,
+        "evidence": {
+          "score": 100,
+          "issues": [],
+          "warningCount": 0,
+          "criticalCount": 0
+        }
+      },
+      {
+        "gate": "image_quality",
+        "passed": true,
+        "evidence": {
+          "issues": [],
+          "minImages": 0,
+          "genericAlt": 0,
+          "imageCount": 0,
+          "missingAlt": 0,
+          "contextTokens": [
+            "가족여행에서",
+            "투몬과",
+            "타무닝",
+            "숙소",
+            "지역을",
+            "고르는",
+            "판단"
+          ],
+          "duplicateUrls": [],
+          "malformedUrls": [],
+          "contextMatchedImages": 0
+        }
+      },
+      {
+        "gate": "public_customer_quality",
+        "passed": true,
+        "evidence": {
+          "score": 100,
+          "issues": [],
+          "metrics": {
+            "trust": 100,
+            "answer_fit": 100,
+            "customer_voice": 100,
+            "render_readability": 100,
+            "conversion_pressure": 100
+          },
+          "minimum_score": 95
+        }
+      }
+    ],
+    "passed": true,
+    "summary": "모든 게이트 통과 (info)",
+    "checkedAt": "2026-08-26T00:47:18.769Z",
+    "rendered_reading_time_minutes": 3
+  },
+  "hardBlockers": [],
+  "failureReasons": [],
+  "flashCalls": 0,
+  "proCalls": 1,
+  "aiCostUsd": 0.00768768,
+  "budgetReservations": [
+    {
+      "model": "deepseek-v4-pro",
+      "modelClass": "pro",
+      "status": "completed",
+      "actualUsd": 0.00768768,
+      "createdAt": "2026-08-26T00:47:01.27648+00:00"
+    }
+  ],
+  "bodyPresent": true,
+  "officialSourcesPresent": true,
+  "sources": [
+    {
+      "source_url": "https://www.kayak.com/Guam-Hotels.98.dc.html",
+      "source_type": "reputable_price_source",
+      "authority_level": "editorial_secondary",
+      "publisher": "KAYAK",
+      "status": "active",
+      "retrieved_at": "2026-08-26T00:47:19.942+00:00"
+    },
+    {
+      "source_url": "https://www.agoda.com/ko-kr/travel-guides/guam/where-to-stay-in-guam-best-hotels/",
+      "source_type": "reputable_price_source",
+      "authority_level": "editorial_secondary",
+      "publisher": "Agoda",
+      "status": "active",
+      "retrieved_at": "2026-08-26T00:47:19.942+00:00"
+    }
+  ],
+  "claimCount": 8,
+  "claims": [
+    {
+      "claim_id": "444df71f-7c06-4b9a-8cbf-4ddeb0325383",
+      "claim_text": "Search Hotels (Dededo)의 KAYAK 확인일 표시 가격은 1박 최저 USD 242이다.",
+      "claim_type": "price",
+      "risk_level": "MEDIUM",
+      "source_url": null,
+      "source_domain": null,
+      "source_type": null,
+      "evidence_excerpt": null,
+      "verification_status": "supported",
+      "conflict_status": null,
+      "retrieved_at": "2026-08-23T06:03:43.213797+00:00"
+    },
+    {
+      "claim_id": "23572fae-0513-43d0-ba30-304484836bdc",
+      "claim_text": "Grand Plaza Hotel (투몬)의 KAYAK 확인일 표시 가격은 1박 최저 USD 77이다.",
+      "claim_type": "price",
+      "risk_level": "MEDIUM",
+      "source_url": null,
+      "source_domain": null,
+      "source_type": null,
+      "evidence_excerpt": null,
+      "verification_status": "supported",
+      "conflict_status": null,
+      "retrieved_at": "2026-08-23T06:03:43.213797+00:00"
+    },
+    {
+      "claim_id": "517fe294-4e3e-490a-9429-5656e8a005f7",
+      "claim_text": "Agoda 가이드는 두짓 비치 리조트 괌의 해적 베이 키즈 클럽에서 아동 활동이 예약제로 운영된다고 설명한다.",
+      "claim_type": "factual",
+      "risk_level": "LOW",
+      "source_url": null,
+      "source_domain": null,
+      "source_type": null,
+      "evidence_excerpt": null,
+      "verification_status": "supported",
+      "conflict_status": null,
+      "retrieved_at": "2026-08-23T06:03:43.213797+00:00"
+    },
+    {
+      "claim_id": "16d4d36b-721b-463f-927a-114b36e098a7",
+      "claim_text": "Agoda 가이드는 괌 플라자 리조트 앤 스파가 투몬 비치 중심부에 있다고 설명한다.",
+      "claim_type": "factual",
+      "risk_level": "LOW",
+      "source_url": null,
+      "source_domain": null,
+      "source_type": null,
+      "evidence_excerpt": null,
+      "verification_status": "supported",
+      "conflict_status": null,
+      "retrieved_at": "2026-08-23T06:03:43.213797+00:00"
+    },
+    {
+      "claim_id": "acda2408-e6bb-4547-a595-65fc6e53aa5d",
+      "claim_text": "KAYAK는 Grand Plaza Hotel을(를) 투몬 괌 호텔로 표시한다.",
+      "claim_type": "factual",
+      "risk_level": "LOW",
+      "source_url": null,
+      "source_domain": null,
+      "source_type": null,
+      "evidence_excerpt": null,
+      "verification_status": "supported",
+      "conflict_status": null,
+      "retrieved_at": "2026-08-23T06:03:43.213797+00:00"
+    },
+    {
+      "claim_id": "00e6c96a-34a9-4e73-ad01-75c6ce6d42cb",
+      "claim_text": "Guam Plaza Resort (투몬)의 KAYAK 확인일 표시 가격은 1박 최저 USD 96이다.",
+      "claim_type": "price",
+      "risk_level": "MEDIUM",
+      "source_url": null,
+      "source_domain": null,
+      "source_type": null,
+      "evidence_excerpt": null,
+      "verification_status": "supported",
+      "conflict_status": null,
+      "retrieved_at": "2026-08-23T06:03:43.213797+00:00"
+    },
+    {
+      "claim_id": "13ee2cdc-fcd8-4555-b1a1-41dbaa79a4a7",
+      "claim_text": "Agoda 가이드는 Hilton Guam Resort & Spa가 투몬 베이 남쪽 끝에 있고 어린이 전용 키즈풀이 있다고 설명한다.",
+      "claim_type": "factual",
+      "risk_level": "LOW",
+      "source_url": null,
+      "source_domain": null,
+      "source_type": null,
+      "evidence_excerpt": null,
+      "verification_status": "supported",
+      "conflict_status": null,
+      "retrieved_at": "2026-08-23T06:03:43.213797+00:00"
+    },
+    {
+      "claim_id": "2bdd0c44-4e0f-4df9-9fcd-9f9082b1a356",
+      "claim_text": "KAYAK는 Search Hotels을(를) Dededo 괌 호텔로 표시한다.",
+      "claim_type": "factual",
+      "risk_level": "LOW",
+      "source_url": null,
+      "source_domain": null,
+      "source_type": null,
+      "evidence_excerpt": null,
+      "verification_status": "supported",
+      "conflict_status": null,
+      "retrieved_at": "2026-08-23T06:03:43.213797+00:00"
+    }
+  ],
+  "traceId": "wrun_01M0XRH2K2RKXCQH2FN6EK67FG",
+  "publicationCount": 0,
+  "publicationDecisions": [
+    {
+      "id": "76aa7bea-14e8-43cf-bedb-1692162884ba",
+      "decision": "pending_review",
+      "autopublish_mode": "draft_only",
+      "policy_version": "blog-quality-v3",
+      "decided_at": "2026-08-26T00:47:19.782045+00:00"
+    }
+  ],
+  "indexingSideEffects": 0,
+  "indexingJobs": [],
+  "attempts": [
+    {
+      "attemptNumber": 1,
+      "stage": "rewrite_pro_high",
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "status": "completed",
+      "route": "approved_for_slot",
+      "inputTokens": 2377,
+      "cachedInputTokens": 384,
+      "outputTokens": 1213,
+      "estimatedCostUsd": 0.00372557,
+      "qualityScoreAfter": 98.7,
+      "completedAt": "2026-08-26T00:47:18.144+00:00"
+    }
+  ],
+  "stageEvents": [
+    {
+      "event_key": "preflight:demand-verified:v1",
+      "stage": "demand_verified",
+      "status": "succeeded",
+      "failure_code": null,
+      "provider": null,
+      "model": null,
+      "attempt_number": null,
+      "estimated_cost_usd": null,
+      "evidence": {
+        "providers": [
+          "editor_seed"
+        ],
+        "verifiedSignalCount": 20
+      },
+      "occurred_at": "2026-08-26T00:46:56.521725+00:00"
+    },
+    {
+      "event_key": "brief:verified:v1",
+      "stage": "brief_verified",
+      "status": "succeeded",
+      "failure_code": null,
+      "provider": null,
+      "model": null,
+      "attempt_number": null,
+      "estimated_cost_usd": null,
+      "evidence": {
+        "intent": "hotel_areas",
+        "primaryDecision": "괌에서 일정과 예산에 맞는 숙소 지역은 어디인가요?",
+        "requiresHumanReview": false,
+        "primarySourcesRequired": false
+      },
+      "occurred_at": "2026-08-26T00:46:57.810032+00:00"
+    },
+    {
+      "event_key": "research:ready:1787705218430:v2",
+      "stage": "research_ready",
+      "status": "succeeded",
+      "failure_code": null,
+      "provider": null,
+      "model": null,
+      "attempt_number": null,
+      "estimated_cost_usd": null,
+      "evidence": {
+        "verified": true
+      },
+      "occurred_at": "2026-08-26T00:46:58.454132+00:00"
+    },
+    {
+      "event_key": "generation:pass:1:started:v1:wrun_01M0XRH2K2RKXCQH2FN6EK67FG",
+      "stage": "drafting",
+      "status": "started",
+      "failure_code": null,
+      "provider": null,
+      "model": null,
+      "attempt_number": null,
+      "estimated_cost_usd": null,
+      "evidence": {},
+      "occurred_at": "2026-08-26T00:46:59.070607+00:00"
+    },
+    {
+      "event_key": "generation:publisher-fetch-started:v1:wrun_01M0XRH2K2RKXCQH2FN6EK67FG",
+      "stage": "drafting",
+      "status": "started",
+      "failure_code": null,
+      "provider": null,
+      "model": null,
+      "attempt_number": null,
+      "estimated_cost_usd": null,
+      "evidence": {
+        "stagingCanary": true,
+        "protectionBypassHeaderPresent": false
+      },
+      "occurred_at": "2026-08-26T00:46:59.100365+00:00"
+    },
+    {
+      "event_key": "publisher:route-entered:v1",
+      "stage": "drafting",
+      "status": "succeeded",
+      "failure_code": null,
+      "provider": null,
+      "model": null,
+      "attempt_number": null,
+      "estimated_cost_usd": null,
+      "evidence": {
+        "schemaProbe": "workflow_preflight",
+        "stagingCanary": true
+      },
+      "occurred_at": "2026-08-26T00:47:00.476577+00:00"
+    },
+    {
+      "event_key": "publisher:progress:entered:v1",
+      "stage": "drafting",
+      "status": "succeeded",
+      "failure_code": null,
+      "provider": null,
+      "model": null,
+      "attempt_number": null,
+      "estimated_cost_usd": null,
+      "evidence": {
+        "publisherProgress": "entered"
+      },
+      "occurred_at": "2026-08-26T00:47:00.609792+00:00"
+    },
+    {
+      "event_key": "publisher:progress:demand-ready:v1",
+      "stage": "drafting",
+      "status": "succeeded",
+      "failure_code": null,
+      "provider": null,
+      "model": null,
+      "attempt_number": null,
+      "estimated_cost_usd": null,
+      "evidence": {
+        "embeddedOnly": true,
+        "repositoryReady": true,
+        "publisherProgress": "demand-ready"
+      },
+      "occurred_at": "2026-08-26T00:47:00.638203+00:00"
+    },
+    {
+      "event_key": "publisher:progress:representative-ready:v1",
+      "stage": "drafting",
+      "status": "succeeded",
+      "failure_code": null,
+      "provider": null,
+      "model": null,
+      "attempt_number": null,
+      "estimated_cost_usd": null,
+      "evidence": {
+        "existingStatus": null,
+        "publisherProgress": "representative-ready",
+        "representativeKey": "v1|괌|hotel_areas|family|ko-KR"
+      },
+      "occurred_at": "2026-08-26T00:47:00.698259+00:00"
+    },
+    {
+      "event_key": "publisher:progress:duplicate-ready:v1",
+      "stage": "drafting",
+      "status": "succeeded",
+      "failure_code": null,
+      "provider": null,
+      "model": null,
+      "attempt_number": null,
+      "estimated_cost_usd": null,
+      "evidence": {
+        "publisherProgress": "duplicate-ready"
+      },
+      "occurred_at": "2026-08-26T00:47:00.753741+00:00"
+    },
+    {
+      "event_key": "publisher:progress:generated:v1",
+      "stage": "drafting",
+      "status": "succeeded",
+      "failure_code": null,
+      "provider": null,
+      "model": null,
+      "attempt_number": null,
+      "estimated_cost_usd": null,
+      "evidence": {
+        "generationModel": "deepseek-v4-pro",
+        "publisherProgress": "generated"
+      },
+      "occurred_at": "2026-08-26T00:47:18.340153+00:00"
+    },
+    {
+      "event_key": "generation:publisher-fetch-returned:v1:wrun_01M0XRH2K2RKXCQH2FN6EK67FG",
+      "stage": "drafting",
+      "status": "succeeded",
+      "failure_code": null,
+      "provider": null,
+      "model": null,
+      "attempt_number": null,
+      "estimated_cost_usd": null,
+      "evidence": {
+        "errors": [],
+        "payloadOk": true,
+        "creativeId": "83967cdd-c826-4ca8-9757-0950eb849681",
+        "httpStatus": 200,
+        "resultStatus": "pending_review",
+        "contractValid": true,
+        "payloadParsed": true,
+        "payloadReason": "autopublish_mode_draft_only",
+        "legacyResponse": false,
+        "payloadSkipped": false,
+        "generationRunId": null,
+        "payloadOperationId": "457c3e88-f1c9-427d-950c-a19a650dd56e",
+        "payloadTargetedOperation": true
+      },
+      "occurred_at": "2026-08-26T00:47:20.563914+00:00"
+    },
+    {
+      "event_key": "generation:attempt:1:v1:wrun_01M0XRH2K2RKXCQH2FN6EK67FG",
+      "stage": "repairing",
+      "status": "succeeded",
+      "failure_code": null,
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "attempt_number": 1,
+      "estimated_cost_usd": 0.00372557,
+      "evidence": {
+        "route": "approved_for_slot",
+        "hardBlockerCount": 0,
+        "qualityScoreAfter": 98.7,
+        "failureReasonCount": 0,
+        "qualityScoreBefore": null
+      },
+      "occurred_at": "2026-08-26T00:47:44.675596+00:00"
+    },
+    {
+      "event_key": "finalize:human-review:v1:wrun_01M0XRH2K2RKXCQH2FN6EK67FG",
+      "stage": "human_review",
+      "status": "succeeded",
+      "failure_code": null,
+      "provider": null,
+      "model": null,
+      "attempt_number": null,
+      "estimated_cost_usd": null,
+      "evidence": {
+        "generationReason": "autopublish_mode_draft_only",
+        "generationStatus": "pending_review"
+      },
+      "occurred_at": "2026-08-26T00:47:44.765589+00:00"
+    }
+  ],
+  "failureCode": null,
+  "skipReason": null,
+  "seedMetadata": {
+    "locale": "ko-KR",
+    "last_qa": {
+      "gates": [
+        {
+          "gate": "length",
+          "passed": true,
+          "evidence": {
+            "min": null,
+            "type": "info",
+            "length": 1114,
+            "policy": "v3_intent_and_evidence_no_fixed_length"
+          }
+        },
+        {
+          "gate": "cliche",
+          "passed": true,
+          "evidence": {
+            "hits": [],
+            "maxAllowed": 8,
+            "totalCount": 0
+          }
+        },
+        {
+          "gate": "duplicate",
+          "passed": true
+        },
+        {
+          "gate": "keyword_density",
+          "passed": true,
+          "evidence": {
+            "max": 1.8,
+            "count": 2,
+            "policy": "v3_natural_query_use_without_density_target",
+            "density": 6.28,
+            "keyword": "괌 가족여행에서 투몬과 타무닝 중 숙소 지역을 고르는 판단 기준",
+            "advisory": true
+          }
+        },
+        {
+          "gate": "hook",
+          "passed": true,
+          "evidence": {
+            "policy": "v3_answer_first_without_forced_numeric_hook",
+            "intro_preview": "숙소 지역은 개별 호텔을 먼저 고르기 전에 일정의 중심 동선과 가족 구성원의 휴식 조건을 기준으로 정하세요. 아래 제시된 검증된 선택지의 위치와",
+            "hasDecisionAnswer": true,
+            "hasDecisionGrouping": false
+          }
+        },
+        {
+          "gate": "cta",
+          "passed": true,
+          "evidence": {
+            "sample": [
+              "https://www.agoda.com/ko-kr/travel-guides/guam/where-to-stay-in-guam-best-hotels/",
+              "https://www.agoda.com/ko-kr/travel-guides/guam/where-to-stay-in-guam-best-hotels/",
+              "https://www.agoda.com/ko-kr/travel-guides/guam/where-to-stay-in-guam-best-hotels/"
+            ],
+            "utm_tiered": 0,
+            "total_links": 7
+          }
+        },
+        {
+          "gate": "cta_destination_integrity",
+          "passed": true,
+          "evidence": {
+            "issues": [],
+            "expectedDestination": "괌"
+          }
+        },
+        {
+          "gate": "links",
+          "passed": true,
+          "evidence": {
+            "total": 7,
+            "external": 6,
+            "internal": 1,
+            "min_external": 2
+          }
+        },
+        {
+          "gate": "readability",
+          "passed": true,
+          "evidence": {
+            "score": 100,
+            "avg_sentence_len": 39.7,
+            "duplicate_phrases": [],
+            "long_sentence_count": 0,
+            "double_negative_count": 0
+          }
+        },
+        {
+          "gate": "ai_readability",
+          "passed": true,
+          "evidence": {
+            "score": 3,
+            "criteria": [
+              {
+                "ok": true,
+                "key": "h2_density",
+                "h2Count": 4,
+                "h2Range": {
+                  "max": 9,
+                  "min": 2
+                }
+              },
+              {
+                "ok": true,
+                "key": "definition_paragraph",
+                "intro_preview": "숙소 지역은 개별 호텔을 먼저 고르기 전에 일정의 중심 동선과 가족 구성원의 휴식 조건을 기준으로 정하세요. 아래 제시된 검증된 선택지의 위치와"
+              },
+              {
+                "ok": true,
+                "key": "section_scanability",
+                "h2Count": 4,
+                "paragraphCount": 17
+              }
+            ]
+          }
+        },
+        {
+          "gate": "render_integrity",
+          "passed": true,
+          "evidence": {
+            "artifacts": [],
+            "artifactCount": 0,
+            "artifactSamples": [],
+            "markdownImageCount": 0,
+            "renderedImageCount": 0,
+            "renderedTableCount": 0,
+            "markdownHeadingCount": 5,
+            "renderedHeadingCount": 5,
+            "markdownTableRowCount": 0
+          }
+        },
+        {
+          "gate": "structure_integrity",
+          "passed": true,
+          "evidence": {
+            "score": 100,
+            "issues": [],
+            "issueCount": 0,
+            "criticalCount": 0
+          }
+        },
+        {
+          "gate": "table_integrity",
+          "passed": true,
+          "evidence": {
+            "issues": []
+          }
+        },
+        {
+          "gate": "article_quality_v2",
+          "passed": true,
+          "evidence": {
+            "issues": [],
+            "blogType": "info"
+          }
+        },
+        {
+          "gate": "accent_density",
+          "passed": true,
+          "evidence": {
+            "h2Count": 5,
+            "h3Count": 0,
+            "markCount": 0,
+            "strongNumCount": 3,
+            "longestParagraph": 182,
+            "legacyMarkerCount": 0
+          }
+        },
+        {
+          "gate": "topic_fit",
+          "passed": true,
+          "evidence": {
+            "score": 100,
+            "issues": [],
+            "warningCount": 0,
+            "criticalCount": 0
+          }
+        },
+        {
+          "gate": "intent_quality",
+          "passed": true,
+          "evidence": {
+            "score": 100,
+            "intent": {
+              "mode": "info",
+              "evidence": [
+                "cost terms in body"
+              ],
+              "confidence": 70,
+              "infoSubtype": "cost",
+              "readerIntent": "book",
+              "productSubtype": null
+            },
+            "issues": [],
+            "warningCount": 0,
+            "criticalCount": 0
+          }
+        },
+        {
+          "gate": "engine_v2",
+          "passed": true,
+          "evidence": {
+            "score": 100,
+            "writer": "info_writer",
+            "metrics": {
+              "naturalness": 100,
+              "faithfulness": 100,
+              "sales_pressure": 100,
+              "source_support": 100,
+              "task_completion": 100,
+              "customer_language": 100,
+              "product_decision_helpfulness": 100
+            },
+            "evaluation": {
+              "brief": {
+                "cta_policy": "runtime_contextual",
+                "destination": "괌",
+                "reader_task": "어느 지역이 일정에 맞는가?",
+                "writer_type": "info_writer",
+                "answer_first": "괌 가족여행에서 투몬과 타무닝 중 숙소 지역을 고르는 판단 기준은 개별 호텔보다 숙소 지역을 먼저 고르게 한다.",
+                "evidence_items": [
+                  {
+                    "kind": "serp_intent",
+                    "label": "comparison",
+                    "source": "content_brief"
+                  },
+                  {
+                    "kind": "internal_insight",
+                    "label": "source:user_seed",
+                    "source": "content_brief.evidence"
+                  },
+                  {
+                    "kind": "internal_insight",
+                    "label": "destination:괌",
+                    "source": "content_brief.evidence"
+                  },
+                  {
+                    "kind": "internal_insight",
+                    "label": "intent:hotel_areas",
+                    "source": "content_brief.evidence"
+                  }
+                ],
+                "primary_keyword": "괌 가족여행에서 투몬과 타무닝 중 숙소 지역을 고르는 판단 기준",
+                "forbidden_claims": [
+                  "상품 DB에 없는 호텔명",
+                  "확정되지 않은 항공/일정/혜택",
+                  "근거 없는 여소남 데이터",
+                  "허위 희소성/마감 임박",
+                  "상단 강한 예약 CTA"
+                ],
+                "risk_or_change_notes": [
+                  "검증 가능한 claim의 출처 연결률은 최소 90%여야 함",
+                  "정확한 가격·비율·시간·정책 수치는 출처 URL, 확인일, 단위, 적용 조건이 없으면 사용 금지",
+                  "허용 출처 유형: official_map, field_research, reputable_booking_data, reputable_local_source"
+                ],
+                "official_sources_required": false
+              },
+              "score": 100,
+              "passed": true,
+              "metrics": {
+                "naturalness": 100,
+                "faithfulness": 100,
+                "sales_pressure": 100,
+                "source_support": 100,
+                "task_completion": 100,
+                "customer_language": 100,
+                "product_decision_helpfulness": 100
+              },
+              "failure_bucket": "passed",
+              "category_scores": [
+                {
+                  "id": "reader_task_completion",
+                  "label": "검색 의도 답변 완성도",
+                  "score": 100,
+                  "passed": true
+                },
+                {
+                  "id": "customer_language",
+                  "label": "고객 언어와 한국어 자연스러움",
+                  "score": 100,
+                  "passed": true
+                },
+                {
+                  "id": "naturalness",
+                  "label": "AI 티/반복 템플릿 억제",
+                  "score": 100,
+                  "passed": true
+                },
+                {
+                  "id": "evidence_faithfulness",
+                  "label": "근거 충실도와 출처 지원",
+                  "score": 100,
+                  "passed": true
+                },
+                {
+                  "id": "sales_pressure_control",
+                  "label": "정보성 상단 강CTA 억제",
+                  "score": 100,
+                  "passed": true
+                }
+              ],
+              "repair_recommendation": null
+            },
+            "evidence_count": 4,
+            "failure_bucket": "passed",
+            "category_scores": [
+              {
+                "id": "reader_task_completion",
+                "label": "검색 의도 답변 완성도",
+                "score": 100,
+                "passed": true
+              },
+              {
+                "id": "customer_language",
+                "label": "고객 언어와 한국어 자연스러움",
+                "score": 100,
+                "passed": true
+              },
+              {
+                "id": "naturalness",
+                "label": "AI 티/반복 템플릿 억제",
+                "score": 100,
+                "passed": true
+              },
+              {
+                "id": "evidence_faithfulness",
+                "label": "근거 충실도와 출처 지원",
+                "score": 100,
+                "passed": true
+              },
+              {
+                "id": "sales_pressure_control",
+                "label": "정보성 상단 강CTA 억제",
+                "score": 100,
+                "passed": true
+              }
+            ]
+          }
+        },
+        {
+          "gate": "editorial_quality",
+          "passed": true,
+          "evidence": {
+            "score": 100,
+            "issues": [],
+            "warningCount": 0,
+            "criticalCount": 0
+          }
+        },
+        {
+          "gate": "image_quality",
+          "passed": true,
+          "evidence": {
+            "issues": [],
+            "minImages": 0,
+            "genericAlt": 0,
+            "imageCount": 0,
+            "missingAlt": 0,
+            "contextTokens": [
+              "가족여행에서",
+              "투몬과",
+              "타무닝",
+              "숙소",
+              "지역을",
+              "고르는",
+              "판단"
+            ],
+            "duplicateUrls": [],
+            "malformedUrls": [],
+            "contextMatchedImages": 0
+          }
+        },
+        {
+          "gate": "public_customer_quality",
+          "passed": true,
+          "evidence": {
+            "score": 100,
+            "issues": [],
+            "metrics": {
+              "trust": 100,
+              "answer_fit": 100,
+              "customer_voice": 100,
+              "render_readability": 100,
+              "conversion_pressure": 100
+            },
+            "minimum_score": 95
+          }
+        }
+      ],
+      "passed": true,
+      "summary": "모든 게이트 통과 (info)",
+      "checkedAt": "2026-08-26T00:47:18.769Z"
+    },
+    "audience": "아이 동반 가족 여행자",
+    "keywords": [
+      "괌 숙소 지역",
+      "투몬 타무닝 숙소 비교",
+      "괌 가족 호텔"
+    ],
+    "seeded_at": "2026-08-26T00:45:53.575Z",
+    "risk_level": "LOW",
+    "micro_angle": "family_lodging_area_choice",
+    "auto_research": {
+      "model": "deepseek-v4-pro",
+      "version": "reviewed-source-direct-fetch-v3",
+      "completed_at": "2026-08-22T21:58:16.676Z",
+      "direct_source_count": 2,
+      "grounding_source_count": 2
+    },
+    "expected_slug": "guam-tumon-tamuning-family-hotel-areas",
+    "last_seo_score": {
+      "score": 80,
+      "details": [
+        {
+          "name": "title",
+          "score": 9,
+          "status": "warn",
+          "message": "title 50자",
+          "maxScore": 12
+        },
+        {
+          "name": "meta_description",
+          "score": 10,
+          "status": "pass",
+          "message": "description 124자",
+          "maxScore": 10
+        },
+        {
+          "name": "heading_structure",
+          "score": 8,
+          "status": "pass",
+          "message": "H1 1개, H2 4개",
+          "maxScore": 10
+        },
+        {
+          "name": "primary_keyword",
+          "score": 8,
+          "status": "pass",
+          "message": "괌 가족여행에서 투몬과 타무닝 중 숙소 지역을 고르는 판단 기준 2회, V3 natural occurrence policy (density is diagnostic only)",
+          "maxScore": 8
+        },
+        {
+          "name": "semantic_longtail_coverage",
+          "score": 5,
+          "status": "warn",
+          "message": "semantic groups 5, secondary 0/3",
+          "maxScore": 8
+        },
+        {
+          "name": "image_seo",
+          "score": 8,
+          "status": "pass",
+          "message": "images 0, V3 brief explicitly permits an image-free article",
+          "maxScore": 8
+        },
+        {
+          "name": "internal_links_cta",
+          "score": 7,
+          "status": "pass",
+          "message": "runtime informational CTA, body internal 1",
+          "maxScore": 7
+        },
+        {
+          "name": "external_authority_links",
+          "score": 3,
+          "status": "warn",
+          "message": "external 2, authority 0",
+          "maxScore": 6
+        },
+        {
+          "name": "public_link_integrity",
+          "score": 0,
+          "status": "pass",
+          "message": "all links public",
+          "maxScore": 0
+        },
+        {
+          "name": "readability",
+          "score": 5,
+          "status": "warn",
+          "message": "avg sentence 68자, paragraphs 13",
+          "maxScore": 7
+        },
+        {
+          "name": "structured_data",
+          "score": 5,
+          "status": "warn",
+          "message": "{\"blogPosting\":true,\"breadcrumbList\":true,\"faqPage\":false,\"howTo\":false}",
+          "maxScore": 8
+        },
+        {
+          "name": "helpful_content_eeat",
+          "score": 4,
+          "status": "warn",
+          "message": "body 1114자, min 2500자",
+          "maxScore": 8
+        },
+        {
+          "name": "mobile_snippet_safety",
+          "score": 4,
+          "status": "pass",
+          "message": "table rows 0, long raw urls 0",
+          "maxScore": 4
+        },
+        {
+          "name": "url_slug",
+          "score": 4,
+          "status": "pass",
+          "message": "slug 38자",
+          "maxScore": 4
+        },
+        {
+          "name": "information_freshness",
+          "score": 0,
+          "status": "pass",
+          "message": "non-high-risk information",
+          "maxScore": 0
+        }
+      ],
+      "summary": "SEO 80/100 발행 보류 (info, 기준 95점, critical=none)",
+      "max_score": 100
+    },
+    "claim_fingerprint": null,
+    "last_succeeded_at": "2026-08-26T00:47:18.789Z",
+    "ai_orchestration_v4": {
+      "model": "deepseek-v4-pro",
+      "route": "approved_for_slot",
+      "score": 98.7,
+      "stage": "rewrite_pro_high",
+      "attempt": 1,
+      "receipt": {
+        "model": "deepseek-v4-pro",
+        "usage": {
+          "inputTokens": 2377,
+          "outputTokens": 1213,
+          "cachedInputTokens": 384
+        },
+        "provider": "deepseek",
+        "latencyMs": 16854,
+        "startedAt": "2026-08-26T00:47:01.290Z",
+        "completedAt": "2026-08-26T00:47:18.144Z",
+        "deepseekCost": {
+          "pricing": {
+            "tier": "offpeak",
+            "version": "deepseek-2026-08-17",
+            "outputUsdPerMillion": 1.98,
+            "cacheHitUsdPerMillion": 0.022,
+            "cacheMissUsdPerMillion": 0.66
+          },
+          "inputTokens": 2377,
+          "outputTokens": 1213,
+          "estimatedCostUsd": 0.00372557,
+          "cacheHitInputTokens": 384,
+          "cacheMissInputTokens": 1993
+        },
+        "finishReason": "stop",
+        "thinkingMode": "disabled",
+        "estimatedCostUsd": 0.00372557
+      },
+      "version": "blog-deepseek-orchestrator-v4",
+      "thinking": "disabled",
+      "next_stage": null,
+      "evaluated_at": "2026-08-26T00:47:18.789Z",
+      "component_scores": {
+        "quality_v3": 98.7,
+        "public_customer": 100,
+        "publish_quality": 70
+      },
+      "failure_evidence": [
+        "quality_score_at_least_90"
+      ],
+      "publish_quality_passed": true
+    },
+    "blog_v4_staging_seed": "blog-v4-staging-final5-20260826-adtqkn6l",
+    "editor_approved_seed": "true",
+    "last_publish_quality": {
+      "score": 70,
+      "issues": [
+        {
+          "code": "seo.title",
+          "source": "seo",
+          "message": "title 50자",
+          "evidence": {
+            "score": 9,
+            "status": "warn",
+            "maxScore": 12
+          },
+          "severity": "minor"
+        },
+        {
+          "code": "seo.semantic_longtail_coverage",
+          "source": "seo",
+          "message": "semantic groups 5, secondary 0/3",
+          "evidence": {
+            "score": 5,
+            "status": "warn",
+            "maxScore": 8
+          },
+          "severity": "minor"
+        },
+        {
+          "code": "seo.external_authority_links",
+          "source": "seo",
+          "message": "external 2, authority 0",
+          "evidence": {
+            "score": 3,
+            "status": "warn",
+            "maxScore": 6
+          },
+          "severity": "minor"
+        },
+        {
+          "code": "seo.readability",
+          "source": "seo",
+          "message": "avg sentence 68자, paragraphs 13",
+          "evidence": {
+            "score": 5,
+            "status": "warn",
+            "maxScore": 7
+          },
+          "severity": "minor"
+        },
+        {
+          "code": "seo.structured_data",
+          "source": "seo",
+          "message": "{\"blogPosting\":true,\"breadcrumbList\":true,\"faqPage\":false,\"howTo\":false}",
+          "evidence": {
+            "score": 5,
+            "status": "warn",
+            "maxScore": 8
+          },
+          "severity": "minor"
+        },
+        {
+          "code": "seo.helpful_content_eeat",
+          "source": "seo",
+          "message": "body 1114자, min 2500자",
+          "evidence": {
+            "score": 4,
+            "status": "warn",
+            "maxScore": 8
+          },
+          "severity": "minor"
+        }
+      ],
+      "components": [
+        {
+          "id": "quality_gate",
+          "score": 100,
+          "passed": true,
+          "issue_codes": []
+        },
+        {
+          "id": "seo",
+          "score": 80,
+          "passed": false,
+          "issue_codes": [
+            "seo.title",
+            "seo.semantic_longtail_coverage",
+            "seo.external_authority_links",
+            "seo.readability",
+            "seo.structured_data"
+          ]
+        },
+        {
+          "id": "readability",
+          "score": 100,
+          "passed": true,
+          "issue_codes": []
+        },
+        {
+          "id": "customer",
+          "score": 100,
+          "passed": true,
+          "issue_codes": []
+        },
+        {
+          "id": "render",
+          "score": 100,
+          "passed": true,
+          "issue_codes": []
+        }
+      ],
+      "rendered_issues": []
+    },
+    "official_source_urls": [
+      "https://www.visitguam.com/"
+    ],
+    "traveler_nationality": "대한민국",
+    "autopublish_policy_v3": {
+      "mode": "draft_only",
+      "score": {
+        "score": 8,
+        "reasons": [],
+        "eligible": true,
+        "components": {
+          "impressions": 0,
+          "seasonality": 0,
+          "ctr_opportunity": 0,
+          "source_freshness": 1,
+          "position_4_20_refresh": 0,
+          "stale_information_risk": 0,
+          "cannibalization_penalty": 0,
+          "active_product_relevance": 0,
+          "customer_question_frequency": 0,
+          "template_saturation_penalty": 0
+        }
+      },
+      "publish": false,
+      "reasons": [
+        "autopublish_mode_draft_only"
+      ],
+      "performance": {
+        "ctr": 0,
+        "clicks": 0,
+        "impressions": 0,
+        "averagePosition": null,
+        "latestMetricDate": null
+      },
+      "queueStatus": "pending_review",
+      "evaluated_at": "2026-08-26T00:47:18.789Z",
+      "contentStatus": "draft",
+      "runPublicSideEffects": false
+    },
+    "publication_disposition": "draft_only",
+    "review_workflow_warning": "review_queue_deferred:blog_information_review_case_upsert_failed:Could not find the 'approved_at' column of 'blog_information_review_cases' in the schema cache",
+    "verified_operator_note_id": "blog-v4-staging:blog-v4-staging-final5-20260826-adtqkn6l",
+    "information_research_bundle": {
+      "claims": [
+        {
+          "claimText": "Search Hotels (Dededo)의 KAYAK 확인일 표시 가격은 1박 최저 USD 242이다.",
+          "claimType": "price",
+          "riskLevel": "MEDIUM",
+          "evidenceKeys": [
+            "grounded-1-1951755b25136341-e1"
+          ],
+          "extractedValue": {
+            "unit": "1박",
+            "currency": "USD",
+            "normalizedValue": "242"
+          },
+          "claimFingerprint": "7468f80146ee301a467ec972f863c48964e66209879fc02ce3a12f254e0ed1bd",
+          "requiresEvidence": true
+        },
+        {
+          "claimText": "Grand Plaza Hotel (투몬)의 KAYAK 확인일 표시 가격은 1박 최저 USD 77이다.",
+          "claimType": "price",
+          "riskLevel": "MEDIUM",
+          "evidenceKeys": [
+            "grounded-1-1951755b25136341-e2"
+          ],
+          "extractedValue": {
+            "unit": "1박",
+            "currency": "USD",
+            "normalizedValue": "77"
+          },
+          "claimFingerprint": "83592ea56c332713595845fc9688afa36de81add32fb2f41c801089b7f85d92b",
+          "requiresEvidence": true
+        },
+        {
+          "claimText": "Guam Plaza Resort (투몬)의 KAYAK 확인일 표시 가격은 1박 최저 USD 96이다.",
+          "claimType": "price",
+          "riskLevel": "MEDIUM",
+          "evidenceKeys": [
+            "grounded-1-1951755b25136341-e3"
+          ],
+          "extractedValue": {
+            "unit": "1박",
+            "currency": "USD",
+            "normalizedValue": "96"
+          },
+          "claimFingerprint": "a2643a86a3b4f6f6808722b3b176bd5953305cc77f4aed4c27cd0ec3f2c1050c",
+          "requiresEvidence": true
+        },
+        {
+          "claimText": "Agoda 가이드는 Hilton Guam Resort & Spa가 투몬 베이 남쪽 끝에 있고 어린이 전용 키즈풀이 있다고 설명한다.",
+          "claimType": "factual",
+          "riskLevel": "LOW",
+          "evidenceKeys": [
+            "grounded-2-89e441986ba0995a-e4"
+          ],
+          "extractedValue": {
+            "unit": null,
+            "currency": null,
+            "normalizedValue": "투몬 베이 남쪽 끝·어린이 전용 키즈풀"
+          },
+          "claimFingerprint": "890648602dfaf976773c0f2fbfbeb29b4ff63133f58671d94ef61ba0535493b9",
+          "requiresEvidence": true
+        },
+        {
+          "claimText": "Agoda 가이드는 두짓 비치 리조트 괌의 해적 베이 키즈 클럽에서 아동 활동이 예약제로 운영된다고 설명한다.",
+          "claimType": "factual",
+          "riskLevel": "LOW",
+          "evidenceKeys": [
+            "grounded-2-89e441986ba0995a-e5"
+          ],
+          "extractedValue": {
+            "unit": null,
+            "currency": null,
+            "normalizedValue": "해적 베이 키즈 클럽·예약제 아동 활동"
+          },
+          "claimFingerprint": "1b3afbcf5fc125496f7fbc3d231286c18dd030009998819935ad48fc5a53d97b",
+          "requiresEvidence": true
+        },
+        {
+          "claimText": "Agoda 가이드는 괌 플라자 리조트 앤 스파가 투몬 비치 중심부에 있다고 설명한다.",
+          "claimType": "factual",
+          "riskLevel": "LOW",
+          "evidenceKeys": [
+            "grounded-2-89e441986ba0995a-e6"
+          ],
+          "extractedValue": {
+            "unit": null,
+            "currency": null,
+            "normalizedValue": "투몬 비치 중심부"
+          },
+          "claimFingerprint": "314eaab249c1fc70071cd0414522ec29bb55bae688300da16b47707e973b33dc",
+          "requiresEvidence": true
+        },
+        {
+          "claimText": "KAYAK는 Search Hotels을(를) Dededo 괌 호텔로 표시한다.",
+          "claimType": "factual",
+          "riskLevel": "LOW",
+          "evidenceKeys": [
+            "grounded-1-1951755b25136341-e7"
+          ],
+          "extractedValue": {
+            "unit": "숙소 지역",
+            "currency": null,
+            "normalizedValue": "Dededo"
+          },
+          "claimFingerprint": "f452cf56e2a639ef92e1947493ed2cf77b469a398a9deb88f99af266a57c0e6e",
+          "requiresEvidence": true
+        },
+        {
+          "claimText": "KAYAK는 Grand Plaza Hotel을(를) 투몬 괌 호텔로 표시한다.",
+          "claimType": "factual",
+          "riskLevel": "LOW",
+          "evidenceKeys": [
+            "grounded-1-1951755b25136341-e8"
+          ],
+          "extractedValue": {
+            "unit": "숙소 지역",
+            "currency": null,
+            "normalizedValue": "투몬"
+          },
+          "claimFingerprint": "6b3cb47e8cd5284da3dbb1d8d18d7ab69944a73840fdc538753be3ab64da6f42",
+          "requiresEvidence": true
+        }
+      ],
+      "sources": [
+        {
+          "country": "괌",
+          "metadata": {
+            "model": "deepseek-v4-pro",
+            "acquisition": "reviewed_direct_fetch"
+          },
+          "publisher": "KAYAK",
+          "riskLevel": "MEDIUM",
+          "sourceKey": "grounded-1-1951755b25136341",
+          "sourceUrl": "https://www.kayak.com/Guam-Hotels.98.dc.html",
+          "claimTypes": [
+            "price",
+            "factual"
+          ],
+          "sourceType": "reputable_price_source",
+          "contentHash": "418967462d5e5ca727b513d3b96610512223565f64e7d6e3c6984e732038a872",
+          "destination": "괌",
+          "retrievedAt": "2026-08-22T21:58:14.467Z",
+          "authorityLevel": "editorial_secondary",
+          "snapshotContent": "Search Hotels (Dededo)의 KAYAK 확인일 표시 가격은 1박 최저 USD 242이다. [검증 범위: 괌 괌; 대상: 괌 가족 숙소 비교 여행자; 기준일: 2026-08-22; 값: 242 1박 USD]\n\nGrand Plaza Hotel (투몬)의 KAYAK 확인일 표시 가격은 1박 최저 USD 77이다. [검증 범위: 괌 괌; 대상: 괌 가족 숙소 비교 여행자; 기준일: 2026-08-22; 값: 77 1박 USD]\n\nGuam Plaza Resort (투몬)의 KAYAK 확인일 표시 가격은 1박 최저 USD 96이다. [검증 범위: 괌 괌; 대상: 괌 가족 숙소 비교 여행자; 기준일: 2026-08-22; 값: 96 1박 USD]\n\nKAYAK는 Search Hotels을(를) Dededo 괌 호텔로 표시한다. [검증 범위: 괌 괌; 대상: 괌 숙소 지역 비교 여행자; 기준일: 2026-08-22; 값: Dededo 숙소 지역]\n\nKAYAK는 Grand Plaza Hotel을(를) 투몬 괌 호텔로 표시한다. [검증 범위: 괌 괌; 대상: 괌 숙소 지역 비교 여행자; 기준일: 2026-08-22; 값: 투몬 숙소 지역]"
+        },
+        {
+          "country": "괌",
+          "metadata": {
+            "model": "deepseek-v4-pro",
+            "acquisition": "reviewed_direct_fetch"
+          },
+          "publisher": "Agoda",
+          "riskLevel": "MEDIUM",
+          "sourceKey": "grounded-2-89e441986ba0995a",
+          "sourceUrl": "https://www.agoda.com/ko-kr/travel-guides/guam/where-to-stay-in-guam-best-hotels/",
+          "claimTypes": [
+            "factual"
+          ],
+          "sourceType": "reputable_price_source",
+          "contentHash": "70ae662ae0831993c13bc0d5f9d6e7b8d0c88c11f667440a47bbc59bc4d661a2",
+          "destination": "괌",
+          "retrievedAt": "2026-08-22T21:58:14.467Z",
+          "authorityLevel": "editorial_secondary",
+          "snapshotContent": "Agoda 가이드는 Hilton Guam Resort & Spa가 투몬 베이 남쪽 끝에 있고 어린이 전용 키즈풀이 있다고 설명한다. [검증 범위: 괌 괌; 대상: 괌 가족 숙소 지역 비교 여행자; 기준일: 2026-08-22; 값: 투몬 베이 남쪽 끝·어린이 전용 키즈풀]\n\nAgoda 가이드는 두짓 비치 리조트 괌의 해적 베이 키즈 클럽에서 아동 활동이 예약제로 운영된다고 설명한다. [검증 범위: 괌 괌; 대상: 괌 아이 동반 가족 숙소 비교 여행자; 기준일: 2026-08-22; 값: 해적 베이 키즈 클럽·예약제 아동 활동]\n\nAgoda 가이드는 괌 플라자 리조트 앤 스파가 투몬 비치 중심부에 있다고 설명한다. [검증 범위: 괌 괌; 대상: 괌 중심지 접근성을 중시하는 숙소 비교 여행자; 기준일: 2026-08-22; 값: 투몬 비치 중심부]"
+        }
+      ],
+      "evidence": [
+        {
+          "scope": {
+            "unit": "1박",
+            "locale": "ko-KR",
+            "country": "괌",
+            "currency": "USD",
+            "claimType": "price",
+            "validFrom": "2026-08-22T21:58:14.467Z",
+            "conditions": [
+              "확인일 표시 가격",
+              "날짜·인원·세금·객실 재고에 따라 변동",
+              "예약 전 최종 총액 재확인"
+            ],
+            "validUntil": null,
+            "verifiedAt": "2026-08-22T21:58:14.467Z",
+            "destination": "괌",
+            "applicableTo": "괌 가족 숙소 비교 여행자",
+            "nextReviewAt": "2026-09-21T21:58:14.467Z",
+            "normalizedValue": "242"
+          },
+          "excerpt": "Search Hotels (Dededo)의 KAYAK 확인일 표시 가격은 1박 최저 USD 242이다. [검증 범위: 괌 괌; 대상: 괌 가족 숙소 비교 여행자; 기준일: 2026-08-22; 값: 242 1박 USD]",
+          "spanEnd": 122,
+          "metadata": {
+            "grounded_statement": "Search Hotels (Dededo)의 KAYAK 확인일 표시 가격은 1박 최저 USD 242이다.",
+            "auto_research_model": "deepseek-v4-pro",
+            "grounded_source_index": 0
+          },
+          "claimType": "price",
+          "riskLevel": "MEDIUM",
+          "sourceKey": "grounded-1-1951755b25136341",
+          "spanStart": 0,
+          "validFrom": "2026-08-22T21:58:14.467Z",
+          "capturedBy": "reviewed_direct_fetch",
+          "observedAt": "2026-08-22T21:58:14.467Z",
+          "validUntil": null,
+          "evidenceKey": "grounded-1-1951755b25136341-e1",
+          "sourceLocator": "Search Hotels > 1박 최저"
+        },
+        {
+          "scope": {
+            "unit": "1박",
+            "locale": "ko-KR",
+            "country": "괌",
+            "currency": "USD",
+            "claimType": "price",
+            "validFrom": "2026-08-22T21:58:14.467Z",
+            "conditions": [
+              "확인일 표시 가격",
+              "날짜·인원·세금·객실 재고에 따라 변동",
+              "예약 전 최종 총액 재확인"
+            ],
+            "validUntil": null,
+            "verifiedAt": "2026-08-22T21:58:14.467Z",
+            "destination": "괌",
+            "applicableTo": "괌 가족 숙소 비교 여행자",
+            "nextReviewAt": "2026-09-21T21:58:14.467Z",
+            "normalizedValue": "77"
+          },
+          "excerpt": "Grand Plaza Hotel (투몬)의 KAYAK 확인일 표시 가격은 1박 최저 USD 77이다. [검증 범위: 괌 괌; 대상: 괌 가족 숙소 비교 여행자; 기준일: 2026-08-22; 값: 77 1박 USD]",
+          "spanEnd": 244,
+          "metadata": {
+            "grounded_statement": "Grand Plaza Hotel (투몬)의 KAYAK 확인일 표시 가격은 1박 최저 USD 77이다.",
+            "auto_research_model": "deepseek-v4-pro",
+            "grounded_source_index": 0
+          },
+          "claimType": "price",
+          "riskLevel": "MEDIUM",
+          "sourceKey": "grounded-1-1951755b25136341",
+          "spanStart": 124,
+          "validFrom": "2026-08-22T21:58:14.467Z",
+          "capturedBy": "reviewed_direct_fetch",
+          "observedAt": "2026-08-22T21:58:14.467Z",
+          "validUntil": null,
+          "evidenceKey": "grounded-1-1951755b25136341-e2",
+          "sourceLocator": "Grand Plaza Hotel > 1박 최저"
+        },
+        {
+          "scope": {
+            "unit": "1박",
+            "locale": "ko-KR",
+            "country": "괌",
+            "currency": "USD",
+            "claimType": "price",
+            "validFrom": "2026-08-22T21:58:14.467Z",
+            "conditions": [
+              "확인일 표시 가격",
+              "날짜·인원·세금·객실 재고에 따라 변동",
+              "예약 전 최종 총액 재확인"
+            ],
+            "validUntil": null,
+            "verifiedAt": "2026-08-22T21:58:14.467Z",
+            "destination": "괌",
+            "applicableTo": "괌 가족 숙소 비교 여행자",
+            "nextReviewAt": "2026-09-21T21:58:14.467Z",
+            "normalizedValue": "96"
+          },
+          "excerpt": "Guam Plaza Resort (투몬)의 KAYAK 확인일 표시 가격은 1박 최저 USD 96이다. [검증 범위: 괌 괌; 대상: 괌 가족 숙소 비교 여행자; 기준일: 2026-08-22; 값: 96 1박 USD]",
+          "spanEnd": 366,
+          "metadata": {
+            "grounded_statement": "Guam Plaza Resort (투몬)의 KAYAK 확인일 표시 가격은 1박 최저 USD 96이다.",
+            "auto_research_model": "deepseek-v4-pro",
+            "grounded_source_index": 0
+          },
+          "claimType": "price",
+          "riskLevel": "MEDIUM",
+          "sourceKey": "grounded-1-1951755b25136341",
+          "spanStart": 246,
+          "validFrom": "2026-08-22T21:58:14.467Z",
+          "capturedBy": "reviewed_direct_fetch",
+          "observedAt": "2026-08-22T21:58:14.467Z",
+          "validUntil": null,
+          "evidenceKey": "grounded-1-1951755b25136341-e3",
+          "sourceLocator": "Guam Plaza Resort > 1박 최저"
+        },
+        {
+          "scope": {
+            "unit": null,
+            "locale": "ko-KR",
+            "country": "괌",
+            "currency": null,
+            "claimType": "factual",
+            "validFrom": "2026-08-22T21:58:14.467Z",
+            "conditions": [
+              "확인일 호텔 가이드 설명",
+              "시설 운영 여부는 예약 전 호텔에 재확인"
+            ],
+            "validUntil": null,
+            "verifiedAt": "2026-08-22T21:58:14.467Z",
+            "destination": "괌",
+            "applicableTo": "괌 가족 숙소 지역 비교 여행자",
+            "nextReviewAt": "2027-02-18T21:58:14.467Z",
+            "normalizedValue": "투몬 베이 남쪽 끝·어린이 전용 키즈풀"
+          },
+          "excerpt": "Agoda 가이드는 Hilton Guam Resort & Spa가 투몬 베이 남쪽 끝에 있고 어린이 전용 키즈풀이 있다고 설명한다. [검증 범위: 괌 괌; 대상: 괌 가족 숙소 지역 비교 여행자; 기준일: 2026-08-22; 값: 투몬 베이 남쪽 끝·어린이 전용 키즈풀]",
+          "spanEnd": 152,
+          "metadata": {
+            "grounded_statement": "Agoda 가이드는 Hilton Guam Resort & Spa가 투몬 베이 남쪽 끝에 있고 어린이 전용 키즈풀이 있다고 설명한다.",
+            "auto_research_model": "deepseek-v4-pro",
+            "grounded_source_index": 1
+          },
+          "claimType": "factual",
+          "riskLevel": "LOW",
+          "sourceKey": "grounded-2-89e441986ba0995a",
+          "spanStart": 0,
+          "validFrom": "2026-08-22T21:58:14.467Z",
+          "capturedBy": "reviewed_direct_fetch",
+          "observedAt": "2026-08-22T21:58:14.467Z",
+          "validUntil": null,
+          "evidenceKey": "grounded-2-89e441986ba0995a-e4",
+          "sourceLocator": "9. 힐튼 괌 리조트 앤 스파"
+        },
+        {
+          "scope": {
+            "unit": null,
+            "locale": "ko-KR",
+            "country": "괌",
+            "currency": null,
+            "claimType": "factual",
+            "validFrom": "2026-08-22T21:58:14.467Z",
+            "conditions": [
+              "확인일 호텔 가이드 설명",
+              "활동 일정·운영 여부는 예약 전 재확인"
+            ],
+            "validUntil": null,
+            "verifiedAt": "2026-08-22T21:58:14.467Z",
+            "destination": "괌",
+            "applicableTo": "괌 아이 동반 가족 숙소 비교 여행자",
+            "nextReviewAt": "2027-02-18T21:58:14.467Z",
+            "normalizedValue": "해적 베이 키즈 클럽·예약제 아동 활동"
+          },
+          "excerpt": "Agoda 가이드는 두짓 비치 리조트 괌의 해적 베이 키즈 클럽에서 아동 활동이 예약제로 운영된다고 설명한다. [검증 범위: 괌 괌; 대상: 괌 아이 동반 가족 숙소 비교 여행자; 기준일: 2026-08-22; 값: 해적 베이 키즈 클럽·예약제 아동 활동]",
+          "spanEnd": 297,
+          "metadata": {
+            "grounded_statement": "Agoda 가이드는 두짓 비치 리조트 괌의 해적 베이 키즈 클럽에서 아동 활동이 예약제로 운영된다고 설명한다.",
+            "auto_research_model": "deepseek-v4-pro",
+            "grounded_source_index": 1
+          },
+          "claimType": "factual",
+          "riskLevel": "LOW",
+          "sourceKey": "grounded-2-89e441986ba0995a",
+          "spanStart": 154,
+          "validFrom": "2026-08-22T21:58:14.467Z",
+          "capturedBy": "reviewed_direct_fetch",
+          "observedAt": "2026-08-22T21:58:14.467Z",
+          "validUntil": null,
+          "evidenceKey": "grounded-2-89e441986ba0995a-e5",
+          "sourceLocator": "2. 두짓 비치 리조트 괌 > 해적 베이 키즈 클럽"
+        },
+        {
+          "scope": {
+            "unit": null,
+            "locale": "ko-KR",
+            "country": "괌",
+            "currency": null,
+            "claimType": "factual",
+            "validFrom": "2026-08-22T21:58:14.467Z",
+            "conditions": [
+              "확인일 호텔 가이드 설명",
+              "실제 이동시간은 예약 전 지도와 교통상황 재확인"
+            ],
+            "validUntil": null,
+            "verifiedAt": "2026-08-22T21:58:14.467Z",
+            "destination": "괌",
+            "applicableTo": "괌 중심지 접근성을 중시하는 숙소 비교 여행자",
+            "nextReviewAt": "2027-02-18T21:58:14.467Z",
+            "normalizedValue": "투몬 비치 중심부"
+          },
+          "excerpt": "Agoda 가이드는 괌 플라자 리조트 앤 스파가 투몬 비치 중심부에 있다고 설명한다. [검증 범위: 괌 괌; 대상: 괌 중심지 접근성을 중시하는 숙소 비교 여행자; 기준일: 2026-08-22; 값: 투몬 비치 중심부]",
+          "spanEnd": 421,
+          "metadata": {
+            "grounded_statement": "Agoda 가이드는 괌 플라자 리조트 앤 스파가 투몬 비치 중심부에 있다고 설명한다.",
+            "auto_research_model": "deepseek-v4-pro",
+            "grounded_source_index": 1
+          },
+          "claimType": "factual",
+          "riskLevel": "LOW",
+          "sourceKey": "grounded-2-89e441986ba0995a",
+          "spanStart": 299,
+          "validFrom": "2026-08-22T21:58:14.467Z",
+          "capturedBy": "reviewed_direct_fetch",
+          "observedAt": "2026-08-22T21:58:14.467Z",
+          "validUntil": null,
+          "evidenceKey": "grounded-2-89e441986ba0995a-e6",
+          "sourceLocator": "3. 괌 플라자 리조트 앤 스파 > 위치"
+        },
+        {
+          "scope": {
+            "unit": "숙소 지역",
+            "locale": "ko-KR",
+            "country": "괌",
+            "currency": null,
+            "claimType": "factual",
+            "validFrom": "2026-08-22T21:58:14.467Z",
+            "conditions": [
+              "확인일 페이지 분류",
+              "검색 조건·재고·분류에 따라 변동 가능"
+            ],
+            "validUntil": null,
+            "verifiedAt": "2026-08-22T21:58:14.467Z",
+            "destination": "괌",
+            "applicableTo": "괌 숙소 지역 비교 여행자",
+            "nextReviewAt": "2027-02-18T21:58:14.467Z",
+            "normalizedValue": "Dededo"
+          },
+          "excerpt": "KAYAK는 Search Hotels을(를) Dededo 괌 호텔로 표시한다. [검증 범위: 괌 괌; 대상: 괌 숙소 지역 비교 여행자; 기준일: 2026-08-22; 값: Dededo 숙소 지역]",
+          "spanEnd": 478,
+          "metadata": {
+            "grounded_statement": "KAYAK는 Search Hotels을(를) Dededo 괌 호텔로 표시한다.",
+            "auto_research_model": "deepseek-v4-pro",
+            "grounded_source_index": 0
+          },
+          "claimType": "factual",
+          "riskLevel": "LOW",
+          "sourceKey": "grounded-1-1951755b25136341",
+          "spanStart": 368,
+          "validFrom": "2026-08-22T21:58:14.467Z",
+          "capturedBy": "reviewed_direct_fetch",
+          "observedAt": "2026-08-22T21:58:14.467Z",
+          "validUntil": null,
+          "evidenceKey": "grounded-1-1951755b25136341-e7",
+          "sourceLocator": "Search Hotels > Dededo 숙소 지역"
+        },
+        {
+          "scope": {
+            "unit": "숙소 지역",
+            "locale": "ko-KR",
+            "country": "괌",
+            "currency": null,
+            "claimType": "factual",
+            "validFrom": "2026-08-22T21:58:14.467Z",
+            "conditions": [
+              "확인일 페이지 분류",
+              "검색 조건·재고·분류에 따라 변동 가능"
+            ],
+            "validUntil": null,
+            "verifiedAt": "2026-08-22T21:58:14.467Z",
+            "destination": "괌",
+            "applicableTo": "괌 숙소 지역 비교 여행자",
+            "nextReviewAt": "2027-02-18T21:58:14.467Z",
+            "normalizedValue": "투몬"
+          },
+          "excerpt": "KAYAK는 Grand Plaza Hotel을(를) 투몬 괌 호텔로 표시한다. [검증 범위: 괌 괌; 대상: 괌 숙소 지역 비교 여행자; 기준일: 2026-08-22; 값: 투몬 숙소 지역]",
+          "spanEnd": 586,
+          "metadata": {
+            "grounded_statement": "KAYAK는 Grand Plaza Hotel을(를) 투몬 괌 호텔로 표시한다.",
+            "auto_research_model": "deepseek-v4-pro",
+            "grounded_source_index": 0
+          },
+          "claimType": "factual",
+          "riskLevel": "LOW",
+          "sourceKey": "grounded-1-1951755b25136341",
+          "spanStart": 480,
+          "validFrom": "2026-08-22T21:58:14.467Z",
+          "capturedBy": "reviewed_direct_fetch",
+          "observedAt": "2026-08-22T21:58:14.467Z",
+          "validUntil": null,
+          "evidenceKey": "grounded-1-1951755b25136341-e8",
+          "sourceLocator": "Grand Plaza Hotel > 투몬 숙소 지역"
+        }
+      ],
+      "siteScope": "www.yeosonam.com",
+      "contentKey": "guam-tumon-tamuning-family-hotel-areas"
+    },
+    "information_research_fingerprint": null
+  },
+  "passed": true
+}

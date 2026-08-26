@@ -248,13 +248,56 @@ async function readArtifacts(dbClient: SupabaseClient, operation: Record<string,
     .order('occurred_at', { ascending: true });
   if (eventsResult.error) throw new Error(`blog_v4_canary_event_read_failed:${eventsResult.error.message}`);
 
-  const claimsResult = creativeId
+  const legacyClaimsResult = creativeId
     ? await dbClient
       .from('blog_information_claim_ledger_v3')
       .select('claim_id,claim_text,claim_type,risk_level,source_url,source_domain,source_type,evidence_excerpt,verification_status,conflict_status,retrieved_at')
       .eq('creative_id', creativeId)
     : { data: [], error: null };
-  if (claimsResult.error) throw new Error(`blog_v4_canary_claim_read_failed:${claimsResult.error.message}`);
+  if (legacyClaimsResult.error) throw new Error(`blog_v4_canary_claim_read_failed:${legacyClaimsResult.error.message}`);
+
+  // The active V4 publisher persists the writer findings in
+  // blog_information_claims and links their durable evidence through
+  // blog_information_evidence. Keep the legacy ledger as a compatibility
+  // fallback, but do not report a false zero-claim canary when the active
+  // schema is used.
+  const activeClaimsResult = creativeId
+    ? await dbClient
+      .from('blog_information_claims')
+      .select('id,claim_text,claim_type,risk_level,validation_status,validation_reason,created_at')
+      .eq('creative_id', creativeId)
+    : { data: [], error: null };
+  if (activeClaimsResult.error) throw new Error(`blog_v4_canary_active_claim_read_failed:${activeClaimsResult.error.message}`);
+
+  const evidenceResult = creativeId
+    ? await dbClient
+      .from('blog_information_evidence')
+      .select('source_id,source_version_id,source_locator,excerpt,claim_type,risk_level,observed_at')
+      .eq('creative_id', creativeId)
+    : { data: [], error: null };
+  if (evidenceResult.error) throw new Error(`blog_v4_canary_evidence_read_failed:${evidenceResult.error.message}`);
+
+  const evidenceRows = (evidenceResult.data ?? []) as Array<Record<string, unknown>>;
+  const sourceVersionIds = [...new Set(
+    evidenceRows
+      .map((row) => text(row.source_version_id))
+      .filter(Boolean),
+  )];
+  const sourceVersionsResult = sourceVersionIds.length > 0
+    ? await dbClient
+      .from('blog_information_source_versions')
+      .select('id,source_url,source_type,authority_level,publisher,status,retrieved_at')
+      .in('id', sourceVersionIds)
+    : { data: [], error: null };
+  if (sourceVersionsResult.error) throw new Error(`blog_v4_canary_source_version_read_failed:${sourceVersionsResult.error.message}`);
+
+  const controlPlaneReservationsResult = creativeId
+    ? await dbClient
+      .from('ai_call_reservations')
+      .select('model,model_class,actual_usd,status,created_at')
+      .eq('candidate_id', queueId)
+    : { data: [], error: null };
+  if (controlPlaneReservationsResult.error) throw new Error(`blog_v4_canary_control_plane_budget_read_failed:${controlPlaneReservationsResult.error.message}`);
 
   const indexingResult = creativeId
     ? await dbClient
@@ -273,17 +316,51 @@ async function readArtifacts(dbClient: SupabaseClient, operation: Record<string,
   if (publicationResult.error) throw new Error(`blog_v4_canary_publication_read_failed:${publicationResult.error.message}`);
 
   const attempts = (attemptsResult.data ?? []) as Array<Record<string, unknown>>;
-  const claims = (claimsResult.data ?? []) as Array<Record<string, unknown>>;
+  const legacyClaims = (legacyClaimsResult.data ?? []) as Array<Record<string, unknown>>;
+  const activeClaims = (activeClaimsResult.data ?? []) as Array<Record<string, unknown>>;
+  const claims = legacyClaims.length > 0
+    ? legacyClaims
+    : activeClaims.map((claim) => ({
+      claim_id: claim.id,
+      claim_text: claim.claim_text,
+      claim_type: claim.claim_type,
+      risk_level: claim.risk_level,
+      source_url: null,
+      source_domain: null,
+      source_type: null,
+      evidence_excerpt: null,
+      verification_status: claim.validation_status,
+      conflict_status: null,
+      retrieved_at: claim.created_at,
+    }));
   const indexingJobs = (indexingResult.data ?? []) as Array<Record<string, unknown>>;
   const publicationDecisions = (publicationResult.data ?? []) as Array<Record<string, unknown>>;
+  const sourceVersions = (sourceVersionsResult.data ?? []) as Array<Record<string, unknown>>;
+  const controlPlaneReservations = (controlPlaneReservationsResult.data ?? []) as Array<Record<string, unknown>>;
   const generationMeta = asRecord(creative?.generation_meta);
   const qualityGate = asRecord(creative?.quality_gate);
   const outputDocument = asRecord((attempts.find((item) => item.status === 'completed') as Record<string, unknown> | undefined)?.output_document);
   const outputAudit = asRecord(outputDocument.audit);
-  const sources = Array.isArray(outputAudit.sources) ? outputAudit.sources : [];
-  const flashCalls = attempts.filter((item) => text(item.model).toLowerCase().includes('flash') && item.status === 'completed').length;
-  const proCalls = attempts.filter((item) => text(item.model).toLowerCase().includes('pro') && item.status === 'completed').length;
-  const aiCost = attempts.reduce((sum, item) => sum + Number(item.estimated_cost_usd ?? 0), 0);
+  const outputSources = Array.isArray(outputAudit.sources) ? outputAudit.sources : [];
+  const evidenceSources = sourceVersions.map((source) => ({
+    source_url: source.source_url,
+    source_type: source.source_type,
+    authority_level: source.authority_level,
+    publisher: source.publisher,
+    status: source.status,
+    retrieved_at: source.retrieved_at,
+  }));
+  const sources = [...outputSources, ...evidenceSources];
+  const flashCalls = controlPlaneReservations.length > 0
+    ? controlPlaneReservations.filter((item) => text(item.model_class).toLowerCase() === 'flash' && item.status === 'completed').length
+    : attempts.filter((item) => text(item.model).toLowerCase().includes('flash') && item.status === 'completed').length;
+  const proCalls = controlPlaneReservations.length > 0
+    ? controlPlaneReservations.filter((item) => text(item.model_class).toLowerCase() === 'pro' && item.status === 'completed').length
+    : attempts.filter((item) => text(item.model).toLowerCase().includes('pro') && item.status === 'completed').length;
+  const controlPlaneCost = controlPlaneReservations.reduce((sum, item) => sum + Number(item.actual_usd ?? 0), 0);
+  const aiCost = controlPlaneReservations.length > 0
+    ? controlPlaneCost
+    : attempts.reduce((sum, item) => sum + Number(item.estimated_cost_usd ?? 0), 0);
   const publicationCount = Math.max(
     publicationDecisions.filter((item) => item.decision === 'published').length,
     creative && (text(creative.status) === 'published' || creative.published_at) ? 1 : 0,
@@ -311,8 +388,16 @@ async function readArtifacts(dbClient: SupabaseClient, operation: Record<string,
     flashCalls,
     proCalls,
     aiCostUsd: Number(aiCost.toFixed(8)),
+    budgetReservations: controlPlaneReservations.map((item) => ({
+      model: item.model,
+      modelClass: item.model_class,
+      status: item.status,
+      actualUsd: item.actual_usd,
+      createdAt: item.created_at,
+    })),
     bodyPresent: body.trim().length > 0,
-    officialSourcesPresent: claims.length > 0 || sources.length > 0,
+    officialSourcesPresent: claims.length > 0 && sources.length > 0,
+    sources,
     claimCount: claims.length,
     claims,
     traceId,
