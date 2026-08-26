@@ -208,6 +208,13 @@ describe('blog publish quality', () => {
       .toBe(100);
   });
 
+  it('preserves a valid public score when the publish contract passes', () => {
+    expect(getBlogPublishDecisionScore({
+      passed: true,
+      publicCustomerQuality: { passed: true, score: 97, issues: [] },
+    } as unknown as import('./blog-publish-quality').BlogPublishQualityReport)).toBe(97);
+  });
+
   it('records the V4 evaluation beside existing generation metadata without clobbering it', async () => {
     const report = await evaluateBlogPublishQuality({
       blog_html: '# 테스트 글\n\n검증된 본문입니다.',
