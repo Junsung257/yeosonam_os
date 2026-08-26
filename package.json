@@ -262,6 +262,7 @@
     "audit:agent-patterns:all": "node scripts/check-agent-risk-patterns.mjs --all",
     "lint:secrets": "node scripts/check-no-direct-env.mjs",
     "lint:secrets:all": "node scripts/check-no-direct-env.mjs --all",
+    "verify:ci-action-pins": "node scripts/verify-ci-action-pins.mjs",
     "ai:all:deepseek": "node scripts/ai-provider-switch.mjs --all deepseek",
     "ai:all:claude": "node scripts/ai-provider-switch.mjs --all claude",
     "ai:blog:deepseek": "node scripts/ai-provider-switch.mjs --task blog-generate=deepseek",
