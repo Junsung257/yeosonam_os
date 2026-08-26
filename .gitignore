@@ -36,6 +36,9 @@ yarn-error.log*
 # Local env files
 .env*.local
 .tmp-blog-canary-*.log
+.tmp-canary-test*.log
+artifacts/blog-v4-canary/0bdc7471-77a4-4dc1-83c1-7a3ffbe047cd/
+artifacts/blog-v4-canary/d071a911-958d-4af2-8eee-f8710d8ab838/
 
 # Vercel env pull 결과 (로컬 개발용, git에 커밋 금지)
 .env.vercel
