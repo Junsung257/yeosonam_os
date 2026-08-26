@@ -35,4 +35,22 @@ describe('Sentry event scrubber', () => {
     expect(result.message).toMatch(/\[truncated\]$/);
     expect(result.self).toBe('[CIRCULAR]');
   });
+
+  it('redacts common OAuth and API credential field names', () => {
+    const result = scrubSentryEvent({
+      access_token: 'access-value',
+      refreshToken: 'refresh-value',
+      client_secret: 'client-value',
+      'x-api-key': 'api-value',
+      service_role_key: 'service-value',
+    });
+
+    expect(result).toEqual({
+      access_token: '[REDACTED]',
+      refreshToken: '[REDACTED]',
+      client_secret: '[REDACTED]',
+      'x-api-key': '[REDACTED]',
+      service_role_key: '[REDACTED]',
+    });
+  });
 });

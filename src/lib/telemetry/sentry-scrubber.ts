@@ -4,7 +4,7 @@ const REDACTED = '[REDACTED]';
 const MAX_DEPTH = 8;
 const MAX_ARRAY_ITEMS = 100;
 const MAX_STRING_LENGTH = 4_000;
-const SENSITIVE_KEY = /^(?:authorization|cookie|set-cookie|password|passwd|secret|token|api[_-]?key|service[_-]?role|private[_-]?key|credential|email|e-mail|phone|mobile|passport|resident[_-]?id|account[_-]?(?:number|no)|ip[_-]?address)$/i;
+const SENSITIVE_KEY = /^(?:authorization|proxy-authorization|cookie|set-cookie|password|passwd|secret|client[_-]?secret|token|(?:access|refresh|session|auth|id)[_-]?token|x[_-]?api[_-]?key|api[_-]?key|service[_-]?role(?:[_-]?key)?|private[_-]?key|credentials?|email|e-mail|phone|mobile|passport|resident[_-]?id|account[_-]?(?:number|no)|ip[_-]?address)$/i;
 const SECRET_PATTERNS: RegExp[] = [
   /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi,
   /\bysn_[A-Za-z0-9_-]{10,}\b/g,
