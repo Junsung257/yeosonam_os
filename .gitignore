@@ -224,6 +224,8 @@ dev-server.log
 .serena/
 .tsbuildinfo*
 logs/
+.promptfoo/
+promptfoo-results/
 
 # 세션 작업 파일 (git에 포함 금지)
 .commit-msg.txt
