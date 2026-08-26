@@ -273,6 +273,7 @@ const V3_SOURCE_NEUTRAL_PLANNING_MODAL_RE = /^(?=.*(?:일정|순서|후보|동�
 const V3_SOURCE_NEUTRAL_DECISION_METHOD_RE = /^(?=.*(?:동선|일정|구간|순서|후보|이동\s*시간|휴식|체력|숙소\s*위치))(?=.*(?:판단|저울질|따져|나란히|맞는|부담|무리|기준|직접)).*(?:해야|하면|두고|두며|고르는|판단하는|저울질|따져|맞춰|무리가\s*없).+$/i;
 const V3_SOURCE_NEUTRAL_COMPARISON_RE = /^(?!.*(?:\d|[₩￦¥￥$€₫]|\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\b))(?:(?=.*(?:본인|내|자신의|독자의))(?=.*(?:선택지|후보|조건|기준))(?=.*(?:비교하세요|확인하세요|결정하세요|달라지))|(?=.*(?:선택지|후보|가격|조건|기준))(?=.*(?:비교하면|비교하세요|확인하세요|결정하세요))).+$/i;
 const V3_SOURCE_NEUTRAL_RESERVATION_CHECK_RE = /^(?!.*(?:\d|[₩￦¥￥$€₫]|\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\b))(?=.*(?:예약제인지|예약\s*방식|예약\s*조건|운영\s*여부))(?=.*(?:확인|비교|결정)).+$/i;
+const V3_SOURCE_NEUTRAL_LODGING_METHOD_RE = /^(?!.*(?:\d|[₩￦¥￥$€₫]|\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\b))(?=.*(?:숙소\s*지역|호텔|가족|휴양|관광))(?=.*(?:나누|정하|선택|비교|결정))(?=.*(?:먼저|기준|이유|우선)).+$/i;
 const SOURCED_FACTUAL_ASSERTION_RE = /^(?=.*(?:Agoda|KAYAK|Booking|공식\s*(?:가이드|페이지|사이트)|관광청|가이드|페이지))(?=.*(?:설명(?:한다|합니다)|안내(?:한다|합니다)|표시(?:한다|합니다)|기재(?:한다|합니다))).+$/i;
 const V3_NAMED_PLACE_ASSERTION_RE = /(?:[가-힣]{2,}(?:산|힐|사원|파고다|마운틴|해변|시장|공원|박물관|수족관|반도|다리|브리지|대성당|동굴|유적)\s*(?:은|는|이|가)|\b[A-Z][A-Za-zÀ-ÖØ-öø-ÿ.-]{2,}(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ.-]{2,}){0,3}\s+(?:is|has|offers|takes|requires)\b)/u;
 const V3_ITINERARY_PROPOSAL_RE = /(?:편집\s*제안|(?:제안\s*일정|동선\s*예시).*(?:배치|구성|정리)|동선(?:은|을|이)?[^.。!?]{0,140}제안|(?:일차|날짜별|마지막\s*일정).*(?:순서|동선|흐름).*(?:제안|배치)|(?:장소별\s*실행\s*순서|이동\s*근거).*(?:정리했습니다|비교합니다)|(?:미방문\s*장소|남은\s*장소).*(?:대체\s*블록|후보).*(?:삼|두)|확인할\s*블록(?:은|을).*(?:입니다|정))/i;
@@ -305,7 +306,8 @@ function isSourceNeutralPlanningAdvice(
     || V3_SOURCE_NEUTRAL_PLANNING_MODAL_RE.test(segment)
     || V3_SOURCE_NEUTRAL_DECISION_METHOD_RE.test(segment)
     || V3_SOURCE_NEUTRAL_COMPARISON_RE.test(segment)
-    || V3_SOURCE_NEUTRAL_RESERVATION_CHECK_RE.test(segment);
+    || V3_SOURCE_NEUTRAL_RESERVATION_CHECK_RE.test(segment)
+    || V3_SOURCE_NEUTRAL_LODGING_METHOD_RE.test(segment);
 }
 
 export function classifyBlogInformationStatement(segment: string): {
