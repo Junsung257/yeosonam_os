@@ -203,7 +203,7 @@ const nextConfig = {
     // Next 15 otherwise derives this from host CPU count. Bound hosted builds
     // more tightly because webpack/SWC workers share Vercel's 8 GB container
     // with the main process; local and CI builders retain the established 4.
-    cpus: process.env.VERCEL === '1' ? 2 : 4,
+    cpus: process.env.VERCEL === '1' ? 1 : 4,
     prerenderEarlyExit: false,
     // Dev-only Segment Explorer can fail to resolve its client manifest on
     // Windows paths with non-ASCII characters; keep page rendering stable.
