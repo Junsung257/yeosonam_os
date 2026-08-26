@@ -21,7 +21,9 @@
 import { NextRequest } from 'next/server'
 import { isSupabaseAdminConfigured, isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase'
 import { apiResponse } from '@/lib/api-response'
+import { V1HealthResponseSchema } from '@/lib/api-contracts/v1'
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver'
+import { observeApiRequest } from '@/lib/structured-logger.server'
 
 const START_TIME = Date.now()
 
@@ -46,20 +48,23 @@ async function checkDatabase(timeoutMs = 2500): Promise<'connected' | 'timeout' 
   }
 }
 
-export async function GET(_request: NextRequest) {
-  const db = await checkDatabase()
-  const dbOk = db === 'connected'
+export async function GET(request: NextRequest) {
+  return observeApiRequest(request, async () => {
+    const db = await checkDatabase()
+    const status = db === 'connected' ? 'healthy' : 'degraded'
+    const body = V1HealthResponseSchema.parse({
+      ok: true,
+      data: {
+        status,
+        version: '1.0.0',
+        uptime: Math.floor((Date.now() - START_TIME) / 1000),
+        db,
+        timestamp: new Date().toISOString(),
+      },
+    })
 
-  const status = dbOk ? 'healthy' : 'degraded'
-
-  return apiResponse({
-    ok: true,
-    data: {
-      status,
-      version: '1.0.0',
-      uptime: Math.floor((Date.now() - START_TIME) / 1000),
-      db,
-      timestamp: new Date().toISOString(),
-    },
+    return apiResponse(body, {
+      headers: { 'Cache-Control': 'no-store' },
+    })
   })
 }

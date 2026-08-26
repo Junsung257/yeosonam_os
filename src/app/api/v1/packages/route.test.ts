@@ -30,4 +30,21 @@ describe('public v1 packages API publication gate', () => {
     expect(projectionSource).not.toContain('optional_tours');
     expect(projectionSource).not.toContain('itinerary_data');
   });
+
+  it('enforces the published API contract and emits only redacted structured logs', () => {
+    const source = routeSource();
+
+    expect(source).toContain('V1PackageSearchQuerySchema.safeParse');
+    expect(source).toContain('V1PackageRecommendationBodySchema.safeParse');
+    expect(source).toContain('V1PackageListResponseSchema.parse');
+    expect(source).toContain('observeApiRequest');
+    expect(source).not.toContain('console.warn');
+  });
+
+  it('reports total matches before applying pagination', () => {
+    const source = routeSource();
+
+    expect(source).toContain('pagination: { total: matchingData.length, limit, offset }');
+    expect(source).toContain('pagination: { total: matchingData.length, limit: 10, offset: 0 }');
+  });
 });

@@ -38,6 +38,9 @@ jobs:
       - name: Verify CI actions are immutable
         run: npm run verify:ci-action-pins
 
+      - name: Verify external API contract artifacts
+        run: npm run verify:openapi:v1
+
       - name: Install Gitleaks CLI
         env:
           GH_TOKEN: ${{ github.token }}

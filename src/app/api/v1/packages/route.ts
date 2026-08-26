@@ -22,9 +22,15 @@ import { NextRequest } from 'next/server'
 import { withApiKey } from '@/lib/api-key-middleware'
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase'
 import { apiResponse, ApiErrors } from '@/lib/api-response'
+import {
+  V1PackageListResponseSchema,
+  V1PackageRecommendationBodySchema,
+  V1PackageSearchQuerySchema,
+} from '@/lib/api-contracts/v1'
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver'
 import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection'
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload'
+import { observeApiRequest } from '@/lib/structured-logger.server'
 
 export const maxDuration = 30
 
@@ -64,105 +70,152 @@ function toPublicV1Package(row: PublicPackageRow): Record<string, unknown> {
     publication_state: row.publication_state,
     package_revision: row.package_revision,
   })
-  return publicPackage ?? {}
+  const safe = publicPackage ?? {}
+  const numericPrice = typeof safe.price === 'number'
+    ? safe.price
+    : Number(safe.price)
+
+  return {
+    id: String(safe.id ?? ''),
+    title: typeof safe.title === 'string' ? safe.title : null,
+    display_title: typeof safe.display_title === 'string' ? safe.display_title : null,
+    destination: typeof safe.destination === 'string' ? safe.destination : null,
+    duration: typeof safe.duration === 'string' || typeof safe.duration === 'number' ? safe.duration : null,
+    days: typeof safe.days === 'string' || typeof safe.days === 'number' ? safe.days : null,
+    nights: typeof safe.nights === 'string' || typeof safe.nights === 'number' ? safe.nights : null,
+    price: Number.isFinite(numericPrice) && numericPrice >= 0 ? numericPrice : null,
+    price_display: typeof safe.price_display === 'string' ? safe.price_display : null,
+    summary: typeof safe.summary === 'string' ? safe.summary : null,
+    badges: Array.isArray(safe.badges) ? safe.badges : [],
+    publication_state: typeof safe.publication_state === 'string' ? safe.publication_state : null,
+    package_revision: typeof safe.package_revision === 'string' || typeof safe.package_revision === 'number'
+      ? safe.package_revision
+      : null,
+  }
 }
 
 /** GET: 패키지 검색 */
 export async function GET(request: NextRequest) {
-  const auth = await withApiKey(request, { requiredScopes: ['packages:read', 'qa:*'] })
-  if (!auth.valid) return auth.response
-  if (!isSupabaseConfigured) return ApiErrors.internalError('DB 미설정')
+  return observeApiRequest(request, async ({ logger }) => {
+    const auth = await withApiKey(request, { requiredScopes: ['packages:read', 'qa:*'] })
+    if (!auth.valid) return auth.response
+    if (!isSupabaseConfigured) return ApiErrors.internalError('DB 미설정')
 
-  const { searchParams } = request.nextUrl
-  const destination = searchParams.get('destination')
-  const dateFrom = searchParams.get('date_from')
-  const dateTo = searchParams.get('date_to')
-  const limit = Math.min(Number(searchParams.get('limit') ?? 20), 100)
-  const offset = Number(searchParams.get('offset') ?? 0)
-  const keyword = searchParams.get('keyword')
+    const parsedQuery = V1PackageSearchQuerySchema.safeParse(
+      Object.fromEntries(request.nextUrl.searchParams.entries()),
+    )
+    if (!parsedQuery.success) {
+      return ApiErrors.badRequest('검색 조건이 올바르지 않습니다', parsedQuery.error.flatten())
+    }
 
-  if (shouldSkipPublicDbReadsForResourceSaver()) {
-    return apiResponse({
-      ok: true,
-      data: [],
-      pagination: { total: 0, limit, offset },
-      degraded: true,
-      reason: 'db_resource_saver_mode',
-    })
-  }
+    const {
+      destination,
+      date_from: dateFrom,
+      date_to: dateTo,
+      limit,
+      offset,
+      keyword,
+    } = parsedQuery.data
 
-  try {
-    const published = await listCurrentPublicPackageCardSnapshots(supabaseAdmin, {
-      channel: 'b2b',
-      locale: 'ko-KR',
-      limit: 5_000,
-    })
-    const visibleData = published
-      .filter(row => !destination || String(row.destination ?? '').toLowerCase().includes(destination.toLowerCase()))
-      .filter(row => !keyword || `${String(row.title ?? '')} ${String(row.summary ?? row.product_summary ?? '')}`.toLowerCase().includes(keyword.toLowerCase()))
-      .filter(row => hasDepartureInRange(row, dateFrom, dateTo))
-      .sort((a, b) => Number(a.price ?? Number.MAX_SAFE_INTEGER) - Number(b.price ?? Number.MAX_SAFE_INTEGER))
-      .slice(offset, offset + limit)
-      .map(toPublicV1Package)
+    if (shouldSkipPublicDbReadsForResourceSaver()) {
+      return apiResponse(V1PackageListResponseSchema.parse({
+        ok: true,
+        data: [],
+        pagination: { total: 0, limit, offset },
+        degraded: true,
+        reason: 'db_resource_saver_mode',
+      }))
+    }
 
-    return apiResponse({
-      ok: true,
-      data: visibleData,
-      pagination: { total: visibleData.length, limit, offset },
-    })
-  } catch (err) {
-    console.warn('[api/v1/packages] 검색 실패:', err)
-    return ApiErrors.internalError('패키지 검색 중 오류가 발생했습니다')
-  }
+    try {
+      const published = await listCurrentPublicPackageCardSnapshots(supabaseAdmin, {
+        channel: 'b2b',
+        locale: 'ko-KR',
+        limit: 5_000,
+      })
+      const matchingData = published
+        .filter(row => !destination || String(row.destination ?? '').toLowerCase().includes(destination.toLowerCase()))
+        .filter(row => !keyword || `${String(row.title ?? '')} ${String(row.summary ?? row.product_summary ?? '')}`.toLowerCase().includes(keyword.toLowerCase()))
+        .filter(row => hasDepartureInRange(row, dateFrom, dateTo))
+        .sort((a, b) => Number(a.price ?? Number.MAX_SAFE_INTEGER) - Number(b.price ?? Number.MAX_SAFE_INTEGER))
+      const visibleData = matchingData
+        .slice(offset, offset + limit)
+        .map(toPublicV1Package)
+
+      return apiResponse(V1PackageListResponseSchema.parse({
+        ok: true,
+        data: visibleData,
+        pagination: { total: matchingData.length, limit, offset },
+      }))
+    } catch (err) {
+      logger.warn({
+        event: 'api.v1.packages.search_failed',
+        err,
+        tenant_id: auth.tenantId,
+        api_key_id: auth.apiKeyId,
+      })
+      return ApiErrors.internalError('패키지 검색 중 오류가 발생했습니다')
+    }
+  }, { api_version: 'v1' })
 }
 
 /** POST: 패키지 추천 */
 export async function POST(request: NextRequest) {
-  const auth = await withApiKey(request, { requiredScopes: ['packages:read', 'qa:*'] })
-  if (!auth.valid) return auth.response
-  if (!isSupabaseConfigured) return ApiErrors.internalError('DB 미설정')
+  return observeApiRequest(request, async ({ logger }) => {
+    const auth = await withApiKey(request, { requiredScopes: ['packages:read', 'qa:*'] })
+    if (!auth.valid) return auth.response
+    if (!isSupabaseConfigured) return ApiErrors.internalError('DB 미설정')
 
-  if (shouldSkipPublicDbReadsForResourceSaver()) {
-    return apiResponse({
-      ok: true,
-      data: [],
-      pagination: { total: 0, limit: 0, offset: 0 },
-      degraded: true,
-      reason: 'db_resource_saver_mode',
-    })
-  }
+    let rawBody: unknown
+    try {
+      rawBody = await request.json()
+    } catch {
+      return ApiErrors.badRequest('JSON 형식이 올바르지 않습니다')
+    }
 
-  let body: { destination?: string; date_from?: string; pax?: number }
-  try {
-    body = await request.json()
-  } catch {
-    return ApiErrors.badRequest('JSON 형식이 올바르지 않습니다')
-  }
+    const parsedBody = V1PackageRecommendationBodySchema.safeParse(rawBody)
+    if (!parsedBody.success) {
+      return ApiErrors.badRequest('추천 조건이 올바르지 않습니다', parsedBody.error.flatten())
+    }
+    const body = parsedBody.data
 
-  try {
-    const published = await listCurrentPublicPackageCardSnapshots(supabaseAdmin, {
-      channel: 'b2b',
-      locale: 'ko-KR',
-      limit: 5_000,
-    })
+    if (shouldSkipPublicDbReadsForResourceSaver()) {
+      return apiResponse(V1PackageListResponseSchema.parse({
+        ok: true,
+        data: [],
+        pagination: { total: 0, limit: 10, offset: 0 },
+        degraded: true,
+        reason: 'db_resource_saver_mode',
+      }))
+    }
 
-    // pax 수용 가능 패키지 필터 (기본 2인)
-    const pax = body.pax ?? 2
-    const visibleData = published
-      .filter(row => !body.destination || String(row.destination ?? '').toLowerCase().includes(body.destination.toLowerCase()))
-      .filter(row => hasDepartureInRange(row, body.date_from, null))
-      .filter(row => Number(row.max_pax ?? pax) >= pax)
-      .sort((a, b) => Number(a.price ?? Number.MAX_SAFE_INTEGER) - Number(b.price ?? Number.MAX_SAFE_INTEGER))
-      .slice(0, 10)
-      .map(toPublicV1Package)
+    try {
+      const published = await listCurrentPublicPackageCardSnapshots(supabaseAdmin, {
+        channel: 'b2b',
+        locale: 'ko-KR',
+        limit: 5_000,
+      })
 
-    return apiResponse({
-      ok: true,
-      data: visibleData,
-      pagination: { total: visibleData.length, limit: 10, offset: 0 },
-    })
-  } catch (err) {
-    console.warn('[api/v1/packages] 추천 실패:', err)
-    return ApiErrors.internalError('패키지 추천 중 오류가 발생했습니다')
-  }
+      const matchingData = published
+        .filter(row => !body.destination || String(row.destination ?? '').toLowerCase().includes(body.destination.toLowerCase()))
+        .filter(row => hasDepartureInRange(row, body.date_from, null))
+        .filter(row => Number(row.max_pax ?? body.pax) >= body.pax)
+        .sort((a, b) => Number(a.price ?? Number.MAX_SAFE_INTEGER) - Number(b.price ?? Number.MAX_SAFE_INTEGER))
+      const visibleData = matchingData.slice(0, 10).map(toPublicV1Package)
+
+      return apiResponse(V1PackageListResponseSchema.parse({
+        ok: true,
+        data: visibleData,
+        pagination: { total: matchingData.length, limit: 10, offset: 0 },
+      }))
+    } catch (err) {
+      logger.warn({
+        event: 'api.v1.packages.recommendation_failed',
+        err,
+        tenant_id: auth.tenantId,
+        api_key_id: auth.apiKeyId,
+      })
+      return ApiErrors.internalError('패키지 추천 중 오류가 발생했습니다')
+    }
+  }, { api_version: 'v1' })
 }
