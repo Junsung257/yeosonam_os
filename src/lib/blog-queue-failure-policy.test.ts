@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   classifyBlogQueueFailure,
+  isBlogQueueDuplicateFailureReason,
   shouldSelfHealBlogQueueItem,
 } from './blog-queue-failure-policy';
 import { shouldQuarantineQueuedBlogItem } from './blog-queue-lifecycle';
@@ -124,6 +125,21 @@ describe('blog queue failure policy', () => {
       quarantine: true,
       status: 'skipped',
       reason: 'duplicate_content',
+    });
+  });
+
+  it('keeps quality duplicate gates recoverable instead of treating them as owned slugs', () => {
+    expect(isBlogQueueDuplicateFailureReason('duplicate slug already exists')).toBe(true);
+    expect(isBlogQueueDuplicateFailureReason(
+      'blog_quality_v4_reresearch:template_saturation,publish_gate:duplicate,publish_gate:links',
+    )).toBe(false);
+    expect(classifyBlogQueueFailure(
+      'blog_quality_v4_reresearch:template_saturation,publish_gate:duplicate,publish_gate:links',
+    )).toMatchObject({
+      code: 'links',
+      retryable: true,
+      selfHealAllowed: true,
+      skipped: false,
     });
   });
 

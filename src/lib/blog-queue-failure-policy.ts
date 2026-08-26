@@ -50,11 +50,21 @@ function hasFailedGate(qa: unknown, gate: string): boolean {
   });
 }
 
+/**
+ * Distinguish a real queue/content collision from a quality evaluator's
+ * `duplicate` gate. The latter is recoverable by the bounded rewrite or
+ * re-research loop and must not be quarantined as if the slug were already
+ * owned by a published candidate.
+ */
+export function isBlogQueueDuplicateFailureReason(reason: string): boolean {
+  return /동일\s*slug|유사\s*slug|이미\s*발행|recent_info_duplicate_before_generation|information_representative_(?:preclaim|duplicate_upgrade_review)|duplicate_content|slug already|slug .*exists/i.test(reason || '');
+}
+
 export function classifyBlogQueueFailure(reason: string, qa?: unknown): BlogQueueFailureDecision {
   const text = reason || '';
   const lower = text.toLowerCase();
 
-  if (/동일\s*slug|유사\s*slug|이미\s*발행|duplicate|slug already|slug .*exists/i.test(text)) {
+  if (isBlogQueueDuplicateFailureReason(text)) {
     return { code: 'duplicate_content', retryable: false, selfHealAllowed: false, skipped: true };
   }
 
@@ -86,7 +96,7 @@ export function classifyBlogQueueFailure(reason: string, qa?: unknown): BlogQueu
     return { code: 'length', retryable: true, selfHealAllowed: true, skipped: false };
   }
 
-  if (hasFailedGate(qa, 'links') || /\[links\]|내부링크|internal link|external authority|authority link/i.test(text)) {
+  if (hasFailedGate(qa, 'links') || /\[links\]|publish_gate:links|내부링크|internal link|external authority|authority link/i.test(text)) {
     return { code: 'links', retryable: true, selfHealAllowed: true, skipped: false };
   }
 
