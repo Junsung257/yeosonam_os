@@ -2,6 +2,33 @@ import { NextRequest } from 'next/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { middleware } from './middleware';
 
+describe('middleware external API V1 boundary', () => {
+  it.each([
+    ['/api/v1/openapi', 'GET'],
+    ['/api/v1/openapi', 'HEAD'],
+    ['/api/v1/packages', 'GET'],
+    ['/api/v1/packages', 'POST'],
+    ['/api/v1/qa/chat', 'POST'],
+    ['/api/v1/voice/chat', 'POST'],
+  ])('lets %s %s reach its route-local contract/auth guard', async (path, method) => {
+    const response = await middleware(new NextRequest(`https://www.yeosonam.com${path}`, { method }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it.each([
+    ['/api/v1/openapi', 'POST'],
+    ['/api/v1/packages', 'DELETE'],
+    ['/api/v1/qa/chat', 'GET'],
+    ['/api/v1/voice/chat', 'GET'],
+  ])('does not make unsupported method public: %s %s', async (path, method) => {
+    const response = await middleware(new NextRequest(`https://www.yeosonam.com${path}`, { method }));
+
+    expect(response.headers.get('x-middleware-next')).not.toBe('1');
+  });
+});
+
 describe('middleware cron resource saver', () => {
   afterEach(() => {
     vi.unstubAllEnvs();

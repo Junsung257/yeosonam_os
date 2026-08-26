@@ -276,6 +276,16 @@ const PUBLIC_EXACT = new Set([
   '/api/billing/toss-webhook',
 ]);
 
+// External V1 routes own API-key authentication in their route handlers.
+// Keep this list exact and method-scoped so a future unauthenticated V1 write
+// cannot become public merely by sharing the prefix.
+const PUBLIC_V1_METHODS: Readonly<Record<string, ReadonlySet<string>>> = {
+  '/api/v1/openapi': new Set(['GET', 'HEAD']),
+  '/api/v1/packages': new Set(['GET', 'POST']),
+  '/api/v1/qa/chat': new Set(['POST']),
+  '/api/v1/voice/chat': new Set(['POST']),
+};
+
 // 하위 경로까지 공개가 필요한 prefix — 짧은 배열, 정확 일치 실패 시에만 검사
 const PUBLIC_PREFIXES = [
   '/reels/',           // Phase 3-B: 릴스 공유 페이지 (share_token 기반)
@@ -717,6 +727,9 @@ async function getPublicDynamicNotFoundResponse(pathname: string): Promise<NextR
 
 function isPublicPath(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  const publicV1Methods = PUBLIC_V1_METHODS[pathname];
+  if (publicV1Methods) return publicV1Methods.has(request.method);
 
   // Signed, short-lived V6 proof URLs must reach their route-local token verifier.
   // Do not place this route under an underscore-prefixed App Router segment:
