@@ -263,6 +263,8 @@
     "lint:secrets": "node scripts/check-no-direct-env.mjs",
     "lint:secrets:all": "node scripts/check-no-direct-env.mjs --all",
     "verify:ci-action-pins": "node scripts/verify-ci-action-pins.mjs",
+    "generate:openapi:v1": "tsx scripts/generate-v1-openapi.ts",
+    "verify:openapi:v1": "tsx scripts/generate-v1-openapi.ts --check",
     "ai:all:deepseek": "node scripts/ai-provider-switch.mjs --all deepseek",
     "ai:all:claude": "node scripts/ai-provider-switch.mjs --all claude",
     "ai:blog:deepseek": "node scripts/ai-provider-switch.mjs --task blog-generate=deepseek",
@@ -324,6 +326,7 @@
     "openai": "^4.104.0",
     "papaparse": "^5.5.3",
     "pdf-parse": "^1.1.4",
+    "pino": "^10.3.1",
     "postcss": "8.5.23",
     "pptxgenjs": "^4.0.1",
     "pretendard": "^1.3.9",
@@ -365,6 +368,7 @@
     }
   },
   "devDependencies": {
+    "@asteasolutions/zod-to-openapi": "^7.3.4",
     "@axe-core/playwright": "^4.12.1",
     "@next/bundle-analyzer": "^16.2.6",
     "@playwright/test": "^1.60.0",
@@ -383,6 +387,7 @@
     "domhandler": "^6.0.1",
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "knip": "^6.14.2",
+    "openapi-typescript": "^7.13.0",
     "playwright": "^1.60.0",
     "schema-dts": "^2.0.0",
     "tsx": "^4.22.4",
