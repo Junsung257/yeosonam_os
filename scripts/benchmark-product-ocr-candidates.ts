@@ -28,6 +28,9 @@ function readBenchmarkInput(path: string | null): OcrBenchmarkInput {
   if (!Array.isArray(parsed.candidates)) {
     throw new Error('OCR benchmark input must contain candidates[]');
   }
+  if (parsed.candidates.some(candidate => !candidate || typeof candidate !== 'object' || Array.isArray(candidate))) {
+    throw new Error('OCR benchmark candidates[] entries must be objects');
+  }
   return parsed;
 }
 
@@ -44,6 +47,7 @@ async function main(): Promise<void> {
   } else {
     console.log('Product OCR/PDF candidate benchmark');
     console.log(`- candidates: ${report.passed}/${report.total} customer-ready`);
+    console.log(`- product identity preserved: ${report.summary.productSplitPreserved}/${report.total}`);
     console.log(`- table recognition proxy: ${pct(report.summary.tableRecognitionAccuracyAvg)}`);
     console.log(`- price rows preserved: ${report.summary.priceRowsPreserved}/${report.total}`);
     console.log(`- price dates preserved: ${report.summary.priceDatesPreserved}/${report.total}`);
@@ -53,6 +57,15 @@ async function main(): Promise<void> {
     console.log(`- meal separated: ${report.summary.mealSeparated}/${report.total}`);
     console.log(`- evidence spans recoverable: ${report.summary.evidenceSpanRecoverable}/${report.total}`);
     console.log(`- final mobile/A4 customer outcome ready: ${report.summary.finalCustomerOutcomeReady}/${report.total}`);
+
+    if (report.engines.length > 0) {
+      console.log('');
+      console.log('Engine summary');
+      for (const engine of report.engines) {
+        const versions = engine.versions.length > 0 ? engine.versions.join(', ') : 'version-missing';
+        console.log(`- ${engine.engine} (${versions}): ${engine.passed}/${engine.total} ready, table ${pct(engine.tableRecognitionAccuracyAvg)}`);
+      }
+    }
 
     const failed = report.results.filter(result => !result.ok);
     if (failed.length > 0) {
