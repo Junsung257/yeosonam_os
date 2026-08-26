@@ -1,6 +1,13 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
+import {
+  getCoreRowModel,
+  getSortedRowModel,
+  useReactTable,
+  type ColumnDef as TanStackColumnDef,
+  type SortingState,
+} from '@tanstack/react-table';
 import { AlertIndicator, type AlertLevel } from './AlertIndicator';
 
 export interface ColumnDef<T> {
@@ -12,6 +19,11 @@ export interface ColumnDef<T> {
   align?: 'left' | 'center' | 'right';
   sticky?: 'left' | 'right';
   cell: (row: T, index: number) => ReactNode;
+  /** 제공한 경우에만 헤더 정렬을 활성화합니다. */
+  sortValue?: (row: T) => string | number | null | undefined;
+  sortDescFirst?: boolean;
+  /** header가 문자열이 아닐 때 스크린리더에 제공할 정렬 라벨 */
+  sortLabel?: string;
   thClassName?: string;
   tdClassName?: string;
 }
@@ -35,6 +47,7 @@ interface DataTableProps<T> {
   zebra?: boolean;
   className?: string;
   stickyTop?: number;
+  initialSort?: { key: string; desc?: boolean };
 }
 
 const ALIGN_CLS = {
@@ -81,8 +94,30 @@ export function DataTable<T>({
   zebra = false,
   className = '',
   stickyTop = 0,
+  initialSort,
 }: DataTableProps<T>) {
   const colSpan = columns.length + (alertCell ? 1 : 0);
+  const [sorting, setSorting] = useState<SortingState>(() => (
+    initialSort ? [{ id: initialSort.key, desc: initialSort.desc ?? false }] : []
+  ));
+  const tableColumns = useMemo<TanStackColumnDef<T>[]>(
+    () => columns.map((column) => ({
+      id: column.key,
+      accessorFn: column.sortValue ?? (() => null),
+      enableSorting: Boolean(column.sortValue),
+      sortDescFirst: column.sortDescFirst,
+    })),
+    [columns],
+  );
+  const table = useReactTable({
+    data: rows,
+    columns: tableColumns,
+    state: { sorting },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+  });
+  const visibleRows = table.getRowModel().rows;
 
   return (
     <div
@@ -100,15 +135,40 @@ export function DataTable<T>({
                 <span className="sr-only">알림</span>
               </th>
             )}
-            {columns.map((col) => (
-              <th
-                key={col.key}
-                className={`${ALIGN_CLS[col.align ?? 'left']} ${priorityCls(col.priority)} ${col.thClassName ?? ''}`}
-                style={{ top: stickyTop, width: col.width }}
-              >
-                {col.header}
-              </th>
-            ))}
+            {columns.map((col) => {
+              const tableColumn = table.getColumn(col.key);
+              const sorted = tableColumn?.getIsSorted() ?? false;
+              const canSort = tableColumn?.getCanSort() ?? false;
+              const sortLabel = col.sortLabel ?? (typeof col.header === 'string' ? col.header : col.key);
+              return (
+                <th
+                  key={col.key}
+                  aria-sort={sorted === 'asc' ? 'ascending' : sorted === 'desc' ? 'descending' : undefined}
+                  className={`${ALIGN_CLS[col.align ?? 'left']} ${priorityCls(col.priority)} ${col.thClassName ?? ''}`}
+                  style={{ top: stickyTop, width: col.width }}
+                  scope="col"
+                >
+                  {canSort ? (
+                    <button
+                      type="button"
+                      onClick={tableColumn?.getToggleSortingHandler()}
+                      className={`inline-flex w-full items-center gap-1 rounded-admin-sm text-inherit hover:text-admin-text focus-visible:outline-none focus-visible:shadow-admin-focus ${
+                        col.align === 'right' ? 'justify-end' : col.align === 'center' ? 'justify-center' : 'justify-start'
+                      }`}
+                      aria-label={`${sortLabel} 정렬`}
+                    >
+                      <span>{col.header}</span>
+                      <span aria-hidden="true" className={sorted ? 'text-admin-text' : 'text-admin-muted-2'}>
+                        {sorted === 'asc' ? '↑' : sorted === 'desc' ? '↓' : '↕'}
+                      </span>
+                      <span className="sr-only">
+                        {sorted === 'asc' ? '오름차순 정렬됨' : sorted === 'desc' ? '내림차순 정렬됨' : '정렬되지 않음'}
+                      </span>
+                    </button>
+                  ) : col.header}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
@@ -133,7 +193,8 @@ export function DataTable<T>({
             </tr>
           )}
 
-          {!loading && rows.map((row, index) => {
+          {!loading && visibleRows.map((tableRow, index) => {
+            const row = tableRow.original;
             const alert = alertCell?.(row) ?? null;
             const zebraCls = zebra && index % 2 === 1 ? 'admin-zebra' : '';
             const hoverCls = onRowClick ? 'cursor-pointer' : '';

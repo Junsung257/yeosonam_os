@@ -1,6 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { KeyRound, Plus } from 'lucide-react';
+import Button from '@/components/ui/Button';
+import { EmptyState, PageHeader, SectionCard } from '@/components/admin/patterns';
+import { DataTable, StatusBadge, type ColumnDef } from '@/components/admin/ui';
 import { fmtDate, fmtMonthDayTime } from '@/lib/admin-utils';
 
 interface Tenant { id: string; name: string; }
@@ -25,39 +29,64 @@ const PROVIDER_LABELS: Record<string, { label: string; color: string; icon: stri
 
 const PROVIDERS = Object.keys(PROVIDER_LABELS);
 
+function isExpired(expiresAt: string | null): boolean {
+  if (!expiresAt) return false;
+  return new Date(expiresAt) < new Date();
+}
+
 export default function TenantTokensPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [selectedTenant, setSelectedTenant] = useState('');
   const [tokens, setTokens] = useState<TokenMeta[]>([]);
+  const [loadingTenants, setLoadingTenants] = useState(true);
+  const [loadingTokens, setLoadingTokens] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ provider: 'meta', access_token: '', refresh_token: '', expires_at: '', scopes: '' });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
-  useEffect(() => {
-    fetch('/api/tenants')
-      .then(r => r.json())
-      .then((d: { tenants: Tenant[] }) => {
-        setTenants(d.tenants ?? []);
-        if (d.tenants?.[0]) setSelectedTenant(d.tenants[0].id);
-      });
+  const loadTenants = useCallback(async () => {
+    setLoadingTenants(true);
+    setLoadError(null);
+    try {
+      const response = await fetch('/api/tenants');
+      if (!response.ok) throw new Error(`테넌트 조회 실패 (HTTP ${response.status})`);
+      const data = await response.json() as { tenants: Tenant[] };
+      setTenants(data.tenants ?? []);
+      setSelectedTenant(current => current || data.tenants?.[0]?.id || '');
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : '테넌트 목록을 불러오지 못했습니다.');
+    } finally {
+      setLoadingTenants(false);
+    }
   }, []);
 
+  useEffect(() => {
+    void loadTenants();
+  }, [loadTenants]);
+
   const loadTokens = useCallback(async () => {
-    if (!selectedTenant) return;
-    const res = await fetch(`/api/tenant-tokens?tenant_id=${selectedTenant}`);
-    if (res.ok) {
+    if (!selectedTenant) {
+      setTokens([]);
+      return;
+    }
+    setLoadingTokens(true);
+    setLoadError(null);
+    try {
+      const res = await fetch(`/api/tenant-tokens?tenant_id=${encodeURIComponent(selectedTenant)}`);
+      if (!res.ok) throw new Error(`토큰 조회 실패 (HTTP ${res.status})`);
       const d = await res.json() as { tokens: TokenMeta[] };
       setTokens(d.tokens ?? []);
+    } catch (error) {
+      setTokens([]);
+      setLoadError(error instanceof Error ? error.message : '토큰 목록을 불러오지 못했습니다.');
+    } finally {
+      setLoadingTokens(false);
     }
   }, [selectedTenant]);
 
   useEffect(() => { void loadTokens(); }, [loadTokens]);
-
-  function isExpired(expiresAt: string | null): boolean {
-    if (!expiresAt) return false;
-    return new Date(expiresAt) < new Date();
-  }
 
   async function handleSave() {
     if (!selectedTenant || !form.access_token) return;
@@ -85,28 +114,115 @@ export default function TenantTokensPage() {
         setForm({ provider: 'meta', access_token: '', refresh_token: '', expires_at: '', scopes: '' });
         void loadTokens();
       }
+    } catch (error) {
+      setMessage({ type: 'err', text: error instanceof Error ? error.message : '저장 요청에 실패했습니다.' });
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleRevoke(id: string) {
+  const handleRevoke = useCallback(async (id: string) => {
     if (!confirm('이 토큰을 비활성화하시겠습니까?')) return;
-    const res = await fetch(`/api/tenant-tokens?id=${id}`, { method: 'DELETE' });
-    if (!res.ok) {
-      const json = await res.json() as { error?: string };
-      setMessage({ type: 'err', text: json.error ?? '비활성화 실패' });
-      return;
+    try {
+      const res = await fetch(`/api/tenant-tokens?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const json = await res.json() as { error?: string };
+        setMessage({ type: 'err', text: json.error ?? '비활성화 실패' });
+        return;
+      }
+      setMessage({ type: 'ok', text: '토큰을 비활성화했습니다.' });
+      void loadTokens();
+    } catch (error) {
+      setMessage({ type: 'err', text: error instanceof Error ? error.message : '비활성화 요청에 실패했습니다.' });
     }
-    void loadTokens();
-  }
+  }, [loadTokens]);
+
+  const tokenColumns = useMemo<ColumnDef<TokenMeta>[]>(() => [
+    {
+      key: 'provider',
+      header: '플랫폼',
+      priority: 1,
+      sortValue: token => token.provider,
+      cell: token => {
+        const provider = PROVIDER_LABELS[token.provider];
+        return (
+          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${provider?.color ?? 'bg-admin-surface-2 text-admin-muted'}`}>
+            {provider?.icon} {provider?.label ?? token.provider}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'scopes',
+      header: '스코프',
+      priority: 3,
+      cell: token => (
+        <span className="text-admin-muted text-xs">
+          {token.scopes.length > 0 ? token.scopes.join(', ') : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'expires_at',
+      header: '만료일',
+      priority: 2,
+      sortDescFirst: true,
+      sortValue: token => token.expires_at ? new Date(token.expires_at).getTime() : Number.MAX_SAFE_INTEGER,
+      cell: token => token.expires_at ? (
+        <span className={`text-xs ${isExpired(token.expires_at) ? 'text-danger font-medium' : 'text-admin-muted'}`}>
+          {isExpired(token.expires_at) ? '만료됨' : fmtDate(token.expires_at)}
+        </span>
+      ) : <span className="text-xs text-admin-muted-2">—</span>,
+    },
+    {
+      key: 'status',
+      header: '상태',
+      priority: 1,
+      sortValue: token => !token.is_active ? 0 : isExpired(token.expires_at) ? 1 : 2,
+      cell: token => {
+        const expired = isExpired(token.expires_at);
+        const label = !token.is_active ? '비활성' : expired ? '만료됨' : '활성';
+        const tone = !token.is_active ? 'neutral' : expired ? 'danger' : 'success';
+        return <StatusBadge kind="custom" value={label} label={label} tone={tone} withDot />;
+      },
+    },
+    {
+      key: 'updated_at',
+      header: '최종 수정',
+      priority: 2,
+      sortDescFirst: true,
+      sortValue: token => new Date(token.updated_at).getTime(),
+      cell: token => <span className="text-admin-muted-2 text-xs">{fmtMonthDayTime(token.updated_at)}</span>,
+    },
+    {
+      key: 'actions',
+      header: <span className="sr-only">관리</span>,
+      sortLabel: '관리',
+      align: 'right',
+      priority: 1,
+      cell: token => token.is_active ? (
+        <Button variant="ghost" size="sm" className="text-danger" onClick={() => void handleRevoke(token.id)}>
+          비활성화
+        </Button>
+      ) : <span className="text-admin-muted-2 text-xs">처리 완료</span>,
+    },
+  ], [handleRevoke]);
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-admin-text">테넌트 API 토큰 관리</h1>
-        <p className="text-sm text-admin-muted mt-1">여행사별 소셜/광고 플랫폼 OAuth 토큰을 AES-256 암호화로 안전하게 보관합니다</p>
-      </div>
+      <PageHeader
+        title="테넌트 API 토큰 관리"
+        subtitle="여행사별 소셜·광고 플랫폼 OAuth 토큰을 AES-256 암호화로 보관합니다. 원문 토큰은 목록에 노출하지 않습니다."
+        actions={(
+          <Button
+            onClick={() => { setShowForm(!showForm); setMessage(null); }}
+            disabled={!selectedTenant || loadingTenants}
+          >
+            <Plus size={14} />
+            {showForm ? '등록 취소' : '토큰 추가'}
+          </Button>
+        )}
+      />
 
       {/* 테넌트 선택 */}
       <div className="flex items-center gap-3">
@@ -121,12 +237,6 @@ export default function TenantTokensPage() {
             <option key={t.id} value={t.id}>{t.name}</option>
           ))}
         </select>
-        <button type="button"
-          onClick={() => { setShowForm(!showForm); setMessage(null); }}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition"
-        >
-          {showForm ? '취소' : '+ 토큰 추가'}
-        </button>
       </div>
 
       {/* 알림 */}
@@ -134,6 +244,21 @@ export default function TenantTokensPage() {
         <div className={`rounded-lg px-4 py-3 text-sm ${
           message.type === 'ok' ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'
         }`}>{message.text}</div>
+      )}
+
+      {loadError && (
+        <div role="alert" className="rounded-admin-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <div className="font-medium">목록을 불러오지 못했습니다.</div>
+          <div className="mt-0.5 text-xs">{loadError}</div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-2 text-danger"
+            onClick={() => void (selectedTenant ? loadTokens() : loadTenants())}
+          >
+            다시 시도
+          </Button>
+        </div>
       )}
 
       {/* 토큰 추가 폼 */}
@@ -209,71 +334,33 @@ export default function TenantTokensPage() {
       )}
 
       {/* 토큰 목록 */}
-      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
-        <div className="px-5 py-3 border-b border-admin-border flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-admin-text-2">등록된 토큰</h2>
-          <span className="text-xs text-admin-muted-2">access_token은 표시되지 않습니다 (보안)</span>
-        </div>
-        {tokens.length === 0 ? (
-          <div className="p-6 text-center text-admin-muted-2 text-sm">등록된 토큰이 없습니다</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-admin-bg">
-              <tr>
-                {['플랫폼', '스코프', '만료일', '상태', '최종수정', ''].map(h => (
-                  <th key={h} className="text-left py-2.5 px-4 font-medium text-admin-muted text-xs">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {tokens.map(token => {
-                const p = PROVIDER_LABELS[token.provider];
-                const expired = isExpired(token.expires_at);
-                return (
-                  <tr key={token.id} className="border-t border-admin-border hover:bg-admin-bg">
-                    <td className="py-3 px-4">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p?.color ?? 'bg-admin-surface-2 text-admin-muted'}`}>
-                        {p?.icon} {p?.label ?? token.provider}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-admin-muted text-xs">
-                      {token.scopes.length > 0 ? token.scopes.join(', ') : '—'}
-                    </td>
-                    <td className="py-3 px-4">
-                      {token.expires_at ? (
-                        <span className={`text-xs ${expired ? 'text-red-600 font-medium' : 'text-admin-muted'}`}>
-                          {expired ? '⚠️ 만료됨' : fmtDate(token.expires_at)}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-admin-muted-2">—</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        !token.is_active ? 'bg-admin-surface-2 text-admin-muted-2' :
-                        expired ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'
-                      }`}>
-                        {!token.is_active ? '비활성' : expired ? '만료됨' : '활성'}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-admin-muted-2 text-xs">
-                      {fmtMonthDayTime(token.updated_at)}
-                    </td>
-                    <td className="py-3 px-4">
-                      <button type="button"
-                        onClick={() => handleRevoke(token.id)}
-                        className="text-xs text-red-500 hover:underline"
-                      >
-                        비활성화
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
+      <SectionCard
+        title="등록된 토큰"
+        description="토큰 원문은 표시하지 않습니다. 헤더를 눌러 플랫폼·만료·상태·수정일 순으로 정렬할 수 있습니다."
+        flush
+      >
+        <DataTable
+          columns={tokenColumns}
+          rows={tokens}
+          getRowKey={token => token.id}
+          loading={loadingTokens || loadingTenants}
+          skeletonRows={5}
+          initialSort={{ key: 'updated_at', desc: true }}
+          emptyState={(
+            <EmptyState
+              icon={KeyRound}
+              title={selectedTenant ? '등록된 토큰이 없습니다' : '여행사를 먼저 선택해 주세요'}
+              description={selectedTenant ? '광고·분석 플랫폼 연동이 필요할 때 첫 토큰을 등록하세요.' : '여행사별로 토큰을 분리해 안전하게 관리합니다.'}
+              action={selectedTenant ? (
+                <Button size="sm" onClick={() => setShowForm(true)}>
+                  <Plus size={14} /> 첫 토큰 등록
+                </Button>
+              ) : undefined}
+            />
+          )}
+          className="rounded-none border-0 shadow-none"
+        />
+      </SectionCard>
     </div>
   );
 }
