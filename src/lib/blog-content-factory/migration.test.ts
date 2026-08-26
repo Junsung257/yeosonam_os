@@ -25,6 +25,10 @@ const revisionQualityDecisionMigration = readFileSync(
   'supabase/migrations/20260826082731_blog_v4_revision_quality_decision_20260826.sql',
   'utf8',
 ).toLowerCase();
+const qualityContractStateMigration = readFileSync(
+  'supabase/migrations/20260827010000_blog_v4_quality_contract_state_20260827.sql',
+  'utf8',
+).toLowerCase();
 
 describe('Blog V4 content factory migration contract', () => {
   it('creates the four service-role ledgers with RLS and explicit grants', () => {
@@ -97,6 +101,16 @@ describe('Blog V4 content factory migration contract', () => {
     expect(revisionQualityDecisionMigration).toContain("'completed'");
     expect(revisionQualityDecisionMigration).toContain('trg_blog_content_revisions_immutable');
     expect(revisionQualityDecisionMigration).toContain('to service_role');
+  });
+
+  it('projects the final quality decision into the V4 operation state columns', () => {
+    expect(qualityContractStateMigration).toContain('v_operation_state jsonb');
+    expect(qualityContractStateMigration).toContain('generation_status = coalesce(v_generation_status, generation_status)');
+    expect(qualityContractStateMigration).toContain('review_status = coalesce(v_review_status, review_status)');
+    expect(qualityContractStateMigration).toContain('publication_status = coalesce(v_publication_status, publication_status)');
+    expect(qualityContractStateMigration).toContain('indexing_status = coalesce(v_indexing_status, indexing_status)');
+    expect(qualityContractStateMigration).toContain('final_quality_decision_id = coalesce');
+    expect(qualityContractStateMigration).toContain('to service_role');
   });
 
   it('publishes commercial content and its indexing outbox in one fenced transaction', () => {

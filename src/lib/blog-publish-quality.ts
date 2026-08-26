@@ -109,6 +109,23 @@ export interface PreparedBlogPublishResult {
   report: BlogPublishQualityReport;
 }
 
+/**
+ * Return the score used by the final publication decision.
+ *
+ * `blogQualityScore` is a legacy diagnostic aggregate. It intentionally keeps
+ * non-blocking SEO heuristics visible, so it can be below 95 even when the V3
+ * publication contract passes. It must never be used as the final eligibility
+ * score. The public-customer score is part of the active V3 contract; a failed
+ * report is normalized to zero and remains fail-closed.
+ */
+export function getBlogPublishDecisionScore(report: BlogPublishQualityReport): number {
+  if (!report.passed) return 0;
+  const score = report.publicCustomerQuality?.score;
+  return typeof score === 'number' && Number.isFinite(score)
+    ? Math.max(0, Math.min(100, score))
+    : 100;
+}
+
 export function resolveBlogDestination(row: {
   destination?: string | null;
   travel_packages?: TravelPackageRef;

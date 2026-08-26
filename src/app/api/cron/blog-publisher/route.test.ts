@@ -555,5 +555,7 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('`publish_gate:${gate.gate}`');
     expect(source).toContain('score: orchestrationQualityScore');
     expect(source).toContain('publish_quality_passed: publishQuality.passed');
+    expect(source).toContain('publish_quality_legacy_diagnostic: publishQuality.blogQualityScore.score');
+    expect(source).toContain('getBlogPublishDecisionScore(publishQuality)');
   });
 });

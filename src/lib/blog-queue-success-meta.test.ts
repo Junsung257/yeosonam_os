@@ -11,7 +11,9 @@ describe('buildBlogQueueSuccessMeta', () => {
       gates: [{ gate: 'render_integrity', passed: true }],
     } as QualityGateReport;
     const publishQuality = {
+      passed: true,
       renderedSeoQuality: { passed: true, issues: [] },
+      publicCustomerQuality: { passed: true, score: 100, issues: [] },
       blogQualityScore: {
         score: 100,
         issues: [],
@@ -49,6 +51,7 @@ describe('buildBlogQueueSuccessMeta', () => {
       last_qa: qualityGate,
       last_publish_quality: {
         score: 100,
+        legacy_diagnostic_score: 100,
         issues: [],
         rendered_issues: [],
         components: [

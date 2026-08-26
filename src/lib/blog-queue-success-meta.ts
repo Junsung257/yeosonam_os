@@ -1,4 +1,7 @@
-import type { BlogPublishQualityReport } from './blog-publish-quality';
+import {
+  getBlogPublishDecisionScore,
+  type BlogPublishQualityReport,
+} from './blog-publish-quality';
 import type { QualityGateReport } from './blog-quality-gate';
 
 const STALE_FAILURE_META_KEYS = [
@@ -26,7 +29,8 @@ export function buildBlogQueueSuccessMeta(input: {
     ...meta,
     last_qa: input.qualityGate,
     last_publish_quality: {
-      score: input.publishQuality.blogQualityScore.score,
+      score: getBlogPublishDecisionScore(input.publishQuality),
+      legacy_diagnostic_score: input.publishQuality.blogQualityScore.score,
       issues: input.publishQuality.blogQualityScore.issues.slice(0, 8),
       rendered_issues: (input.publishQuality.renderedSeoQuality?.issues ?? []).slice(0, 8).map((issue) => ({
         code: issue.code,

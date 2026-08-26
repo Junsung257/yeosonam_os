@@ -7,6 +7,7 @@ import {
   blogPublishQualityWarnings,
   evaluateBlogPublicCustomerQuality,
   evaluateBlogPublishQuality,
+  getBlogPublishDecisionScore,
   isBlogSeoDetailBlockingForPublish,
   prepareBlogForPublish,
   resolveBlogDestination,
@@ -184,6 +185,8 @@ describe('blog publish quality', () => {
       publicCustomer: { passed: true, score: 100, issues: [] },
       renderedSeo: { passed: true, issues: [] },
     });
+    expect(report.blogQualityScore.score).toBeLessThan(95);
+    expect(getBlogPublishDecisionScore(report)).toBe(100);
   });
 
   it('records the V4 evaluation beside existing generation metadata without clobbering it', async () => {

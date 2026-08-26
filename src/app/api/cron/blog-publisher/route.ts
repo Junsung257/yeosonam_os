@@ -33,6 +33,7 @@ import { computeSeoScore } from '@/lib/blog-seo-scorer';
 import { extractFaqItems, extractHowToSteps } from '@/lib/blog-jsonld';
 import {
   evaluateBlogPublishQuality,
+  getBlogPublishDecisionScore,
   isBlogSeoDetailBlockingForPublish,
   type BlogPublishQualityReport,
 } from '@/lib/blog-publish-quality';
@@ -3663,7 +3664,7 @@ async function processQueueItem(
     ].filter((value, index, values) => value && values.indexOf(value) === index);
     const orchestrationQualityScore = Math.min(
       qualityEvaluationV3.score,
-      publishQuality.publicCustomerQuality.score,
+      getBlogPublishDecisionScore(publishQuality),
     );
     const orchestrationFailureReasons = [
       ...qualityEvaluationV3.failureReasons.map((failure) => failure.code),
@@ -3712,7 +3713,8 @@ async function processQueueItem(
       score: orchestrationQualityScore,
       component_scores: {
         quality_v3: qualityEvaluationV3.score,
-        publish_quality: publishQuality.blogQualityScore.score,
+        publish_quality: getBlogPublishDecisionScore(publishQuality),
+        publish_quality_legacy_diagnostic: publishQuality.blogQualityScore.score,
         public_customer: publishQuality.publicCustomerQuality.score,
       },
       publish_quality_passed: publishQuality.passed,
@@ -3741,7 +3743,8 @@ async function processQueueItem(
             quality_evaluation_v3: qualityEvaluationV3,
             publish_quality: {
               passed: publishQuality.passed,
-              score: publishQuality.blogQualityScore.score,
+              score: getBlogPublishDecisionScore(publishQuality),
+              legacy_diagnostic_score: publishQuality.blogQualityScore.score,
               public_customer_score: publishQuality.publicCustomerQuality.score,
               summary: publishQuality.summary,
               failed_gates: publishQuality.qualityGate.gates
@@ -4177,10 +4180,7 @@ async function processQueueItem(
         },
         publishQuality: {
           passed: publishQuality.passed,
-          score: Math.min(
-            publishQuality.blogQualityScore.score,
-            publishQuality.publicCustomerQuality.score,
-          ),
+          score: getBlogPublishDecisionScore(publishQuality),
           failureReasons: publishQualityFailureReasons,
         },
         claimValidationPassed: claimValidation.passed,
