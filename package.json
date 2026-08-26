@@ -210,6 +210,7 @@
     "audit:migration-prefix:ci": "node db/audit_migration_prefix_collisions.js --fail-on-collision",
     "os:inbox": "node scripts/os-improvement-inbox.mjs",
     "eval:concierge": "node scripts/eval-concierge.mjs",
+    "eval:concierge:promptfoo": "cross-env FORCE_COLOR=0 PROMPTFOO_SELF_HOSTED=1 PROMPTFOO_DISABLE_TELEMETRY=1 PROMPTFOO_DISABLE_UPDATE=1 PROMPTFOO_DISABLE_REMOTE_GENERATION=true PROMPTFOO_DISABLE_SHARING=1 PROMPTFOO_DISABLE_TEMPLATE_ENV_VARS=true PROMPTFOO_DISABLE_ERROR_LOG=1 PROMPTFOO_DISABLE_DEBUG_LOG=1 npx --yes promptfoo@0.122.0 eval -c promptfoo/concierge-offline.yaml --no-share --no-cache --no-write --no-progress-bar --no-table",
     "eval:product-registration": "npx tsx scripts/eval-product-registration-corpus.ts",
     "eval:product-registration:ci": "npx tsx scripts/eval-product-registration-corpus.ts --strict",
     "install:rhwp": "node scripts/install-rhwp.mjs",

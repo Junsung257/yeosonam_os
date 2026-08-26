@@ -74,8 +74,10 @@ function appendNodeOption(current, option) {
 function buildMaxOldSpaceSizeMb() {
   const configured = Number(process.env.NEXT_BUILD_MAX_OLD_SPACE_SIZE);
   if (Number.isFinite(configured) && configured >= 1024) return Math.floor(configured);
-  // Vercel's standard builder has 8 GB available and this large Next app needs
-  // a larger heap to avoid SIGKILL/OOM before compilation finishes.
+  // Vercel's standard builder has 8 GB total, not 8 GB of V8 heap. Leaving
+  // half for SWC, native modules, file tracing, and child processes prevents
+  // the OS-level SIGKILL seen when a 6 GB heap competes with those processes.
+  if (process.env.VERCEL === '1') return 4096;
   return 6144;
 }
 
@@ -379,8 +381,11 @@ function startActiveNextDevServerMonitor() {
 }
 
 function getRecoveryWaitMs() {
-  const raw = Number(process.env.NEXT_BUILD_RECOVERY_WAIT_MS || 900000);
-  if (!Number.isFinite(raw) || raw <= 0) return 900000;
+  // A hosted SIGKILL cannot produce missing manifests later. Fail promptly so
+  // Vercel reports the real build error instead of burning another 15 minutes.
+  const fallback = process.env.VERCEL === '1' ? 30000 : 900000;
+  const raw = Number(process.env.NEXT_BUILD_RECOVERY_WAIT_MS || fallback);
+  if (!Number.isFinite(raw) || raw <= 0) return fallback;
   return Math.max(30000, raw);
 }
 
