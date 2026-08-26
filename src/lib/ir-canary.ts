@@ -24,6 +24,8 @@
  *   `llm-gateway.ts` 의 primary 이므로 비용/품질 손실 없음.
  */
 
+import { readServerFeatureFlags } from '@/lib/feature-flags';
+
 export type IrCanaryEngine = 'deepseek';
 
 export interface IrCanaryStatus {
@@ -94,4 +96,3 @@ export function getIrCanaryStatus(): IrCanaryStatus {
     anthropicAvailable: false,
   };
 }
-import { readServerFeatureFlags } from '@/lib/feature-flags';
