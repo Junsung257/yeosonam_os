@@ -1965,7 +1965,9 @@ function buildGuamHotelAreasFromBookingAndKayak(
     conditions: ['확인일 표시 가격', '날짜·인원·세금·객실 재고에 따라 변동', '예약 전 최종 총액 재확인'],
   }));
   const areaRows = [...secondaryRows, ...priceRows]
-    .filter((row, index, all) => all.findIndex((candidate) => candidate.area === row.area) === index)
+    .filter((row, index, all) => all.findIndex((candidate) => (
+      candidate.name === row.name && candidate.area === row.area
+    )) === index)
     .slice(0, 5);
   if (areaRows.length < 3) return null;
   const factualEvidence: GroundedEvidenceDraft[] = areaRows.map((row, index) => {

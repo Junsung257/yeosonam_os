@@ -896,7 +896,7 @@ describe('buildGuamHotelAreasPayload', () => {
 
     expect(payload?.sources).toHaveLength(2);
     expect(payload?.claims?.filter((claim) => claim.claimType === 'price')).toHaveLength(3);
-    expect(payload?.claims?.filter((claim) => claim.claimType === 'factual')).toHaveLength(3);
+    expect(payload?.claims?.filter((claim) => claim.claimType === 'factual')).toHaveLength(5);
     expect(payload?.sources?.map((source) => source.publisher)).toEqual(['Booking.com', 'KAYAK']);
   });
 });
