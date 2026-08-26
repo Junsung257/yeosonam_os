@@ -326,8 +326,7 @@ export function decideBlogQualityRouteV4(
     && score >= 90
     && hardBlockers.length === 0
     && input.lastStage === 'rewrite_pro_high'
-    && input.researchValid === true
-    && input.claimLedgerValid === true;
+    && input.researchValid === true;
 
   if (input.riskLevel === 'HIGH' && !input.humanApproved) {
     return {

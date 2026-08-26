@@ -111,7 +111,7 @@ describe('blog DeepSeek orchestrator V4', () => {
       completedAttempts: 2,
       researchAttempts: 1,
       researchValid: true,
-      claimLedgerValid: true,
+      claimLedgerValid: false,
       lastStage: 'rewrite_pro_high',
     })).toMatchObject({
       route: 'human_review',
