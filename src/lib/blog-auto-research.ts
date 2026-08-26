@@ -1932,7 +1932,7 @@ function buildGuamHotelAreasFromBookingAndKayak(
       currency: /(?:US\$|USD|\$)/i.test(match[0]) ? 'USD' : 'KRW',
     }))
     .filter((row) => row.name && row.area && Number(row.price) > 0)
-    .slice(0, 8);
+    .slice(0, 30);
   const kayakRows = [...kayakText.matchAll(/([^0-9$]{3,100}?)(Tumon|Tamuning|Dededo|Yona|Agat)(?:,\s*Guam)?[\s\S]{0,250}?\$([\d,]+)\+/gi)]
     .map((match) => ({
       name: clean(match[1]).replace(/^.*Check availability/i, '').replace(/^[\s|·•,:-]+|[)\s|·•,:-]+$/g, ''),
@@ -1943,7 +1943,7 @@ function buildGuamHotelAreasFromBookingAndKayak(
     }))
     .filter((row) => !/^Search Hotels/i.test(row.name)
       && row.name && row.area && Number(row.price) > 0)
-    .slice(0, 8);
+    .slice(0, 30);
   const priceRows = (bookingRows.length >= 3 ? bookingRows : kayakRows).slice(0, 3);
   if (priceRows.length < 3 || bookingRows.length === 0 || kayakRows.length === 0) return null;
   const priceSourceKey = bookingRows.length >= 3 ? 'booking-guam-family-hotels' : 'kayak-guam-hotels';
