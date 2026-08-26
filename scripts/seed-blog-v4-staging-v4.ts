@@ -220,7 +220,10 @@ async function seed(db: SupabaseClient, seedKey: string, mode: SeedMode) {
       .from('blog_topic_queue')
       .insert({
         topic,
-        primary_keyword: topic,
+        // Keep the queue topic unique per canary, but do not pollute the
+        // reader keyword with the staging-only suffix. The suffix is an
+        // inventory id, not part of the search intent or article title.
+        primary_keyword: BASE_TOPIC,
         destination: '괌',
         angle_type: '숙소 지역 비교',
         category: '여행정보',

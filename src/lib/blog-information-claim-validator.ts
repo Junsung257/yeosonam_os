@@ -272,7 +272,7 @@ const V3_SOURCE_NEUTRAL_PLANNING_MODAL_RE = /^(?=.*(?:일정|순서|후보|동�
 // operational status before it can classify a sentence as editorial guidance.
 const V3_SOURCE_NEUTRAL_DECISION_METHOD_RE = /^(?=.*(?:동선|일정|구간|순서|후보|이동\s*시간|휴식|체력|숙소\s*위치))(?=.*(?:판단|저울질|따져|나란히|맞는|부담|무리|기준|직접)).*(?:해야|하면|두고|두며|고르는|판단하는|저울질|따져|맞춰|무리가\s*없).+$/i;
 const V3_SOURCE_NEUTRAL_COMPARISON_RE = /^(?!.*(?:\d|[₩￦¥￥$€₫]|\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\b))(?:(?=.*(?:본인|내|자신의|독자의))(?=.*(?:선택지|후보|조건|기준))(?=.*(?:비교하세요|확인하세요|결정하세요|달라지))|(?=.*(?:선택지|후보|가격|조건|기준))(?=.*(?:비교하면|비교하세요|확인하세요|결정하세요))).+$/i;
-const V3_SOURCE_NEUTRAL_RESERVATION_CHECK_RE = /^(?!.*(?:\d|[₩￦¥￥$€₫]|\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\b))(?=.*(?:예약제인지|예약\s*방식|예약\s*조건|운영\s*여부))(?=.*(?:확인|비교|결정)).+$/i;
+const V3_SOURCE_NEUTRAL_RESERVATION_CHECK_RE = /^(?!.*(?:\d|[₩￦¥￥$€₫]|\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\b))(?=.*(?:예약제인지|예약\s*방식|예약\s*조건|예약\s*가능\s*여부|운영\s*여부))(?=.*(?:확인|비교|결정|판단하지|단정하지)).+$/i;
 const V3_SOURCE_NEUTRAL_LODGING_METHOD_RE = /^(?!.*(?:\d|[₩￦¥￥$€₫]|\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\b))(?=.*(?:숙소\s*지역|호텔|가족|휴양|관광))(?=.*(?:나누|정하|선택|비교|결정))(?=.*(?:먼저|기준|이유|우선)).+$/i;
 const V3_SOURCE_NEUTRAL_PRICE_FRESHNESS_RE = /^(?!.*(?:\d|[₩￦¥￥$€₫]|\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\b))(?=.*가격)(?=.*(?:확인일|예약\s*시점|변동|달라질)).+$/i;
 const SOURCED_FACTUAL_ASSERTION_RE = /^(?=.*(?:Agoda|KAYAK|Booking|공식\s*(?:가이드|페이지|사이트)|관광청|가이드|페이지))(?=.*(?:설명(?:한다|합니다)|안내(?:한다|합니다)|표시(?:한다|합니다)|기재(?:한다|합니다))).+$/i;
