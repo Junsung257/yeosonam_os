@@ -1985,7 +1985,7 @@ function buildGuamHotelAreasFromBookingAndKayak(
       country: '괌',
       destination,
       applicableTo: `${destination} 숙소 지역 비교 여행자`,
-      normalizedValue: row.area,
+      normalizedValue: `${row.name}·${row.area}`,
       unit: '숙소 지역',
       conditions: ['확인일 페이지 분류', '검색 조건·재고·분류에 따라 변동 가능'],
     };
