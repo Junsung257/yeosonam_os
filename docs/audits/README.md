@@ -1,6 +1,7 @@
 # Audit Archive Index
 
-Last updated: 2026-08-17
+Last updated: 2026-08-27
+- 2026-08-27 — GitHub OSS adoption audit: 41 active repositories, codebase-fit decisions, six bounded adoption batches, and explicit defer/reject triggers: `oss-adoption-audit-2026-08-27.md`
 - 2026-08-11 — Blog Quality Engine V3 baseline, canary, corpus disposition/redirect preview, verification: `blog-quality-engine-v3-baseline-2026-08-11.md`
 - 2026-08-12 — Blog Quality Engine V3 reliability follow-up migration safety (5 files, 0 issues): `blog-quality-v3-migration-safety-report.json`
 - 2026-08-12 — Blog Quality Engine V3 production readiness: live Vercel/Supabase/public-surface read-only evidence, migration-history drift, and fail-closed release decision: `blog-quality-engine-v3-production-readiness-2026-08-12.md`
