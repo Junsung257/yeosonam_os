@@ -68,20 +68,9 @@ async function readOperations(db: SupabaseClient, queueIds: string[]) {
 }
 
 async function ensureStagingControlPlane(db: SupabaseClient) {
-  const rollout = await db
-    .from('blog_publication_rollout_state')
-    .insert({
-      scope: 'global',
-      stage: 'pilot_3',
-      status: 'active',
-      state_version: 1,
-    })
-    .select('scope')
-    .maybeSingle();
-  if (rollout.error && rollout.error.code !== '23505') {
-    throw new Error(`blog_v4_staging_seed_rollout_state_failed:${rollout.error.message}`);
-  }
-
+  // The migration creates the initial rollout row and grants service_role
+  // select/update, not insert. Read it first so the staging seed never needs
+  // a direct rollout-state insert or a production-like privilege.
   const currentRollout = await db
     .from('blog_publication_rollout_state')
     .select('scope,stage,status,state_version')
