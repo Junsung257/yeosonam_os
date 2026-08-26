@@ -122,8 +122,12 @@ function inspectIntentArtifactV3(input: BlogQualityEvaluationInputV3): {
   failures: string[];
 } | null {
   const topic = `${input.primaryQuery || ''} ${input.title} ${input.primaryDecision || ''}`;
-  const itineraryIntent = input.archetype === 'itinerary_timeline'
-    || /일정|코스|동선|\d+박\s*\d+일/i.test(topic);
+  // An explicit archetype is authoritative. Hotel-area and traveler-fit
+  // briefs often mention a reader's "일정" as a selection criterion, but
+  // that does not turn the article into an executable itinerary.
+  const itineraryIntent = input.archetype
+    ? input.archetype === 'itinerary_timeline'
+    : /일정|코스|동선|\d+박\s*\d+일/i.test(topic);
   const routeIntent = input.archetype === 'route_walkthrough'
     || /공항.*(?:에서|부터)|가는\s*법|교통편|이동수단/i.test(topic);
   if (!itineraryIntent && !routeIntent) return null;
@@ -267,8 +271,9 @@ function inspectInformationGainArtifactV3(input: BlogQualityEvaluationInputV3): 
   failures: string[];
 } | null {
   const topic = `${input.primaryQuery || ''} ${input.title} ${input.primaryDecision || ''}`;
-  const itineraryIntent = input.archetype === 'itinerary_timeline'
-    || /일정|코스|동선|\d+박\s*\d+일/i.test(topic);
+  const itineraryIntent = input.archetype
+    ? input.archetype === 'itinerary_timeline'
+    : /일정|코스|동선|\d+박\s*\d+일/i.test(topic);
   if (!itineraryIntent) return null;
 
   const units = input.body

@@ -263,6 +263,7 @@ const V3_SOURCE_NEUTRAL_PLANNING_MODAL_RE = /^(?=.*(?:일정|순서|후보|동�
 // allowlist source-neutral: it rejects digits, regulated topics, and explicit
 // operational status before it can classify a sentence as editorial guidance.
 const V3_SOURCE_NEUTRAL_DECISION_METHOD_RE = /^(?=.*(?:동선|일정|구간|순서|후보|이동\s*시간|휴식|체력|숙소\s*위치))(?=.*(?:판단|저울질|따져|나란히|맞는|부담|무리|기준|직접)).*(?:해야|하면|두고|두며|고르는|판단하는|저울질|따져|맞춰|무리가\s*없).+$/i;
+const V3_SOURCE_NEUTRAL_COMPARISON_RE = /^(?!.*(?:\d|[₩￦¥￥$€₫]|\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\b))(?=.*(?:본인|내|자신의|독자의))(?=.*(?:선택지|후보|조건|기준))(?=.*(?:비교하세요|확인하세요|결정하세요|달라지)).+$/i;
 const V3_NAMED_PLACE_ASSERTION_RE = /(?:[가-힣]{2,}(?:산|힐|사원|파고다|마운틴|해변|시장|공원|박물관|수족관|반도|다리|브리지|대성당|동굴|유적)\s*(?:은|는|이|가)|\b[A-Z][A-Za-zÀ-ÖØ-öø-ÿ.-]{2,}(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ.-]{2,}){0,3}\s+(?:is|has|offers|takes|requires)\b)/u;
 const V3_ITINERARY_PROPOSAL_RE = /(?:편집\s*제안|(?:제안\s*일정|동선\s*예시).*(?:배치|구성|정리)|동선(?:은|을|이)?[^.。!?]{0,140}제안|(?:일차|날짜별|마지막\s*일정).*(?:순서|동선|흐름).*(?:제안|배치)|(?:장소별\s*실행\s*순서|이동\s*근거).*(?:정리했습니다|비교합니다)|(?:미방문\s*장소|남은\s*장소).*(?:대체\s*블록|후보).*(?:삼|두)|확인할\s*블록(?:은|을).*(?:입니다|정))/i;
 const V3_ITINERARY_SOURCE_NEUTRAL_GUIDANCE_RE = /^(?=.*(?:일정|동선|순서|블록|공식\s*이동\s*시간|운영\s*시간|입장\s*시각|체류\s*순서|숙소\s*위치|당일\s*컨디션))(?=.*(?:구성하세요|정하세요|정하면\s*됩니다|고르세요|고르면\s*됩니다|결정하세요|비교하세요|확인하세요|판단해야\s*합니다|제안합니다|배치하세요|삼을\s*수\s*있습니다)).+$/i;
@@ -292,7 +293,8 @@ function isSourceNeutralPlanningAdvice(
   }
   return V3_SOURCE_NEUTRAL_PLANNING_IMPERATIVE_RE.test(segment)
     || V3_SOURCE_NEUTRAL_PLANNING_MODAL_RE.test(segment)
-    || V3_SOURCE_NEUTRAL_DECISION_METHOD_RE.test(segment);
+    || V3_SOURCE_NEUTRAL_DECISION_METHOD_RE.test(segment)
+    || V3_SOURCE_NEUTRAL_COMPARISON_RE.test(segment);
 }
 
 export function classifyBlogInformationStatement(segment: string): {

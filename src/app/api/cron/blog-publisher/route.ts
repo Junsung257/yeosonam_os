@@ -138,6 +138,7 @@ import {
 } from '@/lib/blog-information-claim-ledger';
 import {
   countUnsupportedNumericBlogInformationClaims,
+  extractBlogInformationClaims,
   inspectBlogInformationClaimTypeCompatibility,
 } from '@/lib/blog-information-claim-validator';
 import {
@@ -5096,7 +5097,14 @@ async function generateFromTopic(
       claim.claimText,
       claim.claimType,
     );
-    return { claim, literalSupport, sourceUrls, typeCompatibility };
+    const deterministicClaim = extractBlogInformationClaims(claim.claimText)[0] ?? null;
+    return {
+      claim,
+      literalSupport,
+      sourceUrls,
+      typeCompatibility,
+      deterministicRiskLevel: deterministicClaim?.riskLevel ?? null,
+    };
   });
   const rewriteApprovedClaims = selectDecisionRelevantRewriteClaimsV4({
     primaryQuery: contentBriefV3.primaryQuery,
@@ -5109,7 +5117,15 @@ async function generateFromTopic(
     .map((entry) => ({
       claimText: entry.claim.claimText,
       claimType: entry.claim.claimType,
-      riskLevel: entry.claim.riskLevel,
+      // The deterministic validator is the final authority for risk. A
+      // research row can be stale about risk classification (for example a
+      // reservation/availability sentence persisted as LOW), and sending
+      // that lower label to the model guarantees a ledger downgrade on the
+      // next gate. Promotion is fail-closed; it never lowers risk.
+      riskLevel: entry.deterministicRiskLevel === 'HIGH'
+        || (entry.deterministicRiskLevel === 'MEDIUM' && entry.claim.riskLevel === 'LOW')
+        ? entry.deterministicRiskLevel
+        : entry.claim.riskLevel,
       sourceUrls: entry.sourceUrls,
     })),
   });

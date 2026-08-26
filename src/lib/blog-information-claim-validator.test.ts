@@ -178,6 +178,15 @@ describe('V3 editorial decision guidance classification', () => {
     });
   });
 
+  it('keeps a generic choice comparison with the reader context out of the factual ledger', () => {
+    expect(classifyBlogInformationStatement(
+      '위 선택지의 위치 조건을 본인의 교통수단과 동행자 기준으로 비교하세요.',
+    )).toMatchObject({
+      category: 'navigation_boilerplate',
+      factualClassification: null,
+    });
+  });
+
   it.each([
     '일정을 짤 때는 날짜부터 정하기보다 이동 구간을 먼저 나누고, 예약과 휴식 순서를 그 위에 얹는 편이 무리가 적습니다.',
     '동선은 시작에서 가까운 구간을 처리하고, 중간에 휴식 지점을 두며, 마무리에는 우천이나 휴무로 밀릴 수 있는 대체 일정을 남겨 두는 순서로 잡으면 결정이 단순해집니다.',

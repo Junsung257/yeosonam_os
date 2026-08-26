@@ -126,6 +126,33 @@ describe('explainable blog quality evaluator v3', () => {
     expect(report.dimensions.section_purpose_coverage.passed).toBe(true);
   });
 
+  it('does not apply itinerary blocks to a hotel-area selector that mentions the reader schedule', () => {
+    const report = evaluateBlogQualityV3({
+      ...base,
+      title: '괌에서 일정과 예산에 맞는 숙소 지역은 어디인가요?',
+      body: [
+        '# 괌에서 일정과 예산에 맞는 숙소 지역은 어디인가요?',
+        '숙소 지역은 일정의 중심과 예산 우선순위를 먼저 정한 뒤 후보를 비교하세요.',
+        '## 검증된 선택지만 놓고 비교하기',
+        'Grand Plaza Hotel의 확인된 표시 가격은 1박 최저 USD 77이다.',
+        '## 가족 조건에서 예약 방식 확인하기',
+        '아이 동반 일정이라면 공식 채널에서 예약 조건을 다시 확인하세요.',
+      ].join('\n\n'),
+      destination: '괌',
+      primaryQuery: '괌에서 일정과 예산에 맞는 숙소 지역은 어디인가요?',
+      primaryDecision: '어느 지역이 일정에 맞는가?',
+      archetype: 'neighborhood_selector',
+      intentCompletionScore: 1,
+      decisionCompletion: 1,
+      serpIntentAlignment: 1,
+      sectionPurposeCoverage: 1,
+    });
+
+    expect(report.failureReasons.map((failure) => failure.code))
+      .not.toContain('concrete_itinerary_blocks_missing');
+    expect(report.dimensions.intent_completion.value).toBe(1);
+  });
+
   it('requires every distinct day ordinal for an explicit 3-night 4-day itinerary', () => {
     const evidence = [
       'Marble Mountains에서 Linh Ung Pagoda까지 차량으로 15분 걸립니다.',
