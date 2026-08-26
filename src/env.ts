@@ -59,6 +59,16 @@ export const env = createEnv({
     SENTRY_DSN: z.string().url().optional(),
     OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
     OTEL_SERVICE_NAME: z.string().optional(),
+
+    // ── Typed feature flags (non-authority only) ──
+    // Publication freeze/financial authority switches deliberately stay in
+    // their domain-specific fail-closed config and must not become UI flags.
+    JARVIS_STREAM_ENABLED: z.enum(['true', 'false']).optional(),
+    IR_CANARY_ENABLED: z.enum(['true', 'false']).optional(),
+    IR_CANARY_ROLLOUT_PCT: z.string().optional(),
+    IR_CANARY_MULTI: z.string().optional(),
+    IR_CANARY_MAX_PRODUCTS: z.string().optional(),
+    IR_CANARY_CONCURRENCY: z.string().optional(),
   },
 
   /**
@@ -74,6 +84,8 @@ export const env = createEnv({
     NEXT_PUBLIC_SITE_URL: z.string().url().optional(),
     NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
     NEXT_PUBLIC_VAPID_PUBLIC_KEY: z.string().min(1).optional(),
+    NEXT_PUBLIC_QA_CHAT_V2_ENABLED: z.enum(['true', 'false']).optional(),
+    NEXT_PUBLIC_PARTYTOWN: z.enum(['0', '1']).optional(),
   },
 
   /**
@@ -102,6 +114,12 @@ export const env = createEnv({
     SENTRY_DSN: process.env.SENTRY_DSN,
     OTEL_EXPORTER_OTLP_ENDPOINT: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
     OTEL_SERVICE_NAME: process.env.OTEL_SERVICE_NAME,
+    JARVIS_STREAM_ENABLED: process.env.JARVIS_STREAM_ENABLED,
+    IR_CANARY_ENABLED: process.env.IR_CANARY_ENABLED,
+    IR_CANARY_ROLLOUT_PCT: process.env.IR_CANARY_ROLLOUT_PCT,
+    IR_CANARY_MULTI: process.env.IR_CANARY_MULTI,
+    IR_CANARY_MAX_PRODUCTS: process.env.IR_CANARY_MAX_PRODUCTS,
+    IR_CANARY_CONCURRENCY: process.env.IR_CANARY_CONCURRENCY,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
@@ -110,6 +128,8 @@ export const env = createEnv({
     NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
     NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
     NEXT_PUBLIC_VAPID_PUBLIC_KEY: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+    NEXT_PUBLIC_QA_CHAT_V2_ENABLED: process.env.NEXT_PUBLIC_QA_CHAT_V2_ENABLED,
+    NEXT_PUBLIC_PARTYTOWN: process.env.NEXT_PUBLIC_PARTYTOWN,
   },
 
   /**

@@ -1,6 +1,6 @@
 # AI Ops Current SSOT
 
-Last updated: 2026-08-15
+Last updated: 2026-08-27
 
 This is the current operating contract for AI provider policy, Jarvis, RAG, QA, prompt routing, evals, model fallback, and learning-loop evidence.
 
@@ -28,6 +28,8 @@ Detailed provider policy operations remain in `docs/ai-policy-operations.md`. Ja
 | Jarvis RAG/evals | `src/lib/jarvis/rag/**`, `src/lib/jarvis/eval/**` |
 | AI operations command center | `/api/admin/automation-command-center`, `src/lib/automation-command-center.ts`, `/admin/control-tower` |
 | Prompt behavior | domain-specific prompt files plus active DB prompt versions when used |
+| AI telemetry | `src/lib/telemetry/llm-tracer.ts`, `src/instrumentation.ts`, `src/lib/telemetry/sentry-scrubber.ts` |
+| Non-authority feature flags | `src/env.ts`, `src/lib/feature-flags.ts` |
 | Error memory | `docs/errors/ai-ops.md` |
 
 ## Required Invariants
@@ -40,6 +42,8 @@ Detailed provider policy operations remain in `docs/ai-policy-operations.md`. Ja
 - Human-in-the-loop actions must not be auto-executed when the action mutates money, bookings, customer data, external publishing, or credentials.
 - The AI operations command center is read-only. Its one-click recommendation may only navigate to review/approval surfaces or refresh the snapshot.
 - Prompt fixes for repeated failures must become an eval, regression test, deterministic gate, or error-registry entry.
+- AI spans follow current OpenTelemetry GenAI attribute names and never record raw prompt/response content by default. Sentry events must pass the shared telemetry scrubber before transmission.
+- Generic feature flags may control reversible UI, canary, or availability behavior only. Publication freeze, financial authority, external publishing, credentials, and other safety gates remain domain-owned fail-closed controls.
 
 ## Provider And Prompt Boundary
 

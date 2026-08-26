@@ -74,10 +74,10 @@ function appendNodeOption(current, option) {
 function buildMaxOldSpaceSizeMb() {
   const configured = Number(process.env.NEXT_BUILD_MAX_OLD_SPACE_SIZE);
   if (Number.isFinite(configured) && configured >= 1024) return Math.floor(configured);
-  // Vercel's standard builder has 8 GB total, not 8 GB of V8 heap. Leaving
-  // half for SWC, native modules, file tracing, and child processes prevents
-  // the OS-level SIGKILL seen when a 6 GB heap competes with those processes.
-  if (process.env.VERCEL === '1') return 4096;
+  // Vercel's standard builder has 8 GB total, not 8 GB of V8 heap. Keep the
+  // main heap at 3 GB so SWC, native modules, file tracing, and child processes
+  // retain enough headroom during an uncached full application build.
+  if (process.env.VERCEL === '1') return 3072;
   return 6144;
 }
 

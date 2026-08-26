@@ -9,10 +9,34 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { traceLlmCall, recordLlmUsage } from './llm-tracer';
+import { buildLlmSpanAttributes, traceLlmCall, recordLlmUsage } from './llm-tracer';
 import { trace } from '@opentelemetry/api';
 
 describe('llm-tracer', () => {
+  it('uses current OpenTelemetry GenAI semantic attributes', () => {
+    expect(buildLlmSpanAttributes({
+      task: 'summary',
+      provider: 'claude',
+      model: 'claude-sonnet',
+      phase: 'advisor',
+    })).toEqual({
+      'gen_ai.operation.name': 'chat',
+      'gen_ai.provider.name': 'anthropic',
+      'gen_ai.request.model': 'claude-sonnet',
+      'ysn.llm.task': 'summary',
+      'ysn.llm.phase': 'advisor',
+    });
+  });
+
+  it('maps Gemini to its standardized provider name', () => {
+    expect(buildLlmSpanAttributes({
+      task: 'vision',
+      provider: 'gemini',
+      model: 'gemini-2.5-flash',
+      operation: 'generate_content',
+    })['gen_ai.provider.name']).toBe('gcp.gemini');
+  });
+
   it('traceLlmCall: fn 결과를 그대로 반환', async () => {
     const result = await traceLlmCall(
       { task: 'summary', provider: 'deepseek', model: 'deepseek-v4-flash' },

@@ -1,6 +1,7 @@
 import Script from 'next/script';
+import { env } from '@/env';
 
-const PT_ENABLED = process.env.NEXT_PUBLIC_PARTYTOWN === '1';
+const PT_ENABLED = env.NEXT_PUBLIC_PARTYTOWN === '1';
 
 /**
  * Partytown 런타임 + forward 설정. 루트 레이아웃 최상단(body 직후)에 둔다.
