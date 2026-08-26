@@ -121,6 +121,22 @@ describe('blog DeepSeek orchestrator V4', () => {
     });
   });
 
+  it('approves a complete grounded Pro result after the bounded repair call', () => {
+    expect(decideBlogQualityRouteV4({
+      score: 96,
+      hardBlockers: [],
+      failureReasons: [],
+      completedAttempts: 2,
+      researchValid: true,
+      claimLedgerValid: true,
+      lastStage: 'rewrite_pro_high',
+    })).toMatchObject({
+      route: 'approved_for_slot',
+      nextStage: null,
+      publishable: true,
+    });
+  });
+
   it('does not rewrite around missing, stale, conflicting, or saturated evidence', () => {
     for (const blocker of ['missing_evidence', 'stale_claim', 'claim_conflict_present']) {
       expect(decideBlogQualityRouteV4({

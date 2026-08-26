@@ -483,7 +483,8 @@ describe('blog publisher quota recovery contract', () => {
 
     expect(source).not.toContain("from '@/lib/blog-article-quality-v2-repair'");
     expect(source).not.toContain('repairArticleQualityV2Specifics');
-    expect(source).toContain('V3 records failed dimensions and routes the generated draft to review');
+    expect(source).toContain("from '@/lib/blog-auto-repair-v4'");
+    expect(source).toContain('auto_quality_repair_v4');
   });
 
   it('returns claimed but unattempted rows to the queue for the next recovery run', () => {

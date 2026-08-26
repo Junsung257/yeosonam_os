@@ -53,6 +53,7 @@ import { buildBlogPackageCtaUrl, sanitizeBlogCtaLinks } from '@/lib/blog-cta';
 import { boundBlogWriterOutput } from '@/lib/blog-writer-output-boundary';
 import { repairBlogLiteralNewlines } from '@/lib/blog-literal-newline-repair';
 import { repairBlogPublishFormattingV3 } from '@/lib/blog-safe-publish-repair-v3';
+import { repairBlogQualityV4 } from '@/lib/blog-auto-repair-v4';
 import {
   fetchApprovedReviewSnippets,
   formatReviewQuotesAppendMarkdown,
@@ -281,7 +282,8 @@ const MAX_CANDIDATE_POOL = readBoundedIntEnv('BLOG_PUBLISHER_MAX_CANDIDATE_POOL'
 const MAX_CANDIDATE_ATTEMPTS_PER_RUN = 8;
 const BLOG_DAILY_CANDIDATE_CAP = readBoundedIntEnv('BLOG_DAILY_CANDIDATE_CAP', 30, 1, 30);
 const MAX_EXTRA_CLAIM_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 4, 1, 8);
-// V3 never deterministically invents or appends content to satisfy a gate.
+// V3 never invents factual claims to satisfy a gate; V4 may apply only
+// source-neutral structural repairs after the generated draft is evaluated.
 const BLOG_AUTOPUBLISH_POLICY_V3 = readBlogAutopublishPolicyV3();
 const BLOG_PUBLISHER_AI_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_AI_TIMEOUT_MS', 90_000, 30_000, 180_000);
 const BLOG_PUBLISHER_AI_REWRITE_TIMEOUT_MS = readBoundedIntEnv(
@@ -1267,15 +1269,35 @@ async function applyDeterministicInfoFallback(
 }
 
 async function repairFailedQualityGates(
-  _generated: GeneratedBlog,
-  _item: any,
+  generated: GeneratedBlog,
+  item: any,
   qa: QualityGateReport,
-  _blogType: 'product' | 'info',
-  _primaryKeyword?: string | null,
+  blogType: 'product' | 'info',
+  primaryKeyword?: string | null,
 ): Promise<QualityGateReport> {
-  // V3 records failed dimensions and routes the generated draft to review.
-  // It never invents facts, sections, links, images, or keyword occurrences.
-  return qa;
+  const failedGates = new Set(qa.gates.filter((gate) => !gate.passed).map((gate) => gate.gate));
+  if (!failedGates.has('structure_integrity') && !failedGates.has('article_quality_v2')) return qa;
+
+  const repair = repairBlogQualityV4({
+    markdown: generated.blog_html,
+    blogType,
+    title: generated.seo_title || item.topic,
+    primaryKeyword,
+    destination: item.destination,
+    category: item.category,
+  });
+  if (!repair.changed) return qa;
+
+  generated.blog_html = repair.markdown;
+  generated.generation_meta = {
+    ...(generated.generation_meta || {}),
+    auto_quality_repair_v4: {
+      applied: true,
+      changes: repair.changes,
+      applied_at: new Date().toISOString(),
+    },
+  };
+  return runQualityGates(buildQualityGateInput(generated, item, blogType, primaryKeyword));
 }
 
 async function getActiveBlogStyleGuide(): Promise<SelectedBlogPrompt> {

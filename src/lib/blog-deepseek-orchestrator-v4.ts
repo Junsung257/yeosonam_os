@@ -325,6 +325,7 @@ export function decideBlogQualityRouteV4(
   const groundedProReviewable = completedAttempts >= 2
     && score >= 90
     && hardBlockers.length === 0
+    && failures.length > 0
     && input.lastStage === 'rewrite_pro_high'
     && input.researchValid === true;
 
