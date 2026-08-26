@@ -91,7 +91,10 @@ const COST_ANSWER_RE = /(?:1인|가족\s*총액|총액|추가비|현지\s*추가
 const INSURANCE_ANSWER_RE = /(?:항공\s*지연|병원|의료|수하물|분실|보장|카드\s*보험|부족한\s*보장|여행자\s*보험)/i;
 const VISA_ANSWER_RE = /(?:무비자|체류|여권|서류|입국|비자|공식\s*안내|출발\s*전|신고|심사)/i;
 const TRANSPORT_ANSWER_RE = /(?:공항|시내|택시|픽업|버스|환전|유심|결제|이동\s*시간|동선|도착)/i;
-const RESERVATION_FIRST_RE = /상품|패키지|상담|예약|가격|결제|문의|마감|좌석|가능 여부/i;
+// Keep generic decision language such as "여행 가능 여부" from looking like a
+// booking pitch. Concrete reservation, pricing, and sales language remains a
+// hard customer-first warning for informational articles.
+const WEATHER_RESERVATION_FIRST_RE = /상품|패키지|상담|예약|가격|결제|문의|마감|좌석/i;
 const HARD_CTA_RE =
   /지금\s*(?:바로\s*)?(?:예약|상담|문의|신청)|예약(?:하세요|하기|문의)|카톡\s*(?:상담|문의)|무료\s*상담|좌석\s*마감|서둘러/i;
 const SOFT_CTA_RE = /내 일정 기준|가능 여부 확인|조건 확인|상담에서 확인|출발일.*확인/i;
@@ -253,7 +256,8 @@ function infoFirstParagraphFits(topic: string, firstParagraph: string): boolean 
   if (TRANSPORT_TOPIC_RE.test(topic)) return TRANSPORT_ANSWER_RE.test(firstParagraph);
   if (COST_TOPIC_RE.test(topic)) return COST_ANSWER_RE.test(firstParagraph);
   if (WEATHER_TOPIC_RE.test(topic)) {
-    return WEATHER_ANSWER_RE.test(firstParagraph) && !RESERVATION_FIRST_RE.test(firstParagraph.slice(0, 180));
+    return WEATHER_ANSWER_RE.test(firstParagraph)
+      && !WEATHER_RESERVATION_FIRST_RE.test(firstParagraph.slice(0, 180));
   }
   return /(?:먼저|확인|비교|준비|주의|선택|나누|챙기|줄어듭니다|쉽습니다|안전합니다)/i.test(firstParagraph);
 }

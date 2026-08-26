@@ -129,6 +129,19 @@ describe('inspectPublicBlogCustomerQuality', () => {
     expect(report.issues.map((issue) => issue.code)).toContain('info_answer_mismatch');
   });
 
+  it('does not treat weather decision language as a reservation pitch', () => {
+    const report = inspectPublicBlogCustomerQuality({
+      expectedType: 'info',
+      html: page(`
+        <h1>괌 10월 날씨와 옷차림</h1>
+        <p>10월 괌 여행 가능 여부는 평년 기온과 강수 조건을 먼저 확인하고 출발 전 최신 예보를 다시 점검하세요.</p>
+        <p>낮과 밤의 기온 차이, 비가 오는 날의 이동 계획, 아이의 휴식 시간을 함께 고려하면 옷차림과 일정을 무리 없이 조정할 수 있습니다.</p>
+      `, '괌 10월 날씨와 옷차림'),
+    });
+
+    expect(report.issues.map((issue) => issue.code)).not.toContain('info_answer_mismatch');
+  });
+
   it('passes a concise customer-first informational article', () => {
     const report = inspectPublicBlogCustomerQuality({
       expectedType: 'info',
