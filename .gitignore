@@ -86,6 +86,7 @@ scratch/
 /data/product-registration/customer-text-audit/
 /data/product-registration/mobile-copy-audit/
 /data/product-registration/schedule-hwp-batch/
+/data/product-registration/ocr-shadow/
 /data/product-registration/manual-ticketing-mobile-*/
 /data/product-registration/sjw-*/
 /data/exports/

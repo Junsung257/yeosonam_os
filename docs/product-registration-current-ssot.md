@@ -1015,6 +1015,28 @@ Implementation status:
 - `npm run benchmark:product-ocr` runs the offline benchmark. With no input file, it uses the supplier raw golden fixtures, including the noisy OCR fixture, as the text-upload baseline.
 - `npm run benchmark:product-ocr -- --input=path/to/candidates.json --json` can compare extracted text from Docling, Marker, MinerU, PaddleOCR PP-StructureV3, LayoutParser, Azure Document Intelligence, or any other candidate without adding that tool to production.
 - `npm run benchmark:product-ocr:ci` is strict and fails when any candidate is not final-customer-outcome ready.
+- External-engine candidates fail closed unless they include the exact engine version,
+  source SHA-256, extracted-text SHA-256, source basename, and extraction duration.
+  The benchmark recomputes the text hash, rejects duplicate engine/version/case/source
+  identities, strips local directory names from reports, and publishes per-engine
+  readiness summaries. A versionless or tampered extraction is not benchmark evidence.
+- `npm run prepare:product-ocr-shadow` creates this manifest only under the git-ignored
+  `data/product-registration/ocr-shadow/` directory. It reads the source file and an
+  engine-produced UTF-8 text file, records hashes and provenance, and performs no DB,
+  upload, publication, or customer-surface write.
+
+Example shadow comparison:
+
+```bash
+npm run prepare:product-ocr-shadow -- --engine=docling --engine-version=<PINNED_VERSION> --case-id=<GOLDEN_CASE_ID> --source=<SOURCE_PDF> --text=<DOCLING_TEXT> --duration-ms=<MS>
+npm run prepare:product-ocr-shadow -- --engine=paddleocr-pp-structure-v3 --engine-version=<PINNED_VERSION> --case-id=<GOLDEN_CASE_ID> --source=<SOURCE_PDF> --text=<PADDLE_TEXT> --duration-ms=<MS> --append
+npm run benchmark:product-ocr -- --input=data/product-registration/ocr-shadow/candidates.json --json
+```
+
+Docling and PaddleOCR remain external shadow tools. Pin their own environment and
+model artifacts outside the Next.js application, retain license/model provenance,
+and promote neither engine until the same frozen private corpus proves better
+critical-value exact match and final customer readiness in two consecutive runs.
 
 ## HWP Inbox Automation
 
