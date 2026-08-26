@@ -196,6 +196,13 @@ describe('blog publish quality', () => {
     } as unknown as import('./blog-publish-quality').BlogPublishQualityReport)).toBe(0);
   });
 
+  it('keeps the decision score within the public quality score bounds', () => {
+    expect(getBlogPublishDecisionScore({
+      passed: true,
+      publicCustomerQuality: { passed: true, score: 120, issues: [] },
+    } as unknown as import('./blog-publish-quality').BlogPublishQualityReport)).toBe(100);
+  });
+
   it('records the V4 evaluation beside existing generation metadata without clobbering it', async () => {
     const report = await evaluateBlogPublishQuality({
       blog_html: '# 테스트 글\n\n검증된 본문입니다.',
