@@ -1,4 +1,10 @@
-# 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-08-17 기준)
+# 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-08-24 기준)
+
+## 2026-08-24 어드민 로그인 운영 설정 복구·재발 방지
+
+- 운영 `/login`은 실제 계정·비밀번호 문제가 아니라 Vercel Production의 `NEXT_PUBLIC_SUPABASE_URL` 누락과 공개키 계약 불일치 때문에 Supabase 요청 전 브라우저에서 실패했다. 새 표준인 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`를 클라이언트 번들에서 정적으로 참조하고, legacy anon 키는 전환기 fallback으로만 유지한다.
+- 로그인 전용 Supabase 클라이언트는 세션 영속화·자동 갱신을 끈다. 앱의 기준 세션인 HttpOnly 서버 쿠키와 브라우저 localStorage가 같은 회전형 refresh token을 경쟁하는 경로를 제거했다.
+- Vercel Production 빌드는 `NEXT_PUBLIC_SUPABASE_URL`, 공개키, `ADMIN_EMAILS`를 선검증한다. 누락·비 HTTPS URL이면 `prebuild`에서 실패하며 `npm run verify:admin-auth-env`로 로컬에서도 같은 계약을 강제할 수 있다.
 
 ## 2026-08-17 상품등록 DeepSeek 실제 샘플 재검증 보강
 
@@ -191,6 +197,8 @@
 > **정산센터 V4 안내형 작업대 (2026-08-12):** `/admin/finance`는 기본으로 `오늘 정산하기`를 열어 통장 대사 → 여행 거래 → 위험 예약 → 일반 예약 → 회사 거래 → 월 마감 → 증빙 순서로 안내한다. 기존 전문 탭과 원장·검토·마감 스냅샷은 그대로 유지하며, 회사 거래는 최대 200건까지 stale-check·멱등성·감사로그를 포함해 원자적으로 일괄 확정한다. 세금 할 일은 예약별로 중복 제거하고 정산 화면의 익명 계측에는 금액·고객·거래·메모를 전송하지 않는다. 상세 계약: `docs/settlement-current-ssot.md`.
 >
 > **정산센터 V3 무결성·UX 보강 (2026-08-11):** `/admin/finance`는 Clobe 신한 4128 거래를 분할 원장으로 관리하며 사장님의 예약별 `정산 확인` 없이는 월 확정수익에 포함하지 않는다. Clobe no-op 동기화는 결정을 무효화하지 않고 실제 메모·금액·배분 변경만 재검토를 만든다. 열린 여행 보호금은 예약별 고객 보유금과 남은 원가 중 큰 금액으로 계산해 이중 차감하지 않으며, 동기화는 4시간마다 최대 1,000건을 페이지로 읽고 초과 시 누락 없이 차단한다. 모바일 예약 검토, 예외 예약 식별, 회사 메모 전체 표시, 판매가·원가·검토 세금 할 일도 통합했다. 상세 계약: `docs/settlement-current-ssot.md`.
+
+> **Clobe 현금정산 실사용 흐름 (2026-08-24, 운영 DB 적용·코드 배포 후보):** OpenLife 신한 4128 계좌는 수동 동기화를 유지하며, `YYMMDD_고객_랜드사[_목적]` 메모가 있는 여행 거래만 예약과 연결한다. 최종정산 전 메모 수정은 같은 provider 거래·예약에 반영하고, 최종정산 후 변경은 자동수정하지 않고 검토로 보낸다. 여러 입금자와 여러 입출금은 메모 key별 한 예약으로 합산하고, 수익은 상품가가 아닌 실제 입금−실제 출금이다. 600,500원 단일 출금 보정, Clobe cash finalize, 복수 예약 payout/refund 원자 배정, 직접 allocation RPC 차단, 명령 테이블 RLS·인덱스 보강은 운영 DB에 적용됐다. PR #1144의 단순화 UI는 정식 코드 배포 후 이 DB command를 사용한다. 상세: `docs/settlement-current-ssot.md`, `docs/audits/2026-08-24-admin-dashboard-deep-ux-review/README.md`.
 
 > **AI 운영실 V1 (2026-07-28, 로컬 코드):** 기존 `agent_tasks`, `agent_approvals`, `agent_incidents`, `agent_trace_spans`를 `correlation_id` 작업실로 묶는 읽기 전용 통합 스냅샷과 `/admin/agent-mas` 운영 화면을 추가했다. 24시간 미갱신 작업과 7일 이상 지난 무기한 승인을 정체·기한 경과로 분리하며, 버전된 durable resume 상태가 연결되기 전까지 승인 큐는 관찰 전용이다. 실행은 백엔드 durable workflow, 스레드는 증거 타임라인, 외부·금전·고객 변경은 승인 경계라는 하이브리드 모델이며 자동 멀티에이전트 실행은 아직 열지 않았다. 상세 SSOT: `docs/agent-office-current-ssot.md`.
 

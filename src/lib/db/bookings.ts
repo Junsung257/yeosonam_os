@@ -4,7 +4,20 @@
  * bookings 테이블 CRUD + void 연쇄 처리.
  * supabase.ts God Object 에서 분리한 모듈.
  */
-import { supabaseAdmin } from '@/lib/supabase';
+import { getSupabaseAdmin, supabaseAdmin } from '@/lib/supabase';
+
+async function assertNotClobeSettlementBooking(bookingId: string): Promise<void> {
+  const { data, error } = await supabaseAdmin
+    .from('booking_settlement_keys')
+    .select('id')
+    .eq('booking_id', bookingId)
+    .eq('status', 'active')
+    .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking,source.eq.clobe_memo_approved_booking')
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (data) throw new Error('CLOBE_MEMO_SOURCE_REQUIRED: Clobe 정산예약은 Clobe 메모 기준으로만 수정할 수 있습니다.');
+}
 
 // ── SELECT 상수 ──────────────────────────────────────────────
 
@@ -85,6 +98,7 @@ export async function getBookingById(id: string) {
 // ── 생성 ─────────────────────────────────────────────────────
 
 export async function createBooking(data: {
+  tenantId?: string | null;
   packageId?: string; packageTitle?: string; leadCustomerId: string;
   adultCount: number; childCount: number; adultCost: number; adultPrice: number;
   childCost: number; childPrice: number; infantCount?: number; infantCost?: number; fuelSurcharge: number;
@@ -147,6 +161,7 @@ export async function createBooking(data: {
     }
 
     const { data: booking, error } = await supabaseAdmin.from('bookings').insert([{
+      ...(data.tenantId ? { tenant_id: data.tenantId } : {}),
       package_id: data.packageId || null,
       package_title: data.packageTitle || '미정',
       lead_customer_id: data.leadCustomerId,
@@ -275,6 +290,7 @@ export async function createBooking(data: {
 
 export async function updateBookingStatus(id: string, status: string) {
   try {
+    await assertNotClobeSettlementBooking(id);
     const payload: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
     if (status === 'completed') payload.payment_date = new Date().toISOString();
     const { data, error } = await supabaseAdmin
@@ -306,6 +322,7 @@ export async function updateBooking(id: string, data: {
   passengerIds?: string[];
 }) {
   try {
+    await assertNotClobeSettlementBooking(id);
     const payload: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (data.packageId !== undefined) payload.package_id = data.packageId || null;
     if (data.packageTitle !== undefined) payload.package_title = data.packageTitle;
@@ -360,7 +377,7 @@ export async function updateBooking(id: string, data: {
 // ── Void 연쇄 처리 ──────────────────────────────────────────
 
 export async function voidBooking(bookingId: string, reason?: string): Promise<void> {
-  const supabase = (await import('@/lib/supabase')).getSupabase();
+  const supabase = getSupabaseAdmin();
   if (!supabase) return;
 
   const { data: booking } = await supabase

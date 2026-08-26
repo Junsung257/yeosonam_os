@@ -1,8 +1,21 @@
 # Common Errors
 
-Last updated: 2026-06-26
+Last updated: 2026-08-24
 
 문서 운영, lint, 프레임워크 업그레이드, 공통 UI/렌더링, 운영 절차 반복 오류 상세.
+
+## ERR-admin-login-public-env-drift@2026-08-24
+
+- **Detected**: 2026-08-24
+- **Domain**: common auth / deployment configuration
+- **Symptom**: Production `/login` showed only `로그인 중 오류가 발생했습니다.` for both a valid admin account and fake credentials. The browser sent no request to Supabase Auth.
+- **Root cause**: Vercel Production had `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` but lacked `NEXT_PUBLIC_SUPABASE_URL`. The client code statically referenced only the legacy anon key and attempted to read the new publishable key through dynamic `process.env[key]`, which Next.js cannot inline into a browser bundle. The production build had no auth-env gate. Separately, the general browser client persisted the temporary login session and could compete with the HttpOnly server cookie for a rotating refresh token.
+- **Fix**: Statically reference the current publishable key, restore the Production URL, use a non-persistent/non-refreshing auth-only client, and show a configuration-specific non-secret error. Add a production `prebuild` gate for the URL, public key, and `ADMIN_EMAILS`.
+- **Verification rule**: `npm run verify:admin-auth-env`, focused auth/middleware tests, production build, then browser login and `/api/admin/session` verification.
+- **Status**: FIXED
+- **Prevention**: Never rely on dynamic secret lookup for `NEXT_PUBLIC_*`. Any public auth-env change requires a new Production deployment. A missing required login variable must block the build rather than degrade to a generic runtime error.
+
+---
 
 ## ERR-structured-data-product-description@2026-06-26
 

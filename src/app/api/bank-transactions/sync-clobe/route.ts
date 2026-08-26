@@ -40,21 +40,23 @@ function defaultDateWindow() {
 
 async function resolveTenantId(rawTenantId: unknown): Promise<string | null> {
   if (typeof rawTenantId === 'string' && UUID_RE.test(rawTenantId)) return rawTenantId;
-  const { data: clobeConnections } = await supabaseAdmin
+  const { data: clobeConnections, error: clobeConnectionError } = await supabaseAdmin
     .from('tenant_api_tokens')
     .select('tenant_id')
     .eq('provider', 'clobe')
     .eq('is_active', true)
     .order('updated_at', { ascending: false })
     .limit(1);
+  if (clobeConnectionError) throw clobeConnectionError;
   if (clobeConnections?.[0]?.tenant_id) return clobeConnections[0].tenant_id;
 
-  const { data } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from('tenants')
     .select('id')
     .eq('status', 'active')
     .order('created_at', { ascending: true })
     .limit(1);
+  if (error) throw error;
   return data?.[0]?.id ?? null;
 }
 
@@ -63,15 +65,42 @@ async function resolveAccountNumber(rawAccountNumber: unknown): Promise<string |
     return rawAccountNumber.trim();
   }
 
-  const { data } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from('bank_transactions')
     .select('source_metadata')
     .eq('source', 'clobe_mcp')
     .neq('status', 'excluded')
     .order('received_at', { ascending: false })
     .limit(500);
+  if (error) throw error;
   return chooseClobeAccountNumberFromMetadataRows(data ?? [])
     ?? YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER;
+}
+
+async function resolveSettlementTenantScope(
+  accountNumber: string | undefined,
+  fallbackTenantId: string | null,
+): Promise<string | null> {
+  const normalizedAccount = (accountNumber ?? YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER).replace(/\D/g, '');
+  const rows: Array<{ tenant_id?: string | null; account_number?: string | null }> = [];
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabaseAdmin
+      .from('bank_transactions')
+      .select('tenant_id, account_number')
+      .eq('external_provider', 'clobe')
+      .neq('status', 'excluded')
+      .range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    rows.push(...(data ?? []).filter(row => (row.account_number ?? '').replace(/\D/g, '') === normalizedAccount));
+    if ((data ?? []).length < pageSize) break;
+  }
+  const scopes = new Set(rows.map(row => row.tenant_id ?? 'platform'));
+  if (scopes.size > 1) {
+    throw new Error('Clobe account has more than one tenant scope; reconciliation is blocked');
+  }
+  if (rows.length > 0) return rows[0]?.tenant_id ?? null;
+  return fallbackTenantId;
 }
 
 export async function POST(request: NextRequest) {
@@ -82,6 +111,7 @@ export async function POST(request: NextRequest) {
   const authError = await requireAdminRequest(request);
   if (authError) return authError;
 
+  let activeRun: { runId: string; leaseToken: string } | null = null;
   try {
     const syncStartedAt = new Date().toISOString();
     const body = await request.json().catch(() => ({}));
@@ -93,6 +123,29 @@ export async function POST(request: NextRequest) {
     let accountNumber = await resolveAccountNumber(body.accountNumber);
     const limit = Number.isFinite(Number(body.limit)) ? Math.max(1, Math.min(1000, Number(body.limit))) : 1000;
     const tenantId = await resolveTenantId(body.tenant_id ?? body.tenantId);
+    const settlementTenantId = await resolveSettlementTenantScope(accountNumber, tenantId);
+    const triggerSource = typeof body.triggerSource === 'string' && body.triggerSource.trim()
+      ? body.triggerSource.trim()
+      : 'manual';
+
+    const ensureSyncLease = async (): Promise<{ runId: string; leaseToken: string } | null> => {
+      if (preview || diagnosticsOnly || activeRun) return activeRun;
+      const { data, error } = await supabaseAdmin.rpc('begin_clobe_sync_run', {
+        p_tenant_id: settlementTenantId,
+        p_account_number: accountNumber ?? YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER,
+        p_range_from: from,
+        p_range_to: to,
+        p_trigger_source: triggerSource,
+        p_lease_seconds: 1800,
+      });
+      if (error) throw error;
+      const lease = data as { run_id?: unknown; lease_token?: unknown } | null;
+      if (typeof lease?.run_id !== 'string' || typeof lease.lease_token !== 'string') {
+        throw new Error('Clobe sync lease response is invalid');
+      }
+      activeRun = { runId: lease.run_id, leaseToken: lease.lease_token };
+      return activeRun;
+    };
 
     let rawPayload: unknown = body.transactions;
     let mcp: {
@@ -147,6 +200,7 @@ export async function POST(request: NextRequest) {
       if (!accountNumber && typeof token.metadata?.bankAccountNumber === 'string') {
         accountNumber = token.metadata.bankAccountNumber.trim() || undefined;
       }
+      activeRun = await ensureSyncLease();
       const fetched = await fetchClobeMcpBankTransactions({
         from,
         to,
@@ -168,6 +222,17 @@ export async function POST(request: NextRequest) {
         tools: fetched.tools,
       };
       if (fetched.truncated) {
+        if (activeRun) {
+          await supabaseAdmin.rpc('complete_clobe_sync_run', {
+            p_run_id: activeRun.runId,
+            p_lease_token: activeRun.leaseToken,
+            p_status: 'failed',
+            p_source_count: fetched.transactions.length,
+            p_error_count: 1,
+            p_details: { phase: 'remote_read', failure: 'window_too_dense', next_cursor: fetched.nextCursor },
+          });
+          activeRun = null;
+        }
         return NextResponse.json({
           success: false,
           code: 'clobe_sync_window_too_dense',
@@ -177,14 +242,54 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    activeRun = await ensureSyncLease();
+
     const fetched = Array.isArray(rawPayload) ? rawPayload.length : 0;
+    if (activeRun) {
+      const { error: checkpointError } = await supabaseAdmin.rpc('checkpoint_clobe_sync_run', {
+        p_run_id: activeRun.runId,
+        p_lease_token: activeRun.leaseToken,
+        p_cursor: mcp.nextCursor,
+        p_page_count: Math.ceil(fetched / 100),
+        p_details: { phase: 'reconciliation', fetched, truncated: mcp.truncated },
+        p_lease_seconds: 1800,
+      });
+      if (checkpointError) throw checkpointError;
+    }
     const normalized = normalizeClobeBankTransactions(rawPayload);
+    const expectedAccount = (accountNumber ?? YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER).replace(/\D/g, '');
+    const accountScopeViolations = normalized.rows.filter(row => (
+      !row.accountNumber
+      || row.accountNumber.replace(/\D/g, '') !== expectedAccount
+    ));
+    if (accountScopeViolations.length > 0) {
+      throw new Error(
+        `Clobe sync account mismatch: ${accountScopeViolations.length} row(s) do not belong to ${expectedAccount}`,
+      );
+    }
+    const memoEligible = normalized.rows.filter(row => row.memo.trim().length > 0).length;
     const rawSampleKeys = normalized.rows.length === 0 ? getRawSampleKeys(rawPayload) : [];
     const result = await processBankTransactionImportRows(normalized.rows, {
       source: 'clobe_mcp',
       preview: preview || diagnosticsOnly,
       actor: 'clobe_sync',
+      // A canonical Clobe travel memo creates one settlement booking keyed by
+      // the normalized memo. Similar existing normal bookings remain review-
+      // only inside resolveSettlementMemoBooking.
       createMissingBookings: !preview && !diagnosticsOnly,
+      tenantId: settlementTenantId,
+      onProgress: async (processed, total) => {
+        if (!activeRun) return;
+        const { error: heartbeatError } = await supabaseAdmin.rpc('checkpoint_clobe_sync_run', {
+          p_run_id: activeRun.runId,
+          p_lease_token: activeRun.leaseToken,
+          p_cursor: mcp.nextCursor,
+          p_page_count: Math.ceil(fetched / 100),
+          p_details: { phase: 'reconciliation', processed, total },
+          p_lease_seconds: 1800,
+        });
+        if (heartbeatError) throw heartbeatError;
+      },
     });
     console.info('[clobe-bank-sync]', {
       from,
@@ -194,6 +299,7 @@ export async function POST(request: NextRequest) {
       diagnosticsOnly,
       fetched,
       normalized: normalized.rows.length,
+      memoEligible,
       normalizeErrors: normalized.errors.length,
       inserted: result.inserted,
       matched: result.matched,
@@ -212,6 +318,7 @@ export async function POST(request: NextRequest) {
       })),
     });
 
+    let finalSyncStatus: 'success' | 'partial' = 'success';
     let postCloseChanges = { checked: 0, changed: 0 };
     let classificationRefresh = {
       processed: 0,
@@ -253,26 +360,25 @@ export async function POST(request: NextRequest) {
         console.error('[clobe-bank-sync] monthly exception sync failed:', monthlyExceptionError);
       }
 
-      const completedAt = new Date().toISOString();
       const supplementalErrorCount = Number(Boolean(classificationRefreshError))
         + Number(Boolean(postCloseDetectionError))
         + Number(Boolean(monthlyExceptionError));
       const syncStatus = result.errors > 0 || normalized.errors.length > 0 || supplementalErrorCount > 0
         ? 'partial'
         : 'success';
-      const { error: syncRunError } = await supabaseAdmin.from('finance_sync_runs').insert({
-        provider: 'clobe',
-        account_number: accountNumber ?? YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER,
-        range_from: from,
-        range_to: to,
-        source_count: fetched,
-        recognized_count: normalized.rows.length,
-        inserted_count: result.inserted,
-        matched_count: result.matched,
-        duplicate_count: result.duplicates,
-        error_count: result.errors + normalized.errors.length + supplementalErrorCount,
-        status: syncStatus,
-        details: {
+      finalSyncStatus = syncStatus;
+      if (!activeRun) throw new Error('Clobe sync run lease was lost before completion');
+      const { error: syncRunError } = await supabaseAdmin.rpc('complete_clobe_sync_run', {
+        p_run_id: activeRun.runId,
+        p_lease_token: activeRun.leaseToken,
+        p_status: syncStatus,
+        p_source_count: fetched,
+        p_recognized_count: normalized.rows.length,
+        p_inserted_count: result.inserted,
+        p_matched_count: result.matched,
+        p_duplicate_count: result.duplicates,
+        p_error_count: result.errors + normalized.errors.length + supplementalErrorCount,
+        p_details: {
           tool_name: mcp.toolName,
           merged: result.merged,
           skipped: result.skipped,
@@ -284,15 +390,17 @@ export async function POST(request: NextRequest) {
           post_close_detection_error: postCloseDetectionError,
           monthly_exceptions: monthlyExceptions,
           monthly_exception_error: monthlyExceptionError,
+          request_started_at: syncStartedAt,
         },
-        started_at: syncStartedAt,
-        completed_at: completedAt,
       });
-      if (syncRunError) console.error('[clobe-bank-sync] sync run ledger failed:', syncRunError.message);
+      if (syncRunError) throw syncRunError;
+      activeRun = null;
     }
 
     return NextResponse.json({
-      success: true,
+      success: finalSyncStatus === 'success',
+      partial: finalSyncStatus === 'partial',
+      syncStatus: finalSyncStatus,
       source: 'clobe_mcp',
       preview,
       diagnosticsOnly,
@@ -305,18 +413,30 @@ export async function POST(request: NextRequest) {
       fetched,
       rawSampleKeys,
       normalized: normalized.rows.length,
+      memoEligible,
       normalizeErrors: normalized.errors,
       postCloseChanges,
       classificationRefresh,
       monthlyExceptions,
       ...result,
-    });
+    }, { status: finalSyncStatus === 'partial' ? 207 : 200 });
   } catch (error) {
+    if (activeRun) {
+      const failureMessage = error instanceof Error ? error.message : 'Clobe sync failed';
+      const { error: completionError } = await supabaseAdmin.rpc('complete_clobe_sync_run', {
+        p_run_id: activeRun.runId,
+        p_lease_token: activeRun.leaseToken,
+        p_status: 'failed',
+        p_error_count: 1,
+        p_details: { phase: 'failed', error: failureMessage.slice(0, 500) },
+      });
+      if (completionError) console.error('[clobe-bank-sync] failed run completion error:', completionError.message);
+    }
     Sentry.captureException(error, { tags: { area: 'clobe-bank-sync' } });
     const message = error instanceof Error ? error.message : 'Clobe sync failed';
-    const status = /Clobe OAuth connection|No Clobe MCP .*transaction tool|401|403/i.test(message)
-      ? 503
-      : 500;
+    const status = /already running/i.test(message)
+      ? 409
+      : /Clobe OAuth connection|No Clobe MCP .*transaction tool|401|403/i.test(message) ? 503 : 500;
     return NextResponse.json({ success: false, error: message }, { status });
   }
 }

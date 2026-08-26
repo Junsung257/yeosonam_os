@@ -31,6 +31,7 @@ export interface BookingDetail {
   total_price?: number;
   paid_amount?: number;
   total_paid_out?: number;
+  land_operator?: string;
   deposit_amount?: number;
   refund_amount?: number;
   penalty_fee?: number;
@@ -57,6 +58,24 @@ export interface BookingDetail {
   // 승객 목록
   passengers?: { customer_id: string; name: string; phone?: string; passport_no?: string; birth_date?: string; passenger_type?: string }[];
   deposit_notice_blocked?: boolean;
+  settlement_confirmed_at?: string | null;
+  settlement_confirmed_by?: string | null;
+  clobe_settlement_booking?: boolean;
+}
+
+interface ClobeBankTransaction {
+  id: string;
+  transaction_type: '입금' | '출금';
+  counterparty_name?: string | null;
+  amount: number;
+  received_at: string;
+  match_status: string;
+  memo?: string | null;
+  is_refund?: boolean;
+  booking_allocation?: {
+    allocated_amount: number;
+    allocation_type: 'deposit' | 'refund' | 'payout';
+  } | null;
 }
 
 // ─── 상수 ──────────────────────────────────────────────────────────────────
@@ -172,6 +191,9 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
   const [memo, setMemo]       = useState('');
   const [savingMemo, setSavingMemo] = useState(false);
   const [toast, setToast]     = useState<string | null>(null);
+  const [clobeTransactions, setClobeTransactions] = useState<ClobeBankTransaction[]>([]);
+  const [clobeTransactionsLoading, setClobeTransactionsLoading] = useState(false);
+  const [settlementConfirming, setSettlementConfirming] = useState(false);
 
   // 일행 추가
   const [showAddPassenger, setShowAddPassenger] = useState(false);
@@ -216,6 +238,18 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
     }
   }, [id]);
 
+  const fetchClobeTransactions = useCallback(async () => {
+    setClobeTransactionsLoading(true);
+    try {
+      const res = await fetch(`/api/bank-transactions?booking_id=${id}&status=all`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setClobeTransactions(Array.isArray(data.transactions) ? data.transactions : []);
+    } finally {
+      setClobeTransactionsLoading(false);
+    }
+  }, [id]);
+
   useEffect(() => {
     if (_skipInitialFetch.current) {
       _skipInitialFetch.current = false;
@@ -224,6 +258,10 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
     setLoading(true);
     Promise.all([fetchBooking(), fetchLogs()]).finally(() => setLoading(false));
   }, [fetchBooking, fetchLogs]);
+
+  useEffect(() => {
+    if (booking?.clobe_settlement_booking) void fetchClobeTransactions();
+  }, [booking?.clobe_settlement_booking, fetchClobeTransactions]);
 
   // 타임라인 자동 스크롤
   useEffect(() => {
@@ -420,6 +458,45 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
     }
   };
 
+  const handleClobeSettlement = async (confirm: boolean) => {
+    if (!booking?.clobe_settlement_booking) return;
+    if (!confirm) {
+      const approved = window.confirm(
+        '최종정산 잠금을 해제하시겠습니까?\n\n해제 후 Clobe 메모 수정과 새 입출금이 다시 반영될 수 있습니다. 기존 원장과 감사 이력은 삭제되지 않습니다.',
+      );
+      if (!approved) return;
+    }
+
+    setSettlementConfirming(true);
+    try {
+      const income = Number(booking.paid_amount ?? 0);
+      const expense = Number(booking.total_paid_out ?? 0);
+      const res = await fetch(`/api/bookings/${id}/settlement/finalize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          confirm,
+          settlement_mode: 'cash',
+          reason: confirm
+            ? `Clobe 기준 최종정산: 입금 ${income.toLocaleString('ko-KR')}원 - 출금 ${expense.toLocaleString('ko-KR')}원`
+            : '운영자 요청: Clobe 최종정산 잠금 해제',
+          idempotency_key: `clobe-settlement:${confirm ? 'finalize' : 'unfinalize'}:${id}:${crypto.randomUUID()}`,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(apiErrorMessage(data, '최종정산 처리에 실패했습니다.'));
+        return;
+      }
+      await Promise.all([fetchBooking(), fetchClobeTransactions()]);
+      showToast(confirm ? '최종정산이 확정되었습니다.' : '최종정산 잠금이 해제되었습니다.');
+    } catch {
+      showToast('네트워크 오류로 최종정산을 처리하지 못했습니다.');
+    } finally {
+      setSettlementConfirming(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto p-6 space-y-4">
@@ -457,6 +534,190 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
   const depositLeft = (booking.deposit_amount ?? 0) > 0
     ? (booking.deposit_amount ?? 0) - Math.min(booking.paid_amount ?? 0, booking.deposit_amount ?? 0)
     : null;
+
+  if (booking.clobe_settlement_booking) {
+    const income = Number(booking.paid_amount ?? 0);
+    const expense = Number(booking.total_paid_out ?? 0);
+    const profit = income - expense;
+    const isFinalized = Boolean(booking.settlement_confirmed_at);
+
+    return (
+      <div className="mx-auto max-w-5xl space-y-5 p-4 sm:p-6">
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <Link href="/admin/bookings" className="font-medium text-admin-muted hover:text-admin-text-2">
+                ← 예약 목록
+              </Link>
+              <span className="text-admin-muted-2">/</span>
+              <span className="font-mono text-admin-muted">{booking.booking_no || id.slice(0, 8)}</span>
+              <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">Clobe 메모 예약</span>
+              <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                isFinalized ? 'bg-slate-900 text-white' : 'bg-amber-50 text-amber-800'
+              }`}>
+                {isFinalized ? '최종정산 완료' : '정산 전'}
+              </span>
+            </div>
+            <h1 className="mt-3 text-2xl font-black tracking-tight text-admin-text">
+              {booking.departure_date ?? '출발일 미정'} · {booking.customers?.name ?? '고객 미정'} · {booking.land_operator ?? '랜드사 미정'}
+            </h1>
+            <p className="mt-1 text-sm text-admin-muted">
+              이 예약은 상품가·미수금이 아니라 Clobe에 실제 기록된 입금과 출금으로만 정산합니다.
+            </p>
+          </div>
+          <Link
+            href="/admin/payments"
+            className="inline-flex min-h-11 items-center justify-center rounded-lg border border-admin-border-mid bg-white px-4 text-sm font-bold text-admin-text-2 hover:bg-admin-bg"
+          >
+            Clobe 거래 검토
+          </Link>
+        </header>
+
+        <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 text-white shadow-admin-sm">
+          <div className="grid gap-px bg-slate-800 sm:grid-cols-3">
+            <div className="bg-slate-950 p-5 sm:p-6">
+              <p className="text-xs font-bold uppercase tracking-wider text-emerald-300">입금 합계</p>
+              <p className="mt-2 text-2xl font-black tabular-nums">{income.toLocaleString('ko-KR')}원</p>
+              <p className="mt-1 text-xs text-slate-400">모든 입금자 합산</p>
+            </div>
+            <div className="bg-slate-950 p-5 sm:p-6">
+              <p className="text-xs font-bold uppercase tracking-wider text-orange-300">출금 합계</p>
+              <p className="mt-2 text-2xl font-black tabular-nums">{expense.toLocaleString('ko-KR')}원</p>
+              <p className="mt-1 text-xs text-slate-400">랜드사 지급·고객 환불 합산</p>
+            </div>
+            <div className="bg-slate-950 p-5 sm:p-6">
+              <p className="text-xs font-bold uppercase tracking-wider text-blue-300">최종수익</p>
+              <p className={`mt-2 text-3xl font-black tabular-nums ${profit < 0 ? 'text-red-300' : 'text-white'}`}>
+                {profit.toLocaleString('ko-KR')}원
+              </p>
+              <p className="mt-1 text-xs text-slate-400">입금 {income.toLocaleString('ko-KR')} − 출금 {expense.toLocaleString('ko-KR')}</p>
+            </div>
+          </div>
+        </section>
+
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <section className="rounded-2xl border border-admin-border-mid bg-white p-5 shadow-admin-xs">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-base font-black text-admin-text">연결된 입출금</h2>
+                <p className="mt-1 text-xs text-admin-muted">입금자명과 지급·환불 대상을 원거래별로 보관합니다.</p>
+              </div>
+              <span className="rounded-full bg-admin-bg px-2.5 py-1 text-xs font-bold text-admin-muted">
+                {clobeTransactions.length}건
+              </span>
+            </div>
+
+            {clobeTransactionsLoading ? (
+              <div className="mt-4 space-y-2" aria-label="입출금 내역 불러오는 중">
+                {[0, 1, 2].map(item => <div key={item} className="h-16 animate-pulse rounded-xl bg-admin-surface-2" />)}
+              </div>
+            ) : clobeTransactions.length === 0 ? (
+              <div className="mt-4 rounded-xl border border-dashed border-admin-border-mid bg-admin-bg px-4 py-8 text-center text-sm text-admin-muted">
+                연결된 입출금이 없습니다. 정산센터에서 Clobe 거래를 검토하세요.
+              </div>
+            ) : (
+              <div className="mt-4 divide-y divide-admin-border">
+                {clobeTransactions.map(transaction => {
+                  const allocation = transaction.booking_allocation;
+                  const allocatedAmount = Math.abs(Number(allocation?.allocated_amount ?? transaction.amount));
+                  const isIncome = transaction.transaction_type === '입금';
+                  const label = allocation?.allocation_type === 'refund'
+                    ? '고객 환불'
+                    : allocation?.allocation_type === 'payout'
+                      ? '랜드사 지급'
+                      : '고객 입금';
+                  return (
+                    <article key={`${transaction.id}:${allocation?.allocation_type ?? transaction.transaction_type}`} className="flex flex-col gap-2 py-4 first:pt-1 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`rounded-md px-2 py-1 text-xs font-bold ${
+                            isIncome ? 'bg-emerald-50 text-emerald-700' : 'bg-orange-50 text-orange-700'
+                          }`}>
+                            {label}
+                          </span>
+                          <span className="font-bold text-admin-text-2">{transaction.counterparty_name || '거래처명 없음'}</span>
+                        </div>
+                        <p className="mt-1 break-words text-xs text-admin-muted">
+                          {fmtMonthDayTime(transaction.received_at)}
+                          {transaction.memo ? ` · ${transaction.memo}` : ''}
+                          {Math.abs(Number(transaction.amount)) !== allocatedAmount
+                            ? ` · 원거래 ${Math.abs(Number(transaction.amount)).toLocaleString('ko-KR')}원 중 배정`
+                            : ''}
+                        </p>
+                      </div>
+                      <p className={`shrink-0 text-lg font-black tabular-nums ${isIncome ? 'text-emerald-700' : 'text-orange-700'}`}>
+                        {isIncome ? '+' : '−'}{allocatedAmount.toLocaleString('ko-KR')}원
+                      </p>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <aside className="space-y-4">
+            <section className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
+              <h2 className="text-sm font-black text-blue-950">수정 기준</h2>
+              <p className="mt-2 text-sm leading-6 text-blue-900">
+                {isFinalized
+                  ? '최종정산이 잠겨 있습니다. 이후 Clobe 메모가 바뀌면 자동 수정하지 않고 검토 필요로 알립니다.'
+                  : 'Clobe에서 메모를 고친 뒤 다시 동기화하면 같은 거래와 예약을 수정합니다. 중복 예약을 새로 만들지 않습니다.'}
+              </p>
+              <dl className="mt-4 space-y-2 border-t border-blue-200 pt-4 text-xs">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-blue-700">출발일</dt>
+                  <dd className="font-bold text-blue-950">{booking.departure_date ?? '미정'}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-blue-700">고객</dt>
+                  <dd className="font-bold text-blue-950">{booking.customers?.name ?? '미정'}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-blue-700">랜드사</dt>
+                  <dd className="font-bold text-blue-950">{booking.land_operator ?? '미정'}</dd>
+                </div>
+              </dl>
+            </section>
+
+            <section className="rounded-2xl border border-admin-border-mid bg-white p-5 shadow-admin-xs">
+              <h2 className="text-sm font-black text-admin-text">최종정산</h2>
+              <p className="mt-2 text-xs leading-5 text-admin-muted">
+                입금과 출금을 확인한 뒤 확정하면 현재 수익을 잠급니다. 확정 이후 메모 변경은 자동 반영되지 않습니다.
+              </p>
+              {isFinalized && booking.settlement_confirmed_at && (
+                <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700">
+                  확정 {fmtMonthDayTime(booking.settlement_confirmed_at)}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => handleClobeSettlement(!isFinalized)}
+                disabled={settlementConfirming}
+                aria-busy={settlementConfirming}
+                className={`mt-4 min-h-12 w-full rounded-xl px-4 text-sm font-black transition disabled:cursor-wait disabled:opacity-60 ${
+                  isFinalized
+                    ? 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                    : 'bg-slate-950 text-white hover:bg-slate-800'
+                }`}
+              >
+                {settlementConfirming
+                  ? '처리 중...'
+                  : isFinalized
+                    ? '최종정산 잠금 해제'
+                    : `최종정산 확정 · 수익 ${profit.toLocaleString('ko-KR')}원`}
+              </button>
+            </section>
+          </aside>
+        </div>
+
+        {toast && (
+          <div role="status" aria-live="polite" className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-admin-md bg-slate-900 px-5 py-3 text-sm text-white shadow-admin-md">
+            {toast}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-5">

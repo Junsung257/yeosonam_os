@@ -33,8 +33,8 @@ function LoginFormInner() {
     setError('');
 
     try {
-      const { getSupabaseClient } = await import('@/lib/supabase');
-      const supabase = getSupabaseClient();
+      const { getSupabaseAuthClient } = await import('@/lib/supabase');
+      const supabase = getSupabaseAuthClient();
       const { data, error: authError } = await withTimeout(
         supabase.auth.signInWithPassword({ email, password }),
         LOGIN_TIMEOUT_MS,
@@ -83,7 +83,9 @@ function LoginFormInner() {
       const redirect = getSafeRedirect(searchParams?.get('redirect') ?? null);
       window.location.href = redirect;
     } catch (err) {
-      if (err instanceof PromiseTimeoutError) {
+      if (err instanceof Error && err.message === 'SUPABASE_PUBLIC_CONFIG_MISSING') {
+        setError('로그인 서버 설정이 누락되었습니다. 관리자에게 문의해 주세요.');
+      } else if (err instanceof PromiseTimeoutError) {
         setError('로그인 서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.');
       } else {
         setError('로그인 중 오류가 발생했습니다.');

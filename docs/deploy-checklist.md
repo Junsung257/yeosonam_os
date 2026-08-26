@@ -124,10 +124,12 @@ Detailed runbook: [`docs/supabase-auth-open-gate.md`](./supabase-auth-open-gate.
 
 ### 필수 확인
 - [ ] `NEXT_PUBLIC_SUPABASE_URL`
-- [ ] `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- [ ] `SUPABASE_SERVICE_ROLE_KEY`
+- [ ] `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (legacy 배포만 `NEXT_PUBLIC_SUPABASE_ANON_KEY` fallback)
+- [ ] `SUPABASE_SECRET_KEY` (legacy 배포만 `SUPABASE_SERVICE_ROLE_KEY` fallback)
+- [ ] `ADMIN_EMAILS`
 - [ ] `NEXT_PUBLIC_BASE_URL=https://yeosonam.com` (localhost 아님!)
 - [ ] `GOOGLE_AI_API_KEY` (Gemini 2.5 Flash)
+- [ ] `npm run verify:admin-auth-env` 통과 (`NEXT_PUBLIC_*` 변경 후 새 Production 배포 필수)
 
 ### 선택 (없으면 해당 기능만 비활성)
 - [ ] `SOLAPI_*` (알림톡 발송 없으면 DB 로그만)

@@ -5,6 +5,7 @@ import {
   calculateBankAccountReality,
   calculateBankProfitErp,
   calculateBookingCashPositions,
+  normalizeClobeOperationalScopes,
   YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER,
   type BookingCashAllocationRow,
   type BookingCashBookingRow,
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
     || YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER;
   let query = supabaseAdmin
     .from('bank_transactions')
-    .select('id, transaction_type, amount, received_at, settlement_scope, account_number, balance_after, memo, counterparty_name, provider_category, provider_is_unclassified')
+    .select('id, transaction_type, amount, received_at, settlement_scope, account_number, balance_after, memo, counterparty_name, provider_category, provider_is_unclassified, source, external_provider, source_metadata')
     .eq('external_provider', 'clobe')
     .eq('source', 'clobe_mcp')
     .eq('status', 'active')
@@ -103,12 +104,18 @@ export async function GET(request: NextRequest) {
   }
   const confirmedBookingIds = new Set(confirmedSettlementItems.map(item => item.booking_id));
 
-  const bankSummary = calculateBankAccountReality(transactions, allocations);
-  const bookingCash = calculateBookingCashPositions({ transactions, allocations, bookings, confirmedBookingIds });
+  const operationalTransactions = normalizeClobeOperationalScopes(transactions, allocations);
+  const bankSummary = calculateBankAccountReality(operationalTransactions, allocations);
+  const bookingCash = calculateBookingCashPositions({
+    transactions: operationalTransactions,
+    allocations,
+    bookings,
+    confirmedBookingIds,
+  });
   const profitErp = calculateBankProfitErp({
     bankSummary,
     bookingCash,
-    transactions,
+    transactions: operationalTransactions,
     allocations,
     bookings,
     confirmedSettlementItems,

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { getSupabaseClient } from '@/lib/supabase';
+import { getSupabaseAuthClient } from '@/lib/supabase';
 
 function getSafeRedirect(value: string | null): string {
   if (!value || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')) {
@@ -36,11 +36,7 @@ function MobileLoginForm() {
     setError('');
 
     try {
-      const supabase = getSupabaseClient();
-      if (!supabase) {
-        setError('Supabase 설정이 없습니다.');
-        return;
-      }
+      const supabase = getSupabaseAuthClient();
       const { data, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -79,8 +75,12 @@ function MobileLoginForm() {
 
       const redirect = getSafeRedirect(searchParams?.get('redirect') ?? null);
       window.location.href = redirect;
-    } catch {
-      setError('로그인 중 오류가 발생했습니다.');
+    } catch (err) {
+      if (err instanceof Error && err.message === 'SUPABASE_PUBLIC_CONFIG_MISSING') {
+        setError('로그인 서버 설정이 누락되었습니다. 관리자에게 문의해 주세요.');
+      } else {
+        setError('로그인 중 오류가 발생했습니다.');
+      }
     } finally {
       setLoading(false);
     }

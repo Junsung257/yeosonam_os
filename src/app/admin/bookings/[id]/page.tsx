@@ -11,13 +11,21 @@ export default async function BookingDetailPage(props: { params: Promise<{ id: s
     return <BookingDetailClient params={params} />;
   }
 
-  const [bookingResult, logs] = await Promise.all([
+  const [bookingResult, logs, clobeKeyResult] = await Promise.all([
     supabaseAdmin
       .from('bookings')
       .select('*, customers!lead_customer_id(id,name,phone,passport_expiry), booking_passengers(passenger_type, customers(id,name,phone,passport_expiry,passport_no))')
       .eq('id', id)
       .limit(1),
     getMessageLogs(id),
+    supabaseAdmin
+      .from('booking_settlement_keys')
+      .select('id')
+      .eq('booking_id', id)
+      .eq('status', 'active')
+      .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking,source.eq.clobe_memo_approved_booking')
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   const raw = bookingResult.data?.[0] ?? null;
@@ -29,7 +37,11 @@ export default async function BookingDetailPage(props: { params: Promise<{ id: s
     const passengers = (rawBooking.booking_passengers ?? [])
       .map(bp => bp.customers ? { ...bp.customers, passenger_type: bp.passenger_type || 'adult' } : null)
       .filter(Boolean) as unknown as import('./BookingDetailClient').BookingDetail['passengers'];
-    initialBooking = { ...rawBooking, passengers } as unknown as import('./BookingDetailClient').BookingDetail;
+    initialBooking = {
+      ...rawBooking,
+      passengers,
+      clobe_settlement_booking: Boolean(clobeKeyResult.data),
+    } as unknown as import('./BookingDetailClient').BookingDetail;
   }
 
   return (

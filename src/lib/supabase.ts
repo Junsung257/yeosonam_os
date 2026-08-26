@@ -22,6 +22,7 @@ const supabaseUrl =
   process.env.NEXT_PUBLIC_SUPABASE_URL ||
   getSecret('SUPABASE_URL');
 const supabaseKey =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   getSecret('SUPABASE_PUBLISHABLE_KEY') ||
   getSecret('SUPABASE_ANON_KEY');
@@ -45,6 +46,7 @@ export const isSupabaseAdminConfigured = Boolean(
 
 // Lazy initialization - 사용할 때만 클라이언트 생성
 let supabaseClient: ReturnType<typeof createClient> | null = null;
+let supabaseAuthClient: ReturnType<typeof createClient> | null = null;
 
 /**
  * 익명 키 기반 Supabase 클라이언트 (lazy init).
@@ -114,6 +116,31 @@ export function getSupabaseClient() {
   const client = getSupabase();
   if (!client) throw new Error('Supabase가 구성되지 않았습니다. 환경 변수를 확인하세요.');
   return client;
+}
+
+/**
+ * 브라우저 로그인 전용 Supabase 클라이언트.
+ *
+ * 앱 인증의 기준은 HttpOnly 서버 쿠키다. 로그인 화면에서 생성한 임시 세션을
+ * localStorage에 저장하거나 자동 갱신하면 서버 쿠키와 회전형 refresh token을
+ * 경쟁적으로 사용할 수 있다. 이 클라이언트는 자격 증명 교환만 수행한다.
+ */
+export function getSupabaseAuthClient() {
+  if (!isSupabaseConfigured) {
+    throw new Error('SUPABASE_PUBLIC_CONFIG_MISSING');
+  }
+
+  if (!supabaseAuthClient) {
+    supabaseAuthClient = createClient(supabaseUrl!, supabaseKey!, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false,
+      },
+    });
+  }
+
+  return supabaseAuthClient;
 }
 
 // 이전 호환성을 위한 getter — anon 클라이언트 (public)

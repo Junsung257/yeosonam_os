@@ -16,8 +16,13 @@ export function canAutoMatchSettlementMemo(input: {
   bookingId?: string | null;
   source: SettlementMemoResolutionSource;
   confidence: number;
+  allowCreatedBooking?: boolean;
 }): boolean {
   if (!input.bookingId) return false;
-  if (input.source === 'existing_key' || input.source === 'created_booking') return true;
+  if (input.source === 'existing_key') return true;
+  // Clobe canonical memo imports create the settlement booking themselves.
+  // Deposits may be posted immediately; the importer only calls this policy
+  // for deposits, so payouts remain a review/approval action.
+  if (input.source === 'created_booking') return input.allowCreatedBooking === true;
   return input.source === 'existing_booking' && input.confidence >= 0.85;
 }

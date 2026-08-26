@@ -1,3 +1,6 @@
+import { hasClobeTravelMemo } from './settlement-import/clobe-operational-scope';
+import { resolveClobeTransactionAuthority } from './settlement-import/clobe-transaction-authority';
+
 export type BankSettlementScope = 'travel' | 'non_travel';
 
 export const YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER = '100038454128';
@@ -14,6 +17,9 @@ export interface BankAccountRealityRow {
   counterparty_name?: string | null;
   provider_category?: string | null;
   provider_is_unclassified?: boolean | null;
+  source?: string | null;
+  external_provider?: string | null;
+  source_metadata?: Record<string, unknown> | null;
   match_status?: string | null;
   resolved_classification?:
     | 'company_expense'
@@ -70,6 +76,48 @@ export interface BookingCashAllocationRow {
     | 'unassigned'
     | 'review'
     | null;
+}
+
+const CLOBE_BOOKING_TARGETS = new Set<BookingCashAllocationRow['target_type']>([
+  'booking',
+  'customer_refund',
+]);
+
+/**
+ * Clobe 메모를 현재 운영 분류의 SSOT로 사용한다.
+ *
+ * 이미 예약 원장에 배정된 과거 거래는 조용히 여행 외로 돌리지 않는다. 그 외
+ * 빈 메모·비정형 메모는 원본을 보존한 채 여행 수익/예약 대기열에서 제외한다.
+ */
+export function normalizeClobeOperationalScopes(
+  rows: BankAccountRealityRow[],
+  allocations: BookingCashAllocationRow[] = [],
+): BankAccountRealityRow[] {
+  const allocatedTravelIds = new Set(allocations.flatMap(allocation =>
+    allocation.booking_id && CLOBE_BOOKING_TARGETS.has(allocation.target_type ?? 'booking')
+      ? [allocation.bank_transaction_id]
+      : [],
+  ));
+
+  return rows.map(row => {
+    const authority = resolveClobeTransactionAuthority(row);
+    const effectiveRow = authority.isClobe
+      ? { ...row, memo: authority.effectiveMemo }
+      : row;
+    const hasTravelMemo = hasClobeTravelMemo(effectiveRow);
+    const hasExistingBookingAllocation = Boolean(row.id && allocatedTravelIds.has(row.id));
+    if (hasTravelMemo || hasExistingBookingAllocation) {
+      return effectiveRow.settlement_scope === 'travel'
+        ? effectiveRow
+        : { ...effectiveRow, settlement_scope: 'travel' };
+    }
+
+    return {
+      ...effectiveRow,
+      settlement_scope: 'non_travel',
+      resolved_classification: row.resolved_classification ?? 'review',
+    };
+  });
 }
 
 export interface BookingCashBookingRow {
@@ -687,7 +735,7 @@ export function calculateBankProfitErp(params: {
 
 export function needsNonTravelMemoReview(row: BankAccountRealityRow): boolean {
   if (row.settlement_scope !== 'non_travel') return false;
-  const memo = (row.memo ?? '').normalize('NFKC').trim();
+  const memo = (resolveClobeTransactionAuthority(row).effectiveMemo ?? row.memo ?? '').normalize('NFKC').trim();
   if (!memo || row.provider_is_unclassified === true) return true;
   return /(?:^|\D)\d{6}(?:\D|$)|취소|환불/.test(memo);
 }

@@ -29,8 +29,8 @@ const SECRET_GROUPS: Array<{ key: string; label: string; required: SecretKey[]; 
   {
     key: 'site',
     label: 'Site runtime',
-    required: ['NEXT_PUBLIC_BASE_URL', 'NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY'],
-    recommended: ['SUPABASE_SERVICE_ROLE_KEY', 'CRON_SECRET'],
+    required: ['NEXT_PUBLIC_BASE_URL', 'NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY'],
+    recommended: ['SUPABASE_SECRET_KEY', 'CRON_SECRET'],
   },
   {
     key: 'analytics',

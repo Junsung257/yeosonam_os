@@ -17,6 +17,8 @@ describe('AdminLayout hydration safety', () => {
     expect(code).toContain('const visibleBadges = hasHydrated ? badges : undefined');
     expect(code).toContain('buildAdminMissionItems(visibleBadges)');
     expect(code).toContain('getNavItemBadge(item, visibleBadges)');
+    expect(code).not.toContain('Math.random()');
+    expect(code).toContain("a.href.localeCompare(b.href, 'ko-KR')");
   });
 
   it('renders mission timestamps in the same timezone on the server and browser', () => {

@@ -27,8 +27,11 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
 });
 
 const isProd = process.env.NODE_ENV === 'production';
+// Vercel's webpack worker has repeatedly stalled this large app before the
+// compiler emits progress. Keep the stable single-process path as the default;
+// re-enable only through an explicit, separately verified environment flag.
 const enableWebpackBuildWorker =
-  process.env.VERCEL === '1' && process.env.NEXT_BUILD_WEBPACK_WORKER !== '0';
+  process.env.VERCEL === '1' && process.env.NEXT_BUILD_WEBPACK_WORKER === '1';
 const SPECIAL_PAGE_SHIMS = {
   _app: 'next/dist/pages/_app',
   _error: 'next/dist/pages/_error',
@@ -170,7 +173,11 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   typescript: {
-    ignoreBuildErrors: process.env.VERCEL === '1',
+    // CI runs `tsc --noEmit` as a required gate before/alongside every build.
+    // Avoid repeating the same memory-heavy type pass in bundle/performance
+    // jobs while keeping local builds strict by default.
+    ignoreBuildErrors:
+      process.env.VERCEL === '1' || process.env.NEXT_BUILD_SKIP_TYPECHECK === '1',
   },
   // Next 15: instrumentationHook 제거 — instrumentation.ts 가 자동 활성화됨.
   // Next 15: serverComponentsExternalPackages → 최상위 serverExternalPackages 로 이동.

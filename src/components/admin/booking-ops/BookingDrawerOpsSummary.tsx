@@ -23,6 +23,7 @@ interface BookingDrawerOpsSummaryProps {
   effectiveNet: number;
   actualIncome: number;
   actualExpense: number;
+  cashSettlement?: boolean;
 }
 
 const won = (value: number) => `₩${Math.round(value).toLocaleString('ko-KR')}`;
@@ -55,11 +56,13 @@ export function BookingDrawerOpsSummary({
   effectiveNet,
   actualIncome,
   actualExpense,
+  cashSettlement = false,
 }: BookingDrawerOpsSummaryProps) {
   const customerUnpaid = Math.max(0, totalSale - actualIncome);
   const supplierUnpaid = Math.max(0, effectiveNet - actualExpense);
   const margin = totalSale - effectiveNet;
   const marginRate = totalSale > 0 ? (margin / totalSale) * 100 : 0;
+  const cashProfit = actualIncome - actualExpense;
   const passengerCount =
     (booking.adult_count || 0) + (booking.child_count || 0) + (booking.infant_count || 0);
   const dday = daysUntil(booking.departure_date);
@@ -90,18 +93,33 @@ export function BookingDrawerOpsSummary({
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <Metric label="고객 잔금" value={won(customerUnpaid)} tone={statusTone(customerUnpaid)} />
-        <Metric label="랜드 미송금" value={won(supplierUnpaid)} tone={statusTone(supplierUnpaid)} />
-        <Metric
-          label="예상 마진"
-          value={won(margin)}
-          hint={totalSale > 0 ? `${marginRate.toFixed(1)}%` : undefined}
-          tone={
-            marginRate < 8
-              ? 'border-rose-200 bg-rose-50 text-rose-800'
-              : 'border-emerald-200 bg-emerald-50 text-emerald-800'
-          }
-        />
+        {cashSettlement ? (
+          <>
+            <Metric label="실제 입금" value={won(actualIncome)} tone="border-emerald-200 bg-emerald-50 text-emerald-800" />
+            <Metric label="실제 출금" value={won(actualExpense)} tone="border-orange-200 bg-orange-50 text-orange-800" />
+            <Metric
+              label="실현수익"
+              value={won(cashProfit)}
+              hint="입금 - 출금"
+              tone={cashProfit < 0 ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-blue-200 bg-blue-50 text-blue-800'}
+            />
+          </>
+        ) : (
+          <>
+            <Metric label="고객 잔금" value={won(customerUnpaid)} tone={statusTone(customerUnpaid)} />
+            <Metric label="랜드 미송금" value={won(supplierUnpaid)} tone={statusTone(supplierUnpaid)} />
+            <Metric
+              label="예상 마진"
+              value={won(margin)}
+              hint={totalSale > 0 ? `${marginRate.toFixed(1)}%` : undefined}
+              tone={
+                marginRate < 8
+                  ? 'border-rose-200 bg-rose-50 text-rose-800'
+                  : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              }
+            />
+          </>
+        )}
         <Metric
           label="인원"
           value={`${passengerCount}명`}
