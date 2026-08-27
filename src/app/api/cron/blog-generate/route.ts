@@ -39,6 +39,14 @@ async function runBlogGenerate(request: NextRequest) {
   const factoryEnabled = ['1', 'true'].includes(
     String(process.env.BLOG_CONTENT_FACTORY_ENABLED || '').trim().toLowerCase(),
   );
+  if (process.env.VERCEL_ENV === 'production' && !factoryEnabled) {
+    return {
+      skipped: true,
+      reason: 'content_factory_required_in_production',
+      generationCronEnabled: scheduledGenerationEnabled,
+      modelCallsInCronRequest: 0,
+    };
+  }
   if (factoryEnabled) {
     if (!isSupabaseConfigured) return { skipped: true, reason: 'supabase_not_configured' };
     const watchdog = await recoverExpiredBlogContentOperationsV4({

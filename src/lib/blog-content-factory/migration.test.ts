@@ -33,6 +33,10 @@ const terminalSuccessMigration = readFileSync(
   'supabase/migrations/20260827020000_blog_v4_terminal_success_clears_failure.sql',
   'utf8',
 ).toLowerCase();
+const autoDiscardMigration = readFileSync(
+  'supabase/migrations/20260827030000_blog_v4_auto_discard_high_risk.sql',
+  'utf8',
+).toLowerCase();
 
 describe('Blog V4 content factory migration contract', () => {
   it('creates the four service-role ledgers with RLS and explicit grants', () => {
@@ -122,6 +126,17 @@ describe('Blog V4 content factory migration contract', () => {
     expect(terminalSuccessMigration).toContain('then null');
     expect(terminalSuccessMigration).toContain('explicitly supplies');
     expect(terminalSuccessMigration).toContain('to service_role');
+  });
+
+  it('terminalizes high-risk operations and retires their source queue row atomically', () => {
+    expect(autoDiscardMigration).toContain("p_terminal_status = 'quarantined'");
+    expect(autoDiscardMigration).toContain("set status = 'skipped'");
+    expect(autoDiscardMigration).toContain("'blog_v4_disposition', 'auto_discarded'");
+    expect(autoDiscardMigration).toContain('generation_status = coalesce');
+    expect(autoDiscardMigration).toContain('lease_owner = null');
+    expect(autoDiscardMigration).toContain('a replay may observe an event');
+    expect(autoDiscardMigration).toContain("if p_terminal_status = 'quarantined' and v_operation.queue_id is not null then");
+    expect(autoDiscardMigration).toContain('to service_role');
   });
 
   it('publishes commercial content and its indexing outbox in one fenced transaction', () => {

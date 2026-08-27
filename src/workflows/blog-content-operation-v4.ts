@@ -10,7 +10,6 @@ import {
 } from '@/lib/blog-content-factory/repository';
 import {
   isBlogPublisherOperationResponseV4,
-  type BlogPublisherOperationResultStatus,
   type BlogPublisherOperationResponseV4,
 } from '@/lib/blog-content-factory/publisher-response';
 import type {
@@ -21,6 +20,7 @@ import { isDeepSeekOffPeakAt } from '@/lib/blog-deepseek-orchestrator-v4';
 import { buildQueuedInformationBrief, evaluateQueuedInformationResearch } from '@/lib/blog-queue-research';
 import { researchBlogInformationAutomatically } from '@/lib/blog-auto-research';
 import { BLOG_INFORMATION_RESEARCH_META_KEY } from '@/lib/blog-generation-research';
+import { isHighRiskAutoDiscardTopic } from '@/lib/blog-publication-review-policy';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
 
@@ -117,14 +117,28 @@ async function bindWorkflowStep(input: BlogContentOperationWorkflowInput, workfl
 async function preflightStep(input: BlogContentOperationWorkflowInput) {
   'use step';
   const { operation, queue } = await operationAndQueue(input);
-  if (operation.risk_level === 'HIGH') {
-    await recordBlogContentOperationStageV4({
+  const highRiskTopic = isHighRiskAutoDiscardTopic({
+    title: queue.topic,
+    category: queue.category,
+    topic: queue.primary_keyword,
+  });
+  if (operation.risk_level === 'HIGH' || highRiskTopic) {
+    await terminalizeBlogContentOperationV4({
       supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,
-      leaseOwner: input.leaseOwner, eventKey: 'preflight:high-risk:v1', stage: 'human_review',
-      eventStatus: 'skipped', operationStatus: 'human_review', failureCode: 'high_risk_human_approval_required',
-      evidence: { riskLevel: operation.risk_level },
+      leaseOwner: input.leaseOwner, eventKey: 'preflight:high-risk:auto-discard:v2', stage: 'quarantined',
+      status: 'quarantined', failureCode: 'high_risk_auto_discarded', skipReason: 'high_risk_auto_discarded',
+      evidence: {
+        riskLevel: operation.risk_level,
+        topicClassifierMatched: highRiskTopic,
+        operationState: {
+          generationStatus: 'skipped',
+          reviewStatus: 'not_required',
+          publicationStatus: 'suppressed_by_policy',
+          indexingStatus: 'not_attempted',
+        },
+      },
     });
-    return { terminal: true as const, outcome: 'human_review' as const };
+    return { terminal: true as const, outcome: 'quarantined' as const };
   }
   if (queue.status !== 'queued') throw new FatalError(`BLOG_CONTENT_FACTORY_QUEUE_NOT_QUEUED:${queue.status}`);
   const { data: signals, error } = await db()
@@ -496,24 +510,33 @@ async function deterministicValidationStep(
     });
     return { status: 'approved_for_slot' as const, reason: null, passDecision: 'finalize' as const };
   }
-  const reviewRequired = ['pending_review', 'human_review'].includes(String(run.status))
+  const qualityBlocked = ['pending_review', 'human_review'].includes(String(run.status))
     || Number(run.latest_quality_score ?? 0) < 90;
-  const status: BlogPublisherOperationResultStatus = reviewRequired ? 'human_review' : 'quarantined';
-  await recordBlogContentOperationStageV4({
+  const status = 'quarantined' as const;
+  await terminalizeBlogContentOperationV4({
     supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,
-    leaseOwner: input.leaseOwner, eventKey: `validation:pass:${pass}:bounded:v1:${workflowRunId}`, stage: reviewRequired ? 'human_review' : 'quarantined',
-    eventStatus: reviewRequired ? 'succeeded' : 'failed', operationStatus: status,
-    generationRunId: String(run.id), failureCode: reviewRequired ? 'paid_model_call_cap_reached_human_review' : 'model_output_not_publishable',
+    leaseOwner: input.leaseOwner, eventKey: `validation:pass:${pass}:bounded:v2:${workflowRunId}`,
+    stage: 'quarantined', status,
+    generationRunId: String(run.id), failureCode: qualityBlocked
+      ? 'quality_gate_failed_after_bounded_repair'
+      : 'model_output_not_publishable',
+    skipReason: qualityBlocked ? 'quality_gate_failed_after_bounded_repair' : 'model_output_not_publishable',
     evidence: {
       paidModelCalls: 2,
       latestRunStatus: run.status,
       qualityScore: run.latest_quality_score ?? null,
       deterministicRepairOnly: true,
+      operationState: {
+        generationStatus: 'failed',
+        reviewStatus: 'not_required',
+        publicationStatus: 'suppressed_by_policy',
+        indexingStatus: 'not_attempted',
+      },
     },
   });
   return {
     status,
-    reason: reviewRequired ? 'paid_model_call_cap_reached_human_review' : 'model_output_not_publishable',
+    reason: qualityBlocked ? 'quality_gate_failed_after_bounded_repair' : 'model_output_not_publishable',
     passDecision: 'finalize' as const,
   };
 }
@@ -590,21 +613,28 @@ async function finalizeStep(
     return { outcome: 'approved_for_slot' as const, generationRunId: String(run.id) };
   }
 
-  const humanReview = ['pending_review', 'human_review'].includes(generation.status)
-    || run?.status === 'human_review';
-  await recordBlogContentOperationStageV4({
+  await terminalizeBlogContentOperationV4({
     supabase, operationId: input.operationId, fencingToken: input.fencingToken,
     leaseOwner: input.leaseOwner,
-    eventKey: `${humanReview ? 'finalize:human-review:v1' : 'finalize:quarantined:v1'}:${workflowRunId}`,
-    stage: humanReview ? 'human_review' : 'quarantined',
-    eventStatus: humanReview ? 'succeeded' : 'failed',
-    operationStatus: humanReview ? 'human_review' : 'quarantined',
-    failureCode: humanReview ? null : generation.reason || `generation_status_${generation.status}`,
+    eventKey: `finalize:quarantined:v2:${workflowRunId}`,
+    stage: 'quarantined',
+    status: 'quarantined',
+    failureCode: generation.reason || `generation_status_${generation.status}`,
+    skipReason: generation.reason || `generation_status_${generation.status}`,
     generationRunId: run?.id ? String(run.id) : null,
     creativeId: run?.content_creative_id ? String(run.content_creative_id) : null,
-    evidence: { generationStatus: generation.status, generationReason: generation.reason },
+    evidence: {
+      generationStatus: generation.status,
+      generationReason: generation.reason,
+      operationState: {
+        generationStatus: 'failed',
+        reviewStatus: 'not_required',
+        publicationStatus: 'suppressed_by_policy',
+        indexingStatus: 'not_attempted',
+      },
+    },
   });
-  return { outcome: humanReview ? 'human_review' as const : 'quarantined' as const, generationRunId: run?.id ? String(run.id) : null };
+  return { outcome: 'quarantined' as const, generationRunId: run?.id ? String(run.id) : null };
 }
 
 export async function blogContentOperationWorkflow(

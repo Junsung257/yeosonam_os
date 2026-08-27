@@ -1,5 +1,7 @@
 # Blog Ops Runbook
 
+> 2026-08-27 autonomous V4 completion override: `blog-scheduler` runs daily at 00:00 KST (`0 15 * * *`) before the off-peak generation window, `blog-generate` materializes and starts durable operations at KST 01:05~06:55, `blog-publication-controller` handles the live slots, and `blog-indexing-worker` independently drains/retries the indexing outbox every five minutes. Low-risk, fully gated candidates require no per-article approval. HIGH-risk topics (entry, medical, safety, legal, insurance, price, availability, schedule, promotion) are automatically quarantined before any AI call; they do not wait in `human_review` and never create publication or indexing side effects.
+
 > 2026-08-19 Durable Content Factory override: `BLOG_CONTENT_FACTORY_ENABLED=1`인 배포에서는 `blog-generate`가 KST 01:05~06:55 사이 10분마다 수요 재고를 materialize하고 durable workflow만 시작한다. 공개 controller는 KST 09:00~22:00의 10개 누적 슬롯에서 승인 재고만 처리한다. 상업성 글은 현재 `public_package_snapshot` ID/revision/hash가 모두 일치해야 하며 공개+indexing outbox는 하나의 RPC다. 이 절은 아래의 구형 5-slot/direct publisher 설명보다 우선한다.
 
 > 2026-08-16 release override: DeepSeek-only 연구 구조화·초안·재작성, 비용 예약, `pilot_3→ramp_10→max_30` 자동 승격/강등, immutable snapshot, 90일 GSC 보강, 분석 canary, 배포·롤백 순서는 `docs/runbooks/blog-orchestrator-v4-production-rollout.md`와 `docs/runbooks/blog-deepseek-orchestrator-v4.md`가 우선한다.
@@ -8,7 +10,7 @@
 
 > 2026-08-13 V3 override: `backfill:blog-quality:write` was removed. The legacy backfill creates article text, so `--write` and `--apply` now fail before any database mutation. Commands below that include the old write flag are historical verification records only.
 
-Last updated: 2026-07-28
+Last updated: 2026-08-27
 
 This runbook defines how operators decide whether the Yeosonam blog automation is healthy. The durable publish contract remains `docs/blog-autopublish-contract.md`; this file explains the daily operating workflow shown in `/admin/blog`.
 
