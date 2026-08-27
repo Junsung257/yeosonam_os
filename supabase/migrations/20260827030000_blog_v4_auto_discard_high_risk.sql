@@ -57,7 +57,12 @@ begin
       set status = 'skipped',
           last_error = coalesce(nullif(btrim(p_failure_code), ''), last_error),
           meta = coalesce(meta, '{}'::jsonb) || jsonb_build_object(
-            'blog_v4_disposition', 'auto_discarded',
+            'blog_v4_disposition', case
+              when p_skip_reason = 'high_risk_auto_discarded'
+                or p_skip_reason = 'high_risk_topic_auto_discarded'
+                then 'auto_discarded'
+              else 'quality_blocked'
+            end,
             'blog_v4_disposition_reason', coalesce(nullif(btrim(p_skip_reason), ''), p_failure_code),
             'blog_v4_disposed_at', now()
           ),
@@ -109,7 +114,12 @@ begin
     set status = 'skipped',
         last_error = coalesce(nullif(btrim(p_failure_code), ''), last_error),
         meta = coalesce(meta, '{}'::jsonb) || jsonb_build_object(
-          'blog_v4_disposition', 'auto_discarded',
+          'blog_v4_disposition', case
+            when p_skip_reason = 'high_risk_auto_discarded'
+              or p_skip_reason = 'high_risk_topic_auto_discarded'
+              then 'auto_discarded'
+            else 'quality_blocked'
+          end,
           'blog_v4_disposition_reason', coalesce(nullif(btrim(p_skip_reason), ''), p_failure_code),
           'blog_v4_disposed_at', now()
         ),

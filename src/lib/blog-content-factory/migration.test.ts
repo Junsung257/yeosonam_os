@@ -13,6 +13,26 @@ const terminalizationMigration = readFileSync(
   'supabase/migrations/20260824114843_blog_v4_operation_terminalization.sql',
   'utf8',
 ).toLowerCase();
+const autoDiscardMigration = readFileSync(
+  'supabase/migrations/20260827030000_blog_v4_auto_discard_high_risk.sql',
+  'utf8',
+).toLowerCase();
+const unattendedStateMigration = readFileSync(
+  'supabase/migrations/20260827040000_blog_v4_unattended_state_contract.sql',
+  'utf8',
+).toLowerCase();
+const schedulerIdempotencyMigration = readFileSync(
+  'supabase/migrations/20260827050000_blog_scheduler_queue_idempotency.sql',
+  'utf8',
+).toLowerCase();
+const publicationRetryMigration = readFileSync(
+  'supabase/migrations/20260827060000_blog_v4_publication_retry.sql',
+  'utf8',
+).toLowerCase();
+const publicStateMigration = readFileSync(
+  'supabase/migrations/20260827070000_blog_v4_public_state_projection.sql',
+  'utf8',
+).toLowerCase();
 
 describe('Blog V4 content factory migration contract', () => {
   it('creates the four service-role ledgers with RLS and explicit grants', () => {
@@ -57,6 +77,37 @@ describe('Blog V4 content factory migration contract', () => {
     expect(terminalizationMigration).toContain('lease_expires_at = null');
     expect(terminalizationMigration).toContain('completed_at = coalesce(completed_at, now())');
     expect(terminalizationMigration).toContain('to service_role');
+  });
+
+  it('terminalizes high-risk work before model calls and retires its source queue', () => {
+    expect(autoDiscardMigration).toContain('terminalize_blog_content_operation_v4');
+    expect(autoDiscardMigration).toContain("p_terminal_status = 'quarantined'");
+    expect(autoDiscardMigration).toContain("'blog_v4_disposition', case");
+    expect(autoDiscardMigration).toContain("'auto_discarded'");
+    expect(autoDiscardMigration).toContain("status = 'skipped'");
+    expect(unattendedStateMigration).toContain("'skipped'");
+    expect(unattendedStateMigration).toContain("'quality_blocked'");
+  });
+
+  it('adds a deterministic scheduler queue identity without rewriting content', () => {
+    expect(schedulerIdempotencyMigration).toContain('add column if not exists automation_key');
+    expect(schedulerIdempotencyMigration).toContain('row_number() over');
+    expect(schedulerIdempotencyMigration).toContain('create unique index if not exists idx_blog_topic_queue_automation_key');
+  });
+
+  it('returns transient publication failures to the approved publication queue atomically', () => {
+    expect(publicationRetryMigration).toContain('retry_blog_content_operation_publication_v4');
+    expect(publicationRetryMigration).toContain("status = 'approved_for_slot'");
+    expect(publicationRetryMigration).toContain("'retryable_failure'");
+    expect(publicationRetryMigration).toContain('blog_content_operation_generation_run_retry_race');
+    expect(publicationRetryMigration).toContain('lease_owner = null');
+  });
+
+  it('projects publication and indexing terminal states into the operation ledger', () => {
+    expect(publicStateMigration).toContain('project_blog_content_operation_public_state_v4');
+    expect(publicStateMigration).toContain("publication_status = 'published'");
+    expect(publicStateMigration).toContain("indexing_status = 'succeeded'");
+    expect(publicStateMigration).toContain('mark_blog_content_operation_indexed_v4');
   });
 
   it('publishes commercial content and its indexing outbox in one fenced transaction', () => {

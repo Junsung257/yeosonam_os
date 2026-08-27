@@ -192,6 +192,48 @@ export async function claimBlogContentOperationPublicationV4(input: {
   return { id: row.id, fencingToken: Number(row.fencing_token), createsNewUrl: row.creates_new_url };
 }
 
+export async function retryBlogContentOperationPublicationV4(input: {
+  supabase: SupabaseClient;
+  operationId: string;
+  fencingToken: number;
+  leaseOwner: string;
+  eventKey: string;
+  failureCode: string;
+  evidence?: Record<string, unknown>;
+}): Promise<string> {
+  const { data, error } = await input.supabase.rpc('retry_blog_content_operation_publication_v4', {
+    p_operation_id: input.operationId,
+    p_fencing_token: input.fencingToken,
+    p_lease_owner: input.leaseOwner,
+    p_event_key: input.eventKey,
+    p_failure_code: input.failureCode,
+    p_evidence: input.evidence ?? {},
+  });
+  if (error) throw new Error(`blog_content_operation_publication_retry_failed:${error.message}`);
+  if (typeof data !== 'string') throw new Error('blog_content_operation_publication_retry_event_id_missing');
+  return data;
+}
+
+export async function projectBlogContentOperationPublicStateV4(input: {
+  supabase: SupabaseClient;
+  operationId: string;
+  generationRunId?: string | null;
+  creativeId?: string | null;
+  finalRevisionId?: string | null;
+  finalQualityDecisionId?: string | null;
+}): Promise<void> {
+  const { error } = await input.supabase.rpc('project_blog_content_operation_public_state_v4', {
+    p_operation_id: input.operationId,
+    p_generation_run_id: input.generationRunId ?? null,
+    p_creative_id: input.creativeId ?? null,
+    p_final_revision_id: input.finalRevisionId ?? null,
+    p_final_quality_decision_id: input.finalQualityDecisionId ?? null,
+  });
+  if (error && error.code !== '42883') {
+    throw new Error(`blog_content_operation_public_state_projection_failed:${error.message}`);
+  }
+}
+
 export async function recordBlogContentOperationStageV4(input: {
   supabase: SupabaseClient;
   operationId: string;

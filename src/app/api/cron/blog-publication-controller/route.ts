@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { cronUnauthorizedResponse, isCronOrVercelAuthorized } from '@/lib/cron-auth';
 import { withCronLogging } from '@/lib/cron-observability';
+import { logWarning } from '@/lib/sentry-logger';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { readBlogAutopublishPolicyV3 } from '@/lib/blog-autopublish-policy-v3';
 import { calculateBlogPublishSlotQuota } from '@/lib/blog-publish-slot-quota';
@@ -28,9 +29,13 @@ import {
 import {
   claimBlogContentOperationPublicationV4,
   publishBlogCommercialOperationV4,
+  projectBlogContentOperationPublicStateV4,
   recordBlogContentOperationStageV4,
+  retryBlogContentOperationPublicationV4,
+  terminalizeBlogContentOperationV4,
 } from '@/lib/blog-content-factory/repository';
 import { validateBlogPackageSnapshotPinV4 } from '@/lib/blog-content-factory/package-snapshot';
+import { hashBlogContentRevisionV1 } from '@/lib/blog-quality-decision-v1';
 
 export const runtime = 'nodejs';
 export const maxDuration = 180;
@@ -44,6 +49,10 @@ function kstDayRange(now = new Date()): { start: string; end: string } {
 
 function kstDayKey(now = new Date()): string {
   return new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+function isRetryablePublicationFailure(reason: string): boolean {
+  return /timeout|temporar|connection|network|fetch failed|econn|rate.?limit|unavailable|deadlock|serialization|\b5\d{2}\b/i.test(reason);
 }
 
 async function runBlogPublicationController(request: NextRequest) {
@@ -159,11 +168,11 @@ async function runBlogPublicationController(request: NextRequest) {
     const selectedAttemptId = run.selected_attempt_id as string | null;
     let publishedCreativeId = creativeId;
     let publishedSlug: string | null = null;
-    if (!creativeId || !selectedAttemptId || Number(run.latest_quality_score ?? 0) < 90) {
+    if (!creativeId || !selectedAttemptId) {
       await supabaseAdmin.from('blog_generation_runs').update({
         status: 'quarantine', disposition: 'controller_precondition_failed', quarantined_at: now.toISOString(),
       }).eq('id', run.id).eq('status', 'approved_for_slot');
-      results.push({ runId: run.id, creativeId, status: 'quarantined', reason: 'missing_creative_selected_attempt_or_score_below_90' });
+      results.push({ runId: run.id, creativeId, status: 'quarantined', reason: 'missing_creative_or_selected_attempt' });
       continue;
     }
 
@@ -285,13 +294,47 @@ async function runBlogPublicationController(request: NextRequest) {
         && String(selectedOutput.markdown ?? '') === String(creative.blog_html ?? '');
       if (!selectedOutputMatchesDraft) throw new Error('selected_attempt_output_mismatch');
       const generationMeta = (creative.generation_meta || {}) as Record<string, unknown>;
-      const orchestration = generationMeta.ai_orchestration_v4 as Record<string, unknown> | undefined;
-      const selectedScore = Number(attempt.quality_score_after ?? 0);
-      if (orchestration?.route !== 'approved_for_slot'
-        || Number(orchestration.score || 0) < 90
-        || selectedScore < 90
-        || selectedScore !== Number(run.latest_quality_score ?? 0)) {
-        throw new Error('creative_generation_meta_not_approved');
+      const finalQualityDecisionValue = generationMeta.final_quality_decision;
+      const finalQualityDecision = finalQualityDecisionValue
+        && typeof finalQualityDecisionValue === 'object'
+        && !Array.isArray(finalQualityDecisionValue)
+        ? finalQualityDecisionValue as Record<string, unknown>
+        : null;
+      const finalRevisionId = typeof generationMeta.final_revision_id === 'string'
+        ? generationMeta.final_revision_id
+        : null;
+      const finalQualityDecisionId = typeof generationMeta.final_quality_decision_id === 'string'
+        ? generationMeta.final_quality_decision_id
+        : null;
+      const currentContentHash = hashBlogContentRevisionV1({
+        blogHtml: String(creative.blog_html || ''),
+        title: String(creative.seo_title || ''),
+        description: String(creative.seo_description || ''),
+        slug: String(creative.slug || ''),
+      });
+      const hardBlockers = Array.isArray(finalQualityDecision?.hardBlockers)
+        ? finalQualityDecision.hardBlockers
+        : [];
+      if (!finalQualityDecision
+        || finalQualityDecision.passed !== true
+        || finalQualityDecision.decision !== 'pass'
+        || hardBlockers.length > 0
+        || !finalRevisionId
+        || !finalQualityDecisionId
+        || finalQualityDecision.revisionId !== finalRevisionId
+        || finalQualityDecision.evaluatedContentHash !== currentContentHash) {
+        throw new Error('final_quality_decision_not_publishable');
+      }
+      const { data: finalRevision, error: finalRevisionError } = await supabaseAdmin
+        .from('blog_content_revisions')
+        .select('id,creative_id,content_hash,immutable')
+        .eq('id', finalRevisionId)
+        .maybeSingle();
+      if (finalRevisionError || !finalRevision
+        || String(finalRevision.creative_id) !== String(creativeId)
+        || finalRevision.content_hash !== currentContentHash
+        || finalRevision.immutable !== true) {
+        throw new Error('final_quality_revision_not_immutable_or_current');
       }
       if (creative.channel !== 'naver_blog' || !String(creative.slug || '').trim()) {
         throw new Error('creative_public_identity_invalid');
@@ -308,9 +351,8 @@ async function runBlogPublicationController(request: NextRequest) {
       if (policy.mode === 'reviewed_only' && creative.review_status !== 'approved') {
         throw new Error('reviewed_only_requires_approved_review_status');
       }
-      if ((creative.quality_gate as Record<string, unknown> | null)?.passed !== true) {
-        throw new Error('creative_quality_gate_not_passed');
-      }
+      // `final_quality_decision` is the only publish authority. `quality_gate`
+      // remains a compatibility projection and is not consulted here.
 
       const identity = readBlogInformationRepresentativeIdentity(generationMeta);
       if (!identity && !creative.product_id) throw new Error('information_representative_identity_missing');
@@ -373,6 +415,18 @@ async function runBlogPublicationController(request: NextRequest) {
             publishedAt: now.toISOString(),
           });
           publicCommitComplete = true;
+          await projectBlogContentOperationPublicStateV4({
+            supabase: supabaseAdmin,
+            operationId: operation.id,
+            generationRunId: run.id,
+            creativeId: commercialPublication.creativeId,
+            finalRevisionId: typeof generationMeta.final_revision_id === 'string'
+              ? generationMeta.final_revision_id
+              : null,
+            finalQualityDecisionId: typeof generationMeta.final_quality_decision_id === 'string'
+              ? generationMeta.final_quality_decision_id
+              : null,
+          });
           operationFinalizedAtomically = true;
           publishedCreativeId = commercialPublication.creativeId;
           publishedSlug = commercialPublication.slug;
@@ -416,7 +470,18 @@ async function runBlogPublicationController(request: NextRequest) {
           eventKey: 'publication:published:v1', stage: 'published',
           eventStatus: 'succeeded', operationStatus: 'published',
           generationRunId: run.id, creativeId: publishedCreativeId,
-          evidence: { slug: publishedSlug, selectedAttemptId },
+          evidence: {
+            slug: publishedSlug,
+            selectedAttemptId,
+            operationState: {
+              generationStatus: 'succeeded',
+              reviewStatus: 'not_required',
+              publicationStatus: 'published',
+              indexingStatus: 'queued',
+              finalRevisionId: generationMeta.final_revision_id ?? null,
+              finalQualityDecisionId: generationMeta.final_quality_decision_id ?? null,
+            },
+          },
         });
       }
       revalidatePublicBlogCache(publishedSlug || undefined, creative.destination ?? null);
@@ -451,16 +516,57 @@ async function runBlogPublicationController(request: NextRequest) {
         results.push({ runId: run.id, creativeId: publishedCreativeId, status: 'published_state_sync_error', reason });
         continue;
       }
+      if (operation && operationFencingToken != null && isRetryablePublicationFailure(reason)) {
+        try {
+          await retryBlogContentOperationPublicationV4({
+            supabase: supabaseAdmin,
+            operationId: operation.id,
+            fencingToken: operationFencingToken,
+            leaseOwner: operationLeaseOwner,
+            eventKey: `publication:retryable:v1:${run.id}`,
+            failureCode: reason,
+            evidence: {
+              operationState: {
+                generationStatus: 'succeeded',
+                reviewStatus: 'not_required',
+                publicationStatus: 'failed',
+                indexingStatus: 'not_eligible',
+                finalRevisionId: null,
+                finalQualityDecisionId: null,
+              },
+              retryable: true,
+            },
+          });
+          results.push({ runId: run.id, creativeId, status: 'retryable', reason });
+          continue;
+        } catch (retryError) {
+          logWarning('[cron/blog-publication-controller] publication retry handoff failed', {
+            runId: run.id,
+            operationId: operation.id,
+            error: retryError,
+          });
+        }
+      }
       await supabaseAdmin.from('blog_generation_runs').update({
         status: 'quarantine', disposition: 'controller_publish_failed', quarantined_at: new Date().toISOString(),
         last_error: reason, lease_owner: null, lease_expires_at: null, updated_at: new Date().toISOString(),
       }).eq('id', run.id).eq('status', 'publishing');
       if (operation && operationFencingToken != null) {
-        await recordBlogContentOperationStageV4({
+        await terminalizeBlogContentOperationV4({
           supabase: supabaseAdmin, operationId: operation.id,
           fencingToken: operationFencingToken, leaseOwner: operationLeaseOwner,
-          eventKey: 'publication:failed:v1', stage: 'quarantined',
-          eventStatus: 'failed', operationStatus: 'quarantined', failureCode: reason,
+          eventKey: 'publication:failed:v2', stage: 'quarantined', status: 'quarantined',
+          failureCode: reason, skipReason: 'publication_failed',
+          evidence: {
+            operationState: {
+              generationStatus: 'succeeded',
+              reviewStatus: 'not_required',
+              publicationStatus: 'failed',
+              indexingStatus: 'not_eligible',
+              finalRevisionId: null,
+              finalQualityDecisionId: null,
+            },
+          },
         }).catch(() => undefined);
       }
       results.push({ runId: run.id, creativeId, status: 'quarantined', reason });

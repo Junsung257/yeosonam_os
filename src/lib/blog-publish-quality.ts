@@ -70,6 +70,15 @@ export interface BlogPublishQualityReport {
   summary: string;
 }
 
+/** The final V4 decision uses the public-customer score when this report passes. */
+export function getBlogPublishDecisionScore(report: BlogPublishQualityReport): number {
+  if (!report.passed) return 0;
+  const score = report.publicCustomerQuality?.score;
+  return typeof score === 'number' && Number.isFinite(score)
+    ? Math.max(0, Math.min(100, score))
+    : 100;
+}
+
 export const PUBLIC_BLOG_CUSTOMER_PUBLISH_MIN_SCORE = 95;
 
 const V3_SEO_BLOCKING_DETAILS = new Set([

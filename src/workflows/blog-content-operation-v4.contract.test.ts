@@ -6,6 +6,7 @@ const generateRoute = readFileSync('src/app/api/cron/blog-generate/route.ts', 'u
 const watchdog = readFileSync('src/lib/blog-content-factory/watchdog.ts', 'utf8');
 const publisherRoute = readFileSync('src/app/api/cron/blog-publisher/route.ts', 'utf8');
 const controllerRoute = readFileSync('src/app/api/cron/blog-publication-controller/route.ts', 'utf8');
+const riskPolicy = readFileSync('src/lib/blog-publication-review-policy.ts', 'utf8');
 
 describe('Blog V4 durable workflow wiring', () => {
   it('uses one workflow with bounded durable validation and generation steps', () => {
@@ -42,6 +43,11 @@ describe('Blog V4 durable workflow wiring', () => {
     expect(workflow).toContain('recordWorkflowFailureStep');
     expect(workflow).toContain("operationStatus: 'running'");
     expect(workflow).toContain('payloadReason: payloadRecord?.reason ?? null');
+    expect(workflow).toContain('isHighRiskAutoDiscardTopic');
+    expect(workflow).toContain('high_risk_auto_discarded');
+    expect(workflow).toContain("generationStatus: 'skipped'");
+    expect(workflow).toContain("publicationStatus: 'quality_blocked'");
+    expect(workflow).not.toContain('high_risk_human_approval_required');
   });
 
   it('starts workflows from the cron without making a model call in that request', () => {
@@ -49,8 +55,8 @@ describe('Blog V4 durable workflow wiring', () => {
     expect(generateRoute).toContain('materializeBlogContentOperationsV4');
     expect(generateRoute).toContain('startBlogContentOperationWorkflowV4');
     expect(generateRoute).toContain('modelCallsInCronRequest: 0');
-    expect(generateRoute).toContain('targetQueueId');
-    expect(generateRoute).toContain('stagingCanary');
+    expect(generateRoute).toContain('forcedManualRun');
+    expect(generateRoute).toContain('workflowStartLimit');
     expect(generateRoute).toContain(".in('status', ['queued', 'running'])");
     expect(generateRoute).toContain('lease_expires_at.lt.');
     expect(generateRoute).toContain('recoverExpiredBlogContentOperationsV4');
@@ -69,6 +75,9 @@ describe('Blog V4 durable workflow wiring', () => {
     expect(publisherRoute).toContain('generationRunId: result.generationRunId');
     expect(publisherRoute).toContain('resourceSaverResponse');
     expect(publisherRoute).toContain("reason: 'blog_quality_v3_runtime_schema_not_ready'");
+    expect(publisherRoute).toContain('isHighRiskAutoDiscardTopic');
+    expect(publisherRoute).toContain('publisher:high-risk:auto-discard');
+    expect(publisherRoute).toContain("generationStatus: 'skipped'");
   });
 
   it('requires an approved factory operation and rechecks an immutable package snapshot before publication', () => {
@@ -76,5 +85,15 @@ describe('Blog V4 durable workflow wiring', () => {
     expect(controllerRoute).toContain('claimBlogContentOperationPublicationV4');
     expect(controllerRoute).toContain('validateBlogPackageSnapshotPinV4');
     expect(controllerRoute).toContain('BLOG_CONTENT_FACTORY_PORTFOLIO_CAPS_V4');
+    expect(controllerRoute).toContain('final_quality_decision_not_publishable');
+    expect(controllerRoute).toContain('final_quality_revision_not_immutable_or_current');
+    expect(controllerRoute).toContain('hashBlogContentRevisionV1');
+  });
+
+  it('uses automatic discard for high-risk topics instead of creating review work', () => {
+    expect(riskPolicy).toContain('isHighRiskAutoDiscardTopic');
+    expect(riskPolicy).toContain('V4_AUTO_DISCARD_INFORMATION_RE');
+    expect(riskPolicy).toContain('가격');
+    expect(riskPolicy).toContain('visa');
   });
 });

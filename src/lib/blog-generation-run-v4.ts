@@ -54,6 +54,18 @@ export interface PriorBlogGenerationAttemptV4 {
   qualityScore: number | null;
 }
 
+/**
+ * A previously persisted, model-approved document that can be revalidated
+ * without spending another provider call. This is intentionally separate
+ * from the latest attempt: a later failed retry must not hide an earlier
+ * approved result from the bounded staging recovery path.
+ */
+export interface ReusableApprovedBlogGenerationAttemptV4 extends PriorBlogGenerationAttemptV4 {
+  output: PriorBlogGenerationAttemptV4['output'] & {
+    audit?: Record<string, unknown>;
+  };
+}
+
 export async function readLatestBlogGenerationAttemptV4(
   queueId: string,
 ): Promise<PriorBlogGenerationAttemptV4 | null> {
@@ -72,6 +84,30 @@ export async function readLatestBlogGenerationAttemptV4(
   return {
     attemptNumber: Number(data.attempt_number || 0),
     output: (data.output_document || {}) as PriorBlogGenerationAttemptV4['output'],
+    researchFingerprint: data.research_fingerprint ?? null,
+    claimFingerprint: data.claim_fingerprint ?? null,
+    qualityScore: typeof data.quality_score_after === 'number' ? data.quality_score_after : null,
+  };
+}
+
+export async function readReusableApprovedBlogGenerationAttemptV4(
+  queueId: string,
+): Promise<ReusableApprovedBlogGenerationAttemptV4 | null> {
+  const { data, error } = await supabaseAdmin
+    .from('blog_generation_attempts')
+    .select('attempt_number,output_document,research_fingerprint,claim_fingerprint,quality_score_after,route,status')
+    .eq('queue_id', queueId)
+    .eq('status', 'completed')
+    .eq('route', 'approved_for_slot')
+    .gte('quality_score_after', 90)
+    .order('quality_score_after', { ascending: false })
+    .order('attempt_number', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  return {
+    attemptNumber: Number(data.attempt_number || 0),
+    output: (data.output_document || {}) as ReusableApprovedBlogGenerationAttemptV4['output'],
     researchFingerprint: data.research_fingerprint ?? null,
     claimFingerprint: data.claim_fingerprint ?? null,
     qualityScore: typeof data.quality_score_after === 'number' ? data.quality_score_after : null,

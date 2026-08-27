@@ -65,7 +65,9 @@ function hasContentBrief(meta: Record<string, unknown> | null | undefined): bool
 }
 
 function recentPostPasses(post: BlogPublishPreflightInput['recentPosts'][number]): boolean {
-  const qualityPassed = post.quality_gate?.passed !== false;
+  // Missing or malformed quality evidence must never be treated as a pass.
+  // This is the compatibility projection of the final quality decision.
+  const qualityPassed = post.quality_gate?.passed === true;
   const seoScore = seoScoreValue(post.seo_score);
   const readabilityScore = asNumber(post.readability_score);
   return qualityPassed

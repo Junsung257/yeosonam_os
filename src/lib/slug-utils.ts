@@ -133,6 +133,17 @@ export function slugIncludesDestination(slug: unknown, destination: unknown): bo
     || normalizedSlug.endsWith(`-${destinationSlug}`);
 }
 
+/** Keep a generated slug tied to the queue's expected topic identity. */
+export function slugMatchesExpectedTopic(slug: unknown, expectedSlug: unknown): boolean {
+  if (typeof slug !== 'string' || typeof expectedSlug !== 'string') return true;
+  const currentTokens = new Set(slug.trim().toLowerCase().split('-').filter(Boolean));
+  const expectedTokens = expectedSlug.trim().toLowerCase().split('-').filter(Boolean);
+  const meaningfulExpectedTokens = expectedTokens.filter((token) => !/^v?\d+$/.test(token));
+  if (meaningfulExpectedTokens.length < 2) return true;
+  const overlap = meaningfulExpectedTokens.filter((token) => currentTokens.has(token)).length;
+  return overlap >= Math.min(2, meaningfulExpectedTokens.length);
+}
+
 /** 토픽(문장)을 안전한 영문 slug로 변환 — 모든 목적지명 로마자 변환 */
 export function slugifyTopic(topic: string): string {
   // 1) 모든 목적지명을 순차 치환

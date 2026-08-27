@@ -71,6 +71,29 @@ describe('evaluateBlogPublishPreflight', () => {
     expect(result.blockers.map((check) => check.id)).toContain('canary_recent_quality_sample');
   });
 
+  it('fails closed when a recent post has no final quality projection', () => {
+    const result = evaluateBlogPublishPreflight({
+      dailyTarget: 4,
+      publishedToday: 0,
+      publishableCandidateCount: 12,
+      duplicateCandidateCount: 0,
+      evidenceInsufficientCount: 0,
+      candidateShortage: false,
+      actionableFailedCount: 0,
+      staleGeneratingCount: 0,
+      indexingOutboxMissingCount: 0,
+      indexingOutboxCoverageRate: 100,
+      recentPosts: [
+        goodPost('a'),
+        { ...goodPost('b'), quality_gate: undefined },
+        goodPost('c'),
+      ],
+    });
+
+    expect(result.status).toBe('block');
+    expect(result.blockers.map((check) => check.id)).toContain('canary_recent_quality_sample');
+  });
+
   it('warns instead of blocking when only buffer inventory is low', () => {
     const result = evaluateBlogPublishPreflight({
       dailyTarget: 4,
