@@ -218,7 +218,7 @@ describe('customer package client payload', () => {
     const pageSource = readFileSync(join(process.cwd(), 'src/app/packages/[id]/page.tsx'), 'utf8');
     const rivalScoreIndex = pageSource.indexOf("label: 'package.score-rivals'");
     const rivalPackageIndex = pageSource.indexOf('const rivalPackageIds', rivalScoreIndex);
-    const snapshotReaderIndex = pageSource.indexOf('listCurrentPublicPackageCardSnapshots');
+    const snapshotReaderIndex = pageSource.indexOf('listPublicCatalog');
     const snapshotLoadIndex = pageSource.indexOf('await loadPublishedCatalog()', rivalPackageIndex);
     const titleMapIndex = pageSource.indexOf('const titleByRivalId = new Map', snapshotLoadIndex);
     const pushIndex = pageSource.indexOf('title: publicTitle', titleMapIndex);

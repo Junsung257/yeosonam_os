@@ -4,6 +4,10 @@ const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SI
   .replace(/\/+$/, '');
 
 export const revalidate = 600;
+// Keep this endpoint as a server function.  Vercel's output tracing can
+// otherwise treat the fallback feed as a static asset and fail to map the
+// App Router route to a lambda during a prebuilt deployment.
+export const dynamic = 'force-dynamic';
 
 type RssPost = {
   slug?: string | null;

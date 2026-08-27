@@ -51,6 +51,11 @@ import { summarizeEvidencePackForApi } from '@/lib/product-registration/registra
 import {
   productRegistrationLegacyWriterBlocker,
 } from '@/lib/product-registration-v6/runtime-config';
+import {
+  getPublicCatalogDetail,
+  listPublicCatalog,
+  type PublicCatalogItem,
+} from '@/lib/public-catalog';
 
 const ADMIN_PACKAGE_CACHE_CONTROL = 'private, no-store';
 const PUBLIC_PACKAGE_CACHE_CONTROL = 'public, s-maxage=300, stale-while-revalidate=150';
@@ -94,6 +99,105 @@ function isCustomerPublicSnapshotCandidate(row: Record<string, unknown>): boolea
 function includesCustomerNoticeFields(input: Record<string, unknown>): boolean {
   return Object.prototype.hasOwnProperty.call(input, 'notices_parsed')
     || Object.prototype.hasOwnProperty.call(input, 'customer_notes');
+}
+
+function publicLegacyCard(item: PublicCatalogItem): Record<string, unknown> {
+  return {
+    id: item.id,
+    slug: item.slug,
+    title: item.title,
+    destination: item.destination,
+    country: item.country,
+    product_type: item.productKind,
+    departure_airport: item.departureAirport,
+    duration: item.duration,
+    nights: item.nights,
+    price: item.price,
+    price_display: item.priceDisplay,
+    hero_image_url: item.heroImage,
+    price_dates: item.availableDates,
+    product_highlights: item.badges,
+    booking_mode: item.bookingMode,
+    last_verified_at: item.lastVerifiedAt,
+  };
+}
+
+async function handlePublicPackageGet(input: {
+  id: string | null;
+  status?: string;
+  category?: string;
+  query: string;
+  destination: string;
+  landOperator: string;
+  sort: string;
+  page: number;
+  limit: number;
+  aggregate: string | null;
+}): Promise<NextResponse> {
+  if (input.id) {
+    const detail = await getPublicCatalogDetail(supabaseAdmin, input.id);
+    if (!detail) return ApiErrors.notFound('패키지를 찾을 수 없습니다.');
+    const responsePackage = {
+      ...stripPublicPackageFields(detail.package),
+      ...publicLegacyCard(detail.item),
+    };
+    const itineraryData = responsePackage.itinerary_data;
+    return successResponse({
+      package: responsePackage,
+      lp_hero_image_url: detail.item.heroImage,
+      attraction_ids: collectAttractionIds(itineraryData),
+      attraction_preview_names: getAttractionPreviewNamesFromItinerary(itineraryData, 8),
+    }, 200, 300);
+  }
+
+  let rows = await listPublicCatalog(supabaseAdmin, { limit: 5_000 });
+  if (input.status && !['all', 'selling', 'active', 'published'].includes(input.status)) rows = [];
+  if (input.category) rows = rows.filter((item) => item.productKind === input.category);
+  if (input.destination) rows = rows.filter((item) => item.destination === input.destination);
+  // Supplier/land-operator data is intentionally unavailable on the public DTO.
+  if (input.landOperator) rows = [];
+  if (input.query) {
+    const needle = input.query.toLocaleLowerCase('ko-KR');
+    rows = rows.filter((item) => [item.title, item.destination, item.country]
+      .some((value) => String(value ?? '').toLocaleLowerCase('ko-KR').includes(needle)));
+  }
+
+  if (input.aggregate === 'destination') {
+    const destinations = [...rows.reduce((map, item) => {
+      if (!item.destination) return map;
+      const current = map.get(item.destination) ?? {
+        destination: item.destination,
+        count: 0,
+        minPrice: null as number | null,
+        country: item.country ?? '',
+      };
+      current.count += 1;
+      if (item.price !== null && (current.minPrice === null || item.price < current.minPrice)) {
+        current.minPrice = item.price;
+      }
+      map.set(item.destination, current);
+      return map;
+    }, new Map<string, { destination: string; count: number; minPrice: number | null; country: string }>()).values()]
+      .sort((left, right) => right.count - left.count);
+    return successResponse({ destinations }, 200, 300);
+  }
+
+  rows.sort((left, right) => {
+    switch (input.sort) {
+      case 'title_asc': return left.title.localeCompare(right.title, 'ko-KR');
+      case 'title_desc': return right.title.localeCompare(left.title, 'ko-KR');
+      case 'destination_asc': return (left.destination ?? '').localeCompare(right.destination ?? '', 'ko-KR');
+      case 'destination_desc': return (right.destination ?? '').localeCompare(left.destination ?? '', 'ko-KR');
+      default: return right.lastVerifiedAt.localeCompare(left.lastVerifiedAt);
+    }
+  });
+  const from = (input.page - 1) * input.limit;
+  return listResponse(rows.slice(from, from + input.limit).map(publicLegacyCard), {
+    total: rows.length,
+    page: input.page,
+    limit: input.limit,
+    cacheSeconds: 300,
+  });
 }
 
 const CUSTOMER_PUBLIC_REAUDIT_FIELDS = new Set([
@@ -332,6 +436,20 @@ export async function GET(request: NextRequest) {
   try {
     // 목적지별 집계 — 홈페이지용
     const aggregate = searchParams.get('aggregate');
+    if (!isAdmin) {
+      return applyPackageCache(await handlePublicPackageGet({
+        id,
+        status,
+        category,
+        query: q,
+        destination: destFilter,
+        landOperator: landOperatorFilter,
+        sort,
+        page,
+        limit,
+        aggregate,
+      }), false);
+    }
     if (aggregate === 'destination') {
       // 1. mv_destination_aggregates → RPC 우선 (사전 집계, O(distinct destinations))
       //    마이그레이션: supabase/migrations/20260513000000_destination_aggregate_mv.sql

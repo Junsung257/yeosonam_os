@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { withCronGuard } from '@/lib/cron-auth';
+import { isValidProductRegistrationUploadToken } from '@/lib/api-auth';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { startProductRegistrationTextWorkflow } from '@/lib/product-registration-authority/start-workflow';
 import { getProductRegistrationV6RuntimeConfig } from '@/lib/product-registration-v6/runtime-config';
@@ -42,8 +43,8 @@ async function handler(request: NextRequest) {
   // applied and types are regenerated; runtime access is still service-role
   // only and every RPC performs its own tenant checks.
   const db = supabase as unknown as SupabaseClient;
-  const requestedLimit = Number(request.nextUrl.searchParams.get('limit') ?? 10);
-  const limit = Math.max(1, Math.min(25, Number.isFinite(requestedLimit) ? requestedLimit : 10));
+  const requestedLimit = Number(request.nextUrl.searchParams.get('limit') ?? 5);
+  const limit = Math.max(1, Math.min(10, Number.isFinite(requestedLimit) ? requestedLimit : 5));
   const { data: claimed, error: claimError } = await db.rpc(
     'claim_product_registration_legacy_backfill',
     { p_limit: limit, p_engine_version: PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION },
@@ -78,10 +79,10 @@ async function handler(request: NextRequest) {
 
   const publicBaseUrl = baseUrl(request);
   const results: Array<Record<string, unknown>> = [];
-  for (const claim of claims) {
+  const processClaim = async (claim: BackfillClaim) => {
     const pkg = packageById.get(claim.package_id);
     const rawText = typeof pkg?.raw_text === 'string' ? pkg.raw_text.trim() : '';
-    let started: { jobId: string; workflowRunId: string; sourceDocumentId: string } | null = null;
+    let started: { jobId: string; workflowRunId: string | null; sourceDocumentId: string } | null = null;
     try {
       if (!pkg || pkg.tenant_id !== claim.tenant_id || pkg.catalog_product_id !== claim.catalog_product_id) {
         throw new Error('LEGACY_BACKFILL_PACKAGE_LINEAGE_MISMATCH');
@@ -96,7 +97,12 @@ async function handler(request: NextRequest) {
         requestBaseUrl: publicBaseUrl,
         publicBaseUrl,
         sourceChannel: 'legacy_backfill',
-        archiveMode: true,
+        // Existing packages are re-evaluated with the same yearless-date
+        // policy as a fresh upload: a month/day resolves to this year or the
+        // next year relative to the run date, and already-past departures are
+        // excluded. Archive mode would intentionally disable that inference
+        // and turn otherwise usable legacy schedules into false blockers.
+        archiveMode: false,
         bulkMode: true,
         forceReprocess: true,
         metadata: {
@@ -149,7 +155,7 @@ async function handler(request: NextRequest) {
           status: 'bind_pending',
           error: detail,
         });
-        continue;
+        return;
       }
       try {
         await db.rpc('fail_product_registration_legacy_backfill', {
@@ -170,6 +176,14 @@ async function handler(request: NextRequest) {
         error: detail,
       });
     }
+  };
+
+   // Starting a durable workflow is idempotent per claim operation key. Keep
+   // the fan-out deliberately small. Each workflow performs extraction,
+  // revision writes, browser proof, and several Supabase RPCs; a larger burst
+  // causes connection saturation and turns healthy proof pages into 503s.
+  for (let offset = 0; offset < claims.length; offset += 2) {
+    await Promise.all(claims.slice(offset, offset + 2).map(processClaim));
   }
 
   return NextResponse.json({
@@ -182,4 +196,17 @@ async function handler(request: NextRequest) {
   }, { headers: { 'Cache-Control': 'no-store' } });
 }
 
-export const GET = withCronGuard(handler);
+const cronGuardedHandler = withCronGuard(handler);
+
+/**
+ * The scheduled invocation still requires CRON_SECRET.  A product-registration
+ * automation token is also accepted for an internal replay trigger so that a
+ * deployment/operator can start the same durable backfill without a browser
+ * admin session.  The token is scoped to this route and the handler still
+ * enforces the kernel authority, enabled flag, idempotency, and DB lineage
+ * gates for every claimed package.
+ */
+export const GET = async (request: NextRequest) => {
+  if (await isValidProductRegistrationUploadToken(request)) return handler(request);
+  return cronGuardedHandler(request);
+};

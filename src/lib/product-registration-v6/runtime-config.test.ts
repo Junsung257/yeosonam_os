@@ -4,6 +4,7 @@ import {
   getProductRegistrationV6RuntimeConfig,
   productRegistrationLegacyWriterBlocker,
   productRegistrationV6PublicationBlocker,
+  productRegistrationV6SourceProofAutoPublishEnabled,
 } from './runtime-config';
 
 const ENV_NAMES = [
@@ -12,6 +13,7 @@ const ENV_NAMES = [
   'PRODUCT_REGISTRATION_V6_SHADOW_ENABLED',
   'PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED',
   'PRODUCT_REGISTRATION_PUBLICATION_FREEZE',
+  'PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH',
 ] as const;
 
 const originalEnv = Object.fromEntries(
@@ -27,7 +29,7 @@ afterEach(() => {
 });
 
 describe('product registration V6 runtime config', () => {
-  it('fails closed when no publication flags are configured', () => {
+  it('keeps all automatic publication paths disabled by default', () => {
     for (const name of ENV_NAMES) delete process.env[name];
 
     expect(getProductRegistrationV6RuntimeConfig()).toEqual({
@@ -36,6 +38,7 @@ describe('product registration V6 runtime config', () => {
       shadowEnabled: true,
       publishEnabled: false,
       publicationFrozen: true,
+      sourceProofAutoPublishEnabled: false,
     });
     expect(productRegistrationV6PublicationBlocker()).toBe('PUBLICATION_FREEZE_ACTIVE');
   });
@@ -46,6 +49,21 @@ describe('product registration V6 runtime config', () => {
     process.env.PRODUCT_REGISTRATION_PUBLICATION_FREEZE = '0';
 
     expect(productRegistrationV6PublicationBlocker()).toBeNull();
+  });
+
+  it('ignores the retired source-proof environment bypass', () => {
+    process.env.PRODUCT_REGISTRATION_AUTHORITY_MODE = 'shadow';
+    process.env.PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH = '1';
+
+    expect(productRegistrationV6SourceProofAutoPublishEnabled()).toBe(false);
+    expect(productRegistrationV6PublicationBlocker()).toBe('PUBLICATION_FREEZE_ACTIVE');
+  });
+
+  it('never enables source-proof publication in retired legacy authority mode', () => {
+    process.env.PRODUCT_REGISTRATION_AUTHORITY_MODE = 'legacy';
+    process.env.PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH = '1';
+
+    expect(productRegistrationV6SourceProofAutoPublishEnabled()).toBe(false);
   });
 
   it('uses the durable workflow for shadow and kernel authority modes', () => {

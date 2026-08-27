@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Co-branding 메타 + 광고 표시 주입
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://yeosonam.co.kr';
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://yeosonam.com';
     const shareUrl = `${baseUrl}/packages/${body.product_id}?ref=${affiliate.referral_code}`;
 
     const cobrand = {

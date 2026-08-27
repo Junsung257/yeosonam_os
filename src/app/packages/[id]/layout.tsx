@@ -1,10 +1,8 @@
 ﻿import type { Metadata } from 'next';
 import { getSupabase, getSupabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { isSafeImageSrc } from '@/lib/image-url';
-import { isUuid } from '@/lib/uuid';
 import { withPublicQueryFallback } from '@/lib/public-query-timeout';
-import { getCurrentPublicPackage } from '@/lib/package-publication/repository';
-import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
+import { getPublicCatalogDetail } from '@/lib/public-catalog';
 
 const BASE_URL = (
   process.env.NEXT_PUBLIC_BASE_URL ||
@@ -28,19 +26,24 @@ type LayoutPublicPackage = {
   product_type?: unknown;
   product_highlights?: unknown;
   itinerary_data?: unknown;
+  hero_image?: unknown;
 };
 
 async function getPackage(id: string): Promise<LayoutPublicPackage | null> {
   if (!isSupabaseConfigured) return null;
   const client = getSupabaseAdmin() ?? getSupabase();
   if (!client) return null;
-  const current = await getCurrentPublicPackage(client, {
-    tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
-    packageRef: id,
-    channel: 'customer',
-    locale: 'ko-KR',
-  });
-  return current?.package as LayoutPublicPackage | null;
+  const current = await getPublicCatalogDetail(client, id);
+  if (!current) return null;
+  return {
+    ...(current.package as LayoutPublicPackage),
+    title: current.item.title,
+    destination: current.item.destination,
+    duration: current.item.duration,
+    price: current.item.price,
+    product_type: current.item.productKind,
+    hero_image: current.item.heroImage,
+  };
 }
 
 async function safeGetPackage(id: string) {
@@ -116,7 +119,7 @@ export async function generateMetadata({
   const { id: rawId } = await params;
   const id = getRouteParam(rawId);
   const canonical = getPackageUrl(id);
-  const pkg = id && isUuid(id) ? await safeGetPackage(id) : null;
+  const pkg = id ? await safeGetPackage(id) : null;
   if (!pkg) {
     return {
       title: '상품을 찾을 수 없습니다',
@@ -167,7 +170,9 @@ export async function generateMetadata({
     return null;
   })();
 
-  const heroCandidate: string | null = firstItineraryPhoto;
+  const heroCandidate = isSafeImageSrc(pkg.hero_image)
+    ? pkg.hero_image.trim()
+    : firstItineraryPhoto;
 
   const ogImage = resolveOgImage(heroCandidate);
 

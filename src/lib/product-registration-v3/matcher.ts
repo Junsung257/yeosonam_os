@@ -1,4 +1,8 @@
-import { matchAttraction, type AttractionData } from '@/lib/attraction-matcher';
+import {
+  attractionReviewCandidates,
+  matchAttractionForRegistration,
+  type AttractionData,
+} from '@/lib/attraction-matcher';
 import type { V3DraftLedger, V3MatchSummary } from './types';
 import { buildV3EntitySummary } from './entity-normalizer';
 
@@ -288,11 +292,11 @@ export function applyProductRegistrationV3Matching(
             index === scopes.findIndex(other => compactAttractionText(other) === compactAttractionText(scope)),
           );
           for (const scope of destinationScopes) {
-            match = matchAttraction(candidate, attractions, scope);
+            match = matchAttractionForRegistration(candidate, attractions, scope);
             if (match) break;
           }
           if (!match && (!scopedDestination || DESCRIPTION_LABEL_FALLBACKS.has(candidate.replace(/\s+/g, '')))) {
-            match = matchAttraction(candidate, attractions, undefined);
+            match = matchAttractionForRegistration(candidate, attractions, undefined);
           }
           if (match) break;
         }
@@ -309,10 +313,13 @@ export function applyProductRegistrationV3Matching(
         } else {
           event.match_status = 'unmatched';
           attractionUnmatched++;
+          const review = attractionReviewCandidates(event.raw_text, attractions, scopedDestination);
           unmatched.push({
             raw_text: event.raw_text,
             day_number: day.day,
             evidence: event.evidence,
+            review_candidates: review.candidates,
+            ambiguity_code: review.ambiguityCode,
           });
         }
       }

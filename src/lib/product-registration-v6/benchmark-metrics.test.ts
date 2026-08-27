@@ -16,6 +16,9 @@ function passingCases(count: number): ProductRegistrationBenchmarkCase[] {
     extractionSucceeded: true,
     segmentExact: true,
     predictedOutcome: 'verified',
+    expectedOutcome: 'EXPECTED_PUBLISHABLE',
+    predictedExpectedOutcome: 'EXPECTED_PUBLISHABLE',
+    criticalSourceSpanExact: true,
     criticalFalsePublish: false,
     criticalFieldCount: 10,
     criticalExactCount: 10,
@@ -79,6 +82,8 @@ describe('product registration 95 benchmark metrics', () => {
       expectedTerminalOutcome: 'discarded_non_travel',
       predictedOutcome: 'blocked',
       predictedTerminalOutcome: 'discarded_non_travel',
+      expectedOutcome: 'EXPECTED_NON_PRODUCT',
+      predictedExpectedOutcome: 'EXPECTED_NON_PRODUCT',
       criticalFieldCount: 1,
       criticalExactCount: 1,
     };

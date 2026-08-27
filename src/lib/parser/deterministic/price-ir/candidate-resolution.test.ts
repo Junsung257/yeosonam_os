@@ -82,4 +82,25 @@ describe('price candidate graph resolution', () => {
     expect(result.rows.map(row => row.date)).toEqual(['2026-09-27', '2026-10-04']);
     expect(result.resolution).toEqual(expect.objectContaining({ status: 'extended' }));
   });
+
+  it('rejects a flattened Cartesian-product candidate when a conflict-free date table exists', () => {
+    const result = extractPriceIR([
+      '1인 399,000원',
+      '9/12, 20',
+      '1인 499,000원',
+      '8/31',
+      '1인 539,000원',
+      '8/25',
+    ].join('\n'), { year: 2026 });
+
+    expect(result.rows.map(row => [row.date, row.adult_price])).toEqual([
+      ['2026-08-25', 539_000],
+      ['2026-08-31', 499_000],
+      ['2026-09-12', 399_000],
+      ['2026-09-20', 399_000],
+    ]);
+    expect(result.candidates?.find(candidate => candidate.source === 'commercial_price_relation')?.issues).toEqual(
+      expect.arrayContaining([expect.stringContaining('INTERNAL_SCOPE_CONFLICT:')]),
+    );
+  });
 });

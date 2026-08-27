@@ -25,6 +25,21 @@ describe('source sale-price disposition', () => {
     expect(result.shouldDiscard).toBe(false);
   });
 
+  it('does not reject a sale amount when the evidence cell also contains a following fuel note', () => {
+    const result = resolveSourceSalePriceDisposition({
+      sourceText: '2026년 9월 23일, 24일 예정\n▶ \\1,499,000\n상기요금은 유류할증료 기준',
+      canonicalSection: canonical([{
+        amount: 1_499_000,
+        currency: 'KRW',
+        evidence: {
+          quote: '2026년 9월 23일, 24일 예정\n▶ \\1,499,000\n상기요금은 유류할증료 기준',
+        },
+      }]),
+    });
+    expect(result.state).toBe('canonical_price_present');
+    expect(result.canonicalPriceCandidateCount).toBe(1);
+  });
+
   it('never promotes a canonical value whose evidence is NET-only to customer sale price', () => {
     const result = resolveSourceSalePriceDisposition({
       sourceText: '랜드 NET 799,000원\n커미션 9%',
@@ -114,6 +129,23 @@ describe('source sale-price disposition', () => {
     expect(result.sourcePriceStructureHintCount).toBe(0);
   });
 
+  it('discards a schedule that says price-table reference when only fee-like numbers were extracted', () => {
+    const result = resolveSourceSalePriceDisposition({
+      sourceText: [
+        '부산-내몽고 호화호특 4일 일정표',
+        '출발일자 2026년 7월 8일 ~ 8월 26일',
+        '요금표 참고',
+        '여행자보험 500,000원',
+        '예약금 300,000원',
+        '매너팁 5불',
+        '성인 8명 이상 출발',
+      ].join('\n'),
+      canonicalSection: canonical(),
+    });
+    expect(result.state).toBe('source_price_absent');
+    expect(result.shouldDiscard).toBe(true);
+  });
+
   it('does not mistake non-sale commercial amounts for an adult selling price', () => {
     const result = resolveSourceSalePriceDisposition({
       sourceText: [
@@ -151,6 +183,19 @@ describe('source sale-price disposition', () => {
     });
     expect(result.eligibleSections).toEqual([]);
     expect(result.discardedSectionIndexes).toEqual([0]);
+  });
+
+  it.each([
+    '호텔은 트윈 숙박 기준/3인실 대기조건',
+    '최소출발 : 10명 이상',
+    '매너팁 및 개인경비, 싱글비용($80)',
+  ])('discards a segmented commercial notice that is not a product section: %s', titleHint => {
+    const result = resolveSourceSalePriceDisposition({
+      sourceText: titleHint,
+      canonicalSection: { ...canonical(), titleHint },
+    });
+    expect(result.state).toBe('source_price_absent');
+    expect(result.shouldDiscard).toBe(true);
   });
 
   it('does not discard one section of a multi-product source when a shared price table may apply', () => {

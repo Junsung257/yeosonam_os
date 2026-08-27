@@ -138,8 +138,8 @@ describe('evaluateVerifyChecks — clean baseline (3박 5일 정상 케이스)',
   });
 });
 
-describe('evaluateVerifyChecks customer visibility gate', () => {
-  it('blocks review-only packages from being reported as clean', () => {
+describe('evaluateVerifyChecks registration and publication gates', () => {
+  it('does not treat a review-only registration state as a customer publication failure', () => {
     const result = evaluateVerifyChecks({
       id: 'pkg-review',
       title: 'Shizuoka 3 days',
@@ -157,9 +157,11 @@ describe('evaluateVerifyChecks customer visibility gate', () => {
       display_title: 'Shizuoka charter tour',
     } as never);
 
-    expect(result.status).toBe('blocked');
     expect(findCheck(result, 'C13')).toEqual(expect.objectContaining({
-      status: 'fail',
+      status: 'pass',
+    }));
+    expect(findCheck(result, 'C13P')).toEqual(expect.objectContaining({
+      status: 'skip',
     }));
   });
 

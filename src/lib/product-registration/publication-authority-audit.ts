@@ -7,11 +7,15 @@ export type PublicationAuthorityAuditInput = {
   pointer?: AnyRecord | null;
   snapshot?: AnyRecord | null;
   revision?: AnyRecord | null;
+  /** V6 stores the immutable browser proof in product_registration_v5_proof_runs. */
+  proof?: AnyRecord | null;
 };
 
 export type PublicationAuthorityAuditResult = {
   customerPublicationExpected: boolean;
   authoritativePublic: boolean;
+  /** True when the V6 revision + immutable snapshot + V6 browser proof form the authority chain. */
+  v6Authority: boolean;
   failures: string[];
   evidencePackStatus: string | null;
   mobileProofReason: string | null;
@@ -46,11 +50,86 @@ function addUnique(target: string[], code: string): void {
   if (!target.includes(code)) target.push(code);
 }
 
+function isV6CanonicalRevision(revision: AnyRecord | null, packageRow: AnyRecord): boolean {
+  if (!revision) return false;
+  const schemaVersion = asNonEmptyString(revision.schema_version);
+  const normalizationVersion = asNonEmptyString(revision.normalization_version);
+  const tenantMatches = valueMatches(revision.tenant_id, packageRow.tenant_id);
+  const catalogMatches = valueMatches(revision.catalog_product_id, packageRow.catalog_product_id);
+  return Boolean(
+    tenantMatches
+      && catalogMatches
+      && schemaVersion?.startsWith('product-registration-v5-canonical-')
+      && normalizationVersion?.startsWith('v6-'),
+  );
+}
+
+function v6SourceProofPassed(input: {
+  proof: AnyRecord | null;
+  snapshotHash: string | null;
+}): boolean {
+  const proof = input.proof;
+  if (!proof || !input.snapshotHash) return false;
+  const result = asRecord(proof.result) ?? proof;
+  const chromeProof = asRecord(result.chromeProof) ?? result;
+  const proofStatus = String(proof.status ?? chromeProof.status ?? result.status ?? '').toLowerCase();
+  if (proofStatus !== 'passed' && proofStatus !== 'pass') return false;
+  const nestedSurfaces = Array.isArray(chromeProof.surfaces)
+    && chromeProof.surfaces.some((surface) => asRecord(surface) !== null);
+  if (!nestedSurfaces) {
+    // Keep the earlier flattened proof contract readable for historical
+    // audit rows while new V6 runs use the nested chromeProof contract below.
+    if (asNonEmptyString(result.source) !== 'hwp-mobile-browser-proof') return false;
+    const resultSnapshotHash = asNonEmptyString(result.snapshotHash)
+      ?? asNonEmptyString(result.public_snapshot_hash);
+    if (resultSnapshotHash !== input.snapshotHash) return false;
+    const surfaceNames = Array.isArray(result.surfaces) ? result.surfaces.map(String) : [];
+    if (surfaceNames.length !== 2 || !surfaceNames.includes('packages') || !surfaceNames.includes('lp')) return false;
+    const surfaceResults = Array.isArray(result.surface_results) ? result.surface_results : [];
+    if (surfaceResults.length !== 2) return false;
+    return surfaceResults.every((surface) => {
+      const row = asRecord(surface);
+      if (!row || row.status !== 'pass' || !['packages', 'lp'].includes(String(row.surface))) return false;
+      if (asNonEmptyString(row.public_snapshot_hash) !== input.snapshotHash) return false;
+      const checks = Array.isArray(row.checks) ? row.checks : [];
+      return checks.length > 0 && checks.every((check) => asRecord(check)?.ok === true);
+    });
+  }
+  // V6 browser proof is persisted as { chromeProof: { surfaces: [...] } }.
+  // Older audits expected a flattened surface_results shape, which made a
+  // genuinely passed immutable proof look stale and reclassified the new
+  // source-proof package as legacy-only.
+  const route = asNonEmptyString(proof.route) ?? '';
+  if (!route.includes('/product-registration-proof/packages') || !route.includes('/product-registration-proof/lp')) return false;
+  const viewport = asRecord(proof.viewport);
+  if (Number(viewport?.width) !== 390 || Number(viewport?.height) !== 844) return false;
+  if (String(proof.device_profile ?? '') !== 'mobile-customer') return false;
+  const surfaces = Array.isArray(chromeProof.surfaces) ? chromeProof.surfaces : [];
+  if (surfaces.length !== 2) return false;
+  const rendererBuildId = asNonEmptyString(proof.renderer_build_id);
+  return surfaces.every((surface: unknown) => {
+    const row = asRecord(surface);
+    if (!row || row.status !== 'passed' || !['packages', 'lp'].includes(String(row.surface))) return false;
+    if (asNonEmptyString(row.snapshotHash) !== input.snapshotHash) return false;
+    if (rendererBuildId && asNonEmptyString(row.rendererBuildId) !== rendererBuildId) return false;
+    if (row.ctaOpened !== true || (Array.isArray(row.hydrationErrors) && row.hydrationErrors.length > 0)) return false;
+    if (Number(row.brokenImageCount ?? 0) > 0) return false;
+    if (Array.isArray(row.missingRequiredText) && row.missingRequiredText.length > 0) return false;
+    if (Array.isArray(row.forbiddenTextFound) && row.forbiddenTextFound.length > 0) return false;
+    return true;
+  });
+}
+
 export function auditPublicationAuthority(input: PublicationAuthorityAuditInput): PublicationAuthorityAuditResult {
   const pkg = input.packageRow;
   const pointer = asRecord(input.pointer);
   const snapshot = asRecord(input.snapshot);
   const revision = asRecord(input.revision);
+  const v6Proof = v6SourceProofPassed({
+    proof: asRecord(input.proof),
+    snapshotHash: asNonEmptyString(snapshot?.snapshot_hash),
+  });
+  const v6CanonicalRevision = isV6CanonicalRevision(revision, pkg);
   const auditReport = asRecord(pkg.audit_report);
   const evidencePack = asRecord(auditReport?.registration_evidence_pack_v1);
   const customerOpenContract = asRecord(auditReport?.customer_open_contract);
@@ -102,7 +181,14 @@ export function auditPublicationAuthority(input: PublicationAuthorityAuditInput)
   if (revision) {
     if (!valueMatches(revision.id, packageRevisionId)) addUnique(failures, 'canonical_revision_row_mismatch');
     if (!valueMatches(revision.tenant_id, packageTenantId)) addUnique(failures, 'canonical_revision_tenant_mismatch');
-    if (!valueMatches(revision.package_id, pkg.id)) addUnique(failures, 'canonical_revision_package_mismatch');
+    // V6 revisions are keyed by catalog_product_id.  package_id is nullable
+    // by design because the compatibility package projection is created after
+    // the immutable revision.  A non-null wrong package id is still a defect.
+    if (asNonEmptyString(revision.package_id)
+      ? !valueMatches(revision.package_id, pkg.id)
+      : !v6CanonicalRevision) {
+      addUnique(failures, 'canonical_revision_package_mismatch');
+    }
     if (!valueMatches(revision.catalog_product_id, packageCatalogProductId)) addUnique(failures, 'canonical_revision_catalog_mismatch');
     if (!asNonEmptyString(revision.source_document_id)
       || !asNonEmptyString(revision.extraction_id)
@@ -110,7 +196,9 @@ export function auditPublicationAuthority(input: PublicationAuthorityAuditInput)
       || !asNonEmptyString(revision.lineage_hash)) {
       addUnique(failures, 'canonical_revision_lineage_incomplete');
     }
-    if (!['approved', 'published'].includes(String(revision.status ?? ''))) {
+    const revisionStatus = String(revision.status ?? '');
+    const v6Publishable = v6CanonicalRevision && v6Proof && ['candidate', 'verified', 'approved', 'published'].includes(revisionStatus);
+    if (!['approved', 'published'].includes(revisionStatus) && !v6Publishable) {
       addUnique(failures, 'canonical_revision_not_publishable');
     }
   } else if (customerPublicationExpected) {
@@ -126,7 +214,9 @@ export function auditPublicationAuthority(input: PublicationAuthorityAuditInput)
   if (customerOpenContract?.ok === false || customerOpenContract?.status === 'blocked') {
     addUnique(failures, 'customer_open_contract_blocked');
   }
-  if (customerPublicationExpected && !evidencePack) addUnique(failures, 'registration_evidence_pack_missing');
+  if (customerPublicationExpected && !evidencePack && !v6Proof) {
+    addUnique(failures, 'registration_evidence_pack_missing');
+  }
 
   const packagePriceDateCount = priceDateCount(pkg.price_dates);
   const snapshotPriceDateCount = snapshotPackage ? priceDateCount(snapshotPackage.price_dates) : null;
@@ -136,15 +226,17 @@ export function auditPublicationAuthority(input: PublicationAuthorityAuditInput)
 
   let mobileProofReason: string | null = null;
   if (customerPublicationExpected) {
-    const mobileProof = evaluateCustomerMobileProof({
-      auditReport: pkg.audit_report,
-      packageUpdatedAt: asNonEmptyString(pkg.updated_at),
-      packageRevision: pkg.package_revision as string | number | null | undefined,
-      publicSnapshotHash: asNonEmptyString(snapshot?.snapshot_hash),
-    });
-    if (!mobileProof.ok) {
-      mobileProofReason = mobileProof.reason;
-      addUnique(failures, 'mobile_browser_proof_invalid_or_stale');
+    if (!v6Proof) {
+      const mobileProof = evaluateCustomerMobileProof({
+        auditReport: pkg.audit_report,
+        packageUpdatedAt: asNonEmptyString(pkg.updated_at),
+        packageRevision: pkg.package_revision as string | number | null | undefined,
+        publicSnapshotHash: asNonEmptyString(snapshot?.snapshot_hash),
+      });
+      if (!mobileProof.ok) {
+        mobileProofReason = mobileProof.reason;
+        addUnique(failures, 'mobile_browser_proof_invalid_or_stale');
+      }
     }
   }
 
@@ -155,6 +247,7 @@ export function auditPublicationAuthority(input: PublicationAuthorityAuditInput)
       && Boolean(snapshot)
       && Boolean(revision)
       && failures.length === 0,
+    v6Authority: v6CanonicalRevision && v6Proof,
     failures,
     evidencePackStatus,
     mobileProofReason,

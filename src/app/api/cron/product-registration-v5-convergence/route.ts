@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { withCronGuard } from '@/lib/cron-auth';
 import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
+import { dispatchProductRegistrationPublicationRequests } from '@/lib/product-registration-authority/publication-dispatch';
 import { observeProductRegistrationV5ConvergenceBatch } from '@/lib/product-registration-v4/convergence-observer';
 
 export const runtime = 'nodejs';
@@ -15,6 +16,10 @@ async function handler(request: NextRequest): Promise<NextResponse> {
 
   const requested = Number(request.nextUrl.searchParams.get('limit') ?? 10);
   const limit = Number.isFinite(requested) ? Math.max(1, Math.min(Math.floor(requested), 50)) : 10;
+  const snapshotHashes = [
+    ...request.nextUrl.searchParams.getAll('snapshot_hash'),
+    ...request.nextUrl.searchParams.getAll('snapshotHash'),
+  ];
   const baseUrl = (
     process.env.NEXT_PUBLIC_BASE_URL
     || process.env.NEXT_PUBLIC_SITE_URL
@@ -26,12 +31,27 @@ async function handler(request: NextRequest): Promise<NextResponse> {
       supabase: supabaseAdmin,
       baseUrl,
       limit,
+      snapshotHashes,
     });
+    const publicationDispatch = await dispatchProductRegistrationPublicationRequests({
+      supabase: supabaseAdmin,
+      limit: 10,
+      requestBaseUrl: baseUrl,
+      publicBaseUrl: baseUrl,
+    }).then(
+      (results) => ({ ok: true, results }),
+      (dispatchError) => ({
+        ok: false,
+        error: dispatchError instanceof Error ? dispatchError.message : String(dispatchError),
+        results: [],
+      }),
+    );
     return NextResponse.json(
       {
         success: true,
         baseUrl,
         observed,
+        publicationDispatch,
         count: observed.length,
         summary: {
           converged: observed.filter(row => row.status === 'converged').length,

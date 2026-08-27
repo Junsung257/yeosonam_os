@@ -69,6 +69,33 @@ describe('migration safety checker', () => {
       .not.toContainEqual(expect.objectContaining({ type: 'foreign-key-index' }));
   });
 
+  it('does not classify an index on a schema-qualified table created in the same migration as lock-heavy', () => {
+    const migration = `
+      CREATE TABLE internal_product_registration.stage_runs (
+        id uuid PRIMARY KEY,
+        status text NOT NULL
+      );
+      CREATE INDEX idx_stage_runs_status
+        ON internal_product_registration.stage_runs(status);
+    `;
+
+    expect(new checker.MigrationChecker('20260101000000_stage_runs.sql', migration).run())
+      .not.toContainEqual(expect.objectContaining({ type: 'lock-heavy' }));
+  });
+
+  it('recognizes a schema-qualified supporting index for an altered foreign key', () => {
+    const migration = `
+      ALTER TABLE internal_product_registration.departure_instances
+        ADD CONSTRAINT departure_price_rule_fk
+        FOREIGN KEY (price_rule_id) REFERENCES public.price_rules(id);
+      CREATE INDEX CONCURRENTLY idx_departure_price_rule
+        ON internal_product_registration.departure_instances(price_rule_id);
+    `;
+
+    expect(new checker.MigrationChecker('20260101000000_departure_fk.sql', migration).run())
+      .not.toContainEqual(expect.objectContaining({ type: 'foreign-key-index' }));
+  });
+
   it('returns nonzero for HIGH and CRITICAL findings', () => {
     expect(checker.determineExitCode({ files: [{ issues: [{ severity: 'high' }] }] })).toBe(1);
     expect(checker.determineExitCode({ files: [{ issues: [{ severity: 'critical' }] }] })).toBe(1);

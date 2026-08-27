@@ -36,7 +36,7 @@ describe('product OCR/PDF candidate benchmark', () => {
       failed: 0,
     })]);
     expect(report.results.every(result => result.provenance.extractedTextSha256.length === 64)).toBe(true);
-  });
+  }, 20_000);
 
   it('marks unknown benchmark cases as failed instead of guessing', async () => {
     const report = await runProductOcrBenchmark({

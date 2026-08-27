@@ -56,6 +56,35 @@ describe('future departure date policy', () => {
     });
   });
 
+  it('recognizes a commercial date window without a departure heading when the source year is independently known', () => {
+    expect(resolveExplicitSourceDepartureWindow('2026년 03월 30일 ~ 05월 29일\n월,수 출발\n요금표 참조', 2026)).toEqual({
+      start: '2026-03-30',
+      end: '2026-05-29',
+      quote: '2026년 03월 30일 ~ 05월 29일',
+    });
+    expect(resolveExplicitSourceDepartureWindow('2026년 03월 30일 ~ 05월 29일\n개정일', 2026)).toBeNull();
+  });
+
+  it('recognizes a compact slash date window next to an operation notice', () => {
+    expect(resolveExplicitSourceDepartureWindow('4/1~5/29\n월/수 출발\n요금표 참조', 2026)).toEqual({
+      start: '2026-04-01',
+      end: '2026-05-29',
+      quote: '4/1~5/29',
+    });
+  });
+
+  it('prefers one repeated shared sale window over competing exception windows', () => {
+    expect(resolveExplicitSourceDepartureWindow([
+      '4/1~5/29 월/수 출발 요금표',
+      '4/27~5/6 예외가',
+      '4/1~5/29 금 출발 요금표',
+    ].join('\n'), 2026)).toEqual({
+      start: '2026-04-01',
+      end: '2026-05-29',
+      quote: '4/1~5/29',
+    });
+  });
+
   it('uses the Korean calendar date from the authoritative intake instant', () => {
     expect(seoulDateFromInstant('2026-08-13T15:00:00.000Z')).toBe('2026-08-14');
     expect(seoulDateFromInstant('2026-08-13T14:59:59.999Z')).toBe('2026-08-13');

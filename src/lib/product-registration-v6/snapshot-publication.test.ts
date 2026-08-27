@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { buildPublicPackageSnapshot } from '@/lib/package-publication/public-snapshot';
 import type { ResolvedTransportForSnapshot } from './shared-fact-orchestrator';
-import { applyResolvedTransport, applySafeLodgingCopy, degradedPackageCopy, productRegistrationProofScreenshotPath, productRegistrationProofSuiteVersion } from './snapshot-publication';
+import { applyResolvedTransport, applySafeLodgingCopy, customerSnapshotHygieneBlockers, degradedPackageCopy, productRegistrationProofScreenshotPath, productRegistrationProofSuiteVersion } from './snapshot-publication';
 
 function packageWithFlight() {
   return {
@@ -224,6 +224,7 @@ describe('productRegistrationProofSuiteVersion', () => {
     };
     const failed = productRegistrationProofSuiteVersion({
       status: 'failed',
+      browserVersion: 'test-browser',
       browserMode: 'local-chrome',
       viewport: { width: 390, height: 844, deviceScaleFactor: 3 },
       checkedAt: '2026-08-17T00:00:00Z',
@@ -231,6 +232,7 @@ describe('productRegistrationProofSuiteVersion', () => {
     });
     const passed = productRegistrationProofSuiteVersion({
       status: 'passed',
+      browserVersion: 'test-browser',
       browserMode: 'local-chrome',
       viewport: { width: 390, height: 844, deviceScaleFactor: 3 },
       checkedAt: '2026-08-17T00:01:00Z',
@@ -238,5 +240,23 @@ describe('productRegistrationProofSuiteVersion', () => {
     });
     expect(failed).not.toBe(passed);
     expect(failed).toMatch(/^product-registration-v6-mobile-chrome-3\+result\.[0-9a-f]{24}$/);
+  });
+});
+
+describe('customerSnapshotHygieneBlockers', () => {
+  it('blocks operational supplier markers and incomplete fragments', () => {
+    expect(customerSnapshotHygieneBlockers({
+      itinerary: ['HOTEL : 지정불가', '// 지정불가', '가이드 미팅 후'],
+    })).toEqual(expect.arrayContaining([
+      'CUSTOMER_TEXT_SUPPLIER_MARKER',
+      'CUSTOMER_TEXT_RAW_DIRECTIVE',
+      'CUSTOMER_TEXT_INCOMPLETE_FRAGMENT',
+    ]));
+  });
+
+  it('allows a complete typed customer sentence', () => {
+    expect(customerSnapshotHygieneBlockers({
+      itinerary: ['가이드 미팅 후 공항으로 이동합니다.'],
+    })).toEqual([]);
   });
 });

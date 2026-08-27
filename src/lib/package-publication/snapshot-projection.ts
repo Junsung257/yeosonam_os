@@ -8,6 +8,7 @@ import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { isPublicPublicationState } from './types';
 import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
+import { listPublicCatalog } from '@/lib/public-catalog';
 
 type AnyRecord = Record<string, unknown>;
 
@@ -237,8 +238,10 @@ export async function fetchAndMergeCurrentPublicPackageCardSnapshots<T extends A
   if (overlayError || !Array.isArray(overlays)) throw overlayError ?? new Error('PACKAGE_AVAILABILITY_OVERLAY_UNAVAILABLE');
   const blockedCatalogProducts = new Set(overlays
     .map(asRecord)
-    .filter((row): row is AnyRecord => Boolean(row
-      && ['closed', 'sold_out', 'suspended'].includes(String(row.sale_state ?? ''))))
+    .filter((row): row is AnyRecord => Boolean(row && (
+      String(row.customer_visibility_state ?? 'public') !== 'public'
+      || ['closed', 'sold_out', 'suspended'].includes(String(row.sale_state ?? ''))
+    )))
     .map(row => String(row.catalog_product_id ?? ''))
     .filter(Boolean));
   const { data: activeSwitches, error: switchError } = await supabase
@@ -307,31 +310,34 @@ export async function listCurrentPublicPackageCardSnapshots(
     limit?: number;
   } = {},
 ): Promise<AnyRecord[]> {
-  const limit = Math.max(1, Math.min(5_000, options.limit ?? 1_000));
-  const tenantId = options.tenantId ?? PLATFORM_PRODUCT_REGISTRATION_TENANT_ID;
-  const pointerQuery = supabase
-    .from('product_registration_v5_publication_pointers')
-    .select('package_id,catalog_product_id,current_revision_id,current_snapshot_id,state')
-    .eq('tenant_id', tenantId)
-    .eq('channel', options.channel ?? 'customer')
-    .eq('locale', options.locale ?? 'ko-KR')
-    .eq('state', 'published')
-    .not('package_id', 'is', null)
-    .not('catalog_product_id', 'is', null)
-    .not('current_revision_id', 'is', null)
-    .not('current_snapshot_id', 'is', null)
-    .limit(limit);
-  const { data: pointers, error } = await pointerQuery;
-  if (error) throw error;
-  const candidates = (pointers ?? []).map(pointer => ({
-    id: String(pointer.package_id),
-    catalog_product_id: String(pointer.catalog_product_id),
+  if ((options.channel ?? 'customer') !== 'customer' || (options.locale ?? 'ko-KR') !== 'ko-KR') return [];
+  const items = await listPublicCatalog(supabase, {
+    tenantId: options.tenantId ?? PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+    limit: options.limit,
+  });
+  return items.map((item) => ({
+    id: item.id,
+    catalog_id: item.slug,
+    title: item.title,
+    display_title: item.title,
+    destination: item.destination,
+    country: item.country,
+    duration: item.duration,
+    nights: item.nights,
+    price: item.price,
+    price_display: item.priceDisplay,
+    price_dates: item.availableDates.map((entry) => ({
+      date: entry.date,
+      price: entry.price ?? item.price ?? 0,
+      confirmed: entry.confirmed ?? false,
+    })),
+    product_type: item.productKind,
+    departure_airport: item.departureAirport,
+    product_highlights: item.badges,
+    hero_image_url: item.heroImage,
+    booking_mode: item.bookingMode,
+    last_verified_at: item.lastVerifiedAt,
     publication_state: 'published',
     status: 'active',
   }));
-  return fetchAndMergeCurrentPublicPackageCardSnapshots(supabase, candidates, {
-    tenantId,
-    channel: options.channel,
-    locale: options.locale,
-  });
 }

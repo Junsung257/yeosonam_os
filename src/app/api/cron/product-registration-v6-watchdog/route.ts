@@ -67,7 +67,7 @@ async function restartStaleJob(input: {
   supabase: SupabaseClient;
   job: StaleJob;
   baseUrl: string;
-}): Promise<{ jobId: string; workflowRunId: string }> {
+}): Promise<{ jobId: string; workflowRunId: string | null }> {
   if (input.job.v6_workflow_run_id) {
     const run = getRun(input.job.v6_workflow_run_id);
     await run.cancel().catch(() => undefined);

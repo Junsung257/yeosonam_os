@@ -40,7 +40,7 @@ describe('product registration input adapter convergence', () => {
     const route = source('src/app/api/cron/product-registration-v6-backfill/route.ts');
     expect(route).toContain('startProductRegistrationTextWorkflow');
     expect(route).toContain("sourceChannel: 'legacy_backfill'");
-    expect(route).toContain('archiveMode: true');
+    expect(route).toContain('archiveMode: false');
     expect(route).toContain('forceReprocess: true');
   });
 

@@ -383,7 +383,7 @@ describe('product registration V6 terminal policy', () => {
     );
   });
 
-  it('blocks contradictory final customer guide-tip notices even when completeness says degraded', () => {
+  it('publishes contradictory final customer guide-tip notices as consultation-only degraded', () => {
     const payload = canonical({ outcome: 'degraded' }) as Record<string, any>;
     payload.sections[0].v3.ledger.variants[0].standard_notices.push(
       { template_key: 'guide.tip_included', review_status: 'auto_clean' },
@@ -392,13 +392,16 @@ describe('product registration V6 terminal policy', () => {
 
     const result = evaluateProductRegistrationV6Policy({ canonicalPayload: payload });
 
-    expect(result.terminalOutcome).toBe('blocked_action_required');
-    expect(result.blockers).toContain(
+    expect(result.terminalOutcome).toBe('published_degraded');
+    expect(result.blockers).not.toContain(
       'sections[0].variants[0]:CUSTOMER_FACT_CONTRADICTION:GUIDE_TIP_INCLUDED_AND_LOCAL_PAYMENT',
+    );
+    expect(result.degradedReasons).toContain(
+      'sections[0].variants[0]:GUIDE_TIP_SCOPE_REQUIRES_CUSTOMER_CONFIRMATION',
     );
   });
 
-  it('blocks contradictory guide-tip facts even when the local-payment notice was suppressed', () => {
+  it('publishes contradictory guide-tip facts as consultation-only degraded even when a notice is suppressed', () => {
     const payload = canonical({ outcome: 'verified' }) as Record<string, any>;
     payload.sections[0].v3.ledger.variants[0].structured_facts = [
       { category: 'guide_tip', review_status: 'auto_clean', values: { included: true, amount: null } },
@@ -406,14 +409,83 @@ describe('product registration V6 terminal policy', () => {
     ];
     payload.sections[0].v3.ledger.variants[0].standard_notices = [
       { template_key: 'guide.tip_included', review_status: 'auto_clean' },
+      { category: 'cancellation_terms', raw_text: '취소료는 특별약관에 따릅니다.' },
     ];
 
     const result = evaluateProductRegistrationV6Policy({ canonicalPayload: payload });
 
-    expect(result.terminalOutcome).toBe('blocked_action_required');
-    expect(result.blockers).toContain(
+    expect(result.terminalOutcome).toBe('published_degraded');
+    expect(result.blockers).not.toContain(
       'sections[0].variants[0]:CUSTOMER_FACT_CONTRADICTION:GUIDE_TIP_INCLUDED_AND_LOCAL_PAYMENT',
     );
+    expect(result.degradedReasons).toContain(
+      'sections[0].variants[0]:GUIDE_TIP_SCOPE_REQUIRES_CUSTOMER_CONFIRMATION',
+    );
+  });
+
+  it('keeps optional tours on a no-option package as a scoped degraded disclosure', () => {
+    const payload = canonical() as Record<string, any>;
+    payload.sections[0].v3.ledger.variants[0].standard_notices.push({
+      template_key: 'optional.none',
+      source_text: '노옵션 진행시 성인 100,000원 추가',
+      review_status: 'auto_clean',
+    });
+    payload.sections[0].v3.ledger.variants[0].options = [{ raw_name: 'USJ 선택관광 (별도)' }];
+
+    const result = evaluateProductRegistrationV6Policy({ canonicalPayload: payload });
+
+    expect(result.terminalOutcome).toBe('published_degraded');
+    expect(result.blockers.some(reason => reason.includes('NO_OPTION_WITH_OPTION_ITEMS'))).toBe(false);
+    expect(result.degradedReasons.some(reason => reason.includes('OPTION_SCOPE_REQUIRES_CUSTOMER_CONFIRMATION'))).toBe(true);
+  });
+
+  it('keeps conditional no-shopping pricing with shopping visits as degraded', () => {
+    const payload = canonical() as Record<string, any>;
+    payload.sections[0].v3.ledger.variants[0].standard_notices.push({
+      template_key: 'shopping.none',
+      source_text: '노쇼핑 진행시 성인 100,000원 추가',
+      review_status: 'auto_clean',
+    });
+    payload.sections[0].v3.ledger.variants[0].shopping = [{ raw_name: '쇼핑센터 3회' }];
+
+    const result = evaluateProductRegistrationV6Policy({ canonicalPayload: payload });
+
+    expect(result.terminalOutcome).toBe('published_degraded');
+    expect(result.blockers.some(reason => reason.includes('NO_SHOPPING_WITH_SHOPPING_ITEMS'))).toBe(false);
+    expect(result.degradedReasons.some(reason => reason.includes('SHOPPING_SCOPE_REQUIRES_CUSTOMER_CONFIRMATION'))).toBe(true);
+  });
+
+  it('keeps optional free-shopping visits with a no-shopping title as degraded', () => {
+    const payload = canonical() as Record<string, any>;
+    payload.sections[0].v3.ledger.variants[0].standard_notices.push({
+      template_key: 'shopping.none',
+      source_text: '노쇼핑 상품',
+      review_status: 'auto_clean',
+    });
+    payload.sections[0].v3.ledger.variants[0].shopping = [{
+      raw_name: '캐시미어 매장 방문 - 자유쇼핑',
+    }];
+
+    const result = evaluateProductRegistrationV6Policy({ canonicalPayload: payload });
+
+    expect(result.terminalOutcome).toBe('published_degraded');
+    expect(result.blockers.some(reason => reason.includes('NO_SHOPPING_WITH_SHOPPING_ITEMS'))).toBe(false);
+    expect(result.degradedReasons.some(reason => reason.includes('SHOPPING_SCOPE_REQUIRES_CUSTOMER_CONFIRMATION'))).toBe(true);
+  });
+
+  it('still blocks an unscoped no-shopping contradiction', () => {
+    const payload = canonical() as Record<string, any>;
+    payload.sections[0].v3.ledger.variants[0].standard_notices.push({
+      template_key: 'shopping.none',
+      source_text: '노쇼핑 상품',
+      review_status: 'auto_clean',
+    });
+    payload.sections[0].v3.ledger.variants[0].shopping = [{ raw_name: '쇼핑센터 3회' }];
+
+    const result = evaluateProductRegistrationV6Policy({ canonicalPayload: payload });
+
+    expect(result.terminalOutcome).toBe('blocked_action_required');
+    expect(result.blockers.some(reason => reason.includes('NO_SHOPPING_WITH_SHOPPING_ITEMS'))).toBe(true);
   });
 
   it('does not mistake an unrelated refund notice for cancellation terms', () => {
