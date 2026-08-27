@@ -24,6 +24,11 @@ import type { SeasonalSignal } from '@/lib/seasonal-signals';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
+import {
+  normalizeFitnessScores,
+  normalizeMonthlyNormals,
+  normalizeSeasonalSignals,
+} from '@/lib/destination-climate-display';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -267,6 +272,22 @@ function buildFallbackClimateData(destination: string): ClimateData {
     monthly_normals: monthlyNormals,
     fitness_scores: fitnessScores,
     seasonal_signals: seasonalSignals,
+  };
+}
+
+function normalizeClimateCardData(climateData: ClimateData | null, destination: string) {
+  const fallback = buildFallbackClimateData(destination);
+  const source = climateData ?? fallback;
+  const monthlyNormals = normalizeMonthlyNormals(source.monthly_normals);
+  const fitnessScores = normalizeFitnessScores(source.fitness_scores);
+
+  return {
+    destination: getTrimmedString(source.destination) ?? destination,
+    primary_city: getTrimmedString(source.primary_city) ?? destination,
+    country: getNullableTrimmedString(source.country),
+    monthly_normals: monthlyNormals.length > 0 ? monthlyNormals : fallback.monthly_normals as MonthlyNormal[],
+    fitness_scores: fitnessScores.length > 0 ? fitnessScores : fallback.fitness_scores as FitnessScore[],
+    seasonal_signals: normalizeSeasonalSignals(source.seasonal_signals),
   };
 }
 
@@ -673,7 +694,10 @@ export default async function DestinationPillarPage({ params }: { params: Promis
       .find((url): url is string => isSafeImageSrc(url)) ?? null;
   const heroImage = fromMeta || fromAttr || fromPackage || fromPost;
 
-  const pillarHtml = data.pillarPost?.blog_html ? await renderPillarBody(data.pillarPost.blog_html) : null;
+  const pillarBody = data.pillarPost?.blog_html;
+  const pillarHtml = typeof pillarBody === 'string' && pillarBody.trim()
+    ? await renderPillarBody(pillarBody)
+    : null;
   const region = getRegionForCity(decoded);
 
   // 히어로 타이틀/설명 (destination_metadata 우선)
@@ -689,7 +713,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
   const destinationReviewCount = getPositiveNumber(data.reviewCount);
 
   const showDepartureTabs = data.departureCities.length >= 2;
-  const climateCardData = data.climateData ?? buildFallbackClimateData(decoded);
+  const climateCardData = normalizeClimateCardData(data.climateData, decoded);
 
   // 출발월 분포 (climate 카드용)
   const departureDist: Record<number, number> = {};
@@ -924,9 +948,9 @@ export default async function DestinationPillarPage({ params }: { params: Promis
             destination={climateCardData.destination}
             primaryCity={climateCardData.primary_city}
             country={climateCardData.country}
-            monthlyNormals={climateCardData.monthly_normals as MonthlyNormal[]}
-            fitnessScores={climateCardData.fitness_scores as FitnessScore[]}
-            seasonalSignals={climateCardData.seasonal_signals as SeasonalSignal[]}
+            monthlyNormals={climateCardData.monthly_normals}
+            fitnessScores={climateCardData.fitness_scores}
+            seasonalSignals={climateCardData.seasonal_signals}
             representativeMonth={new Date().getMonth() + 1}
             departureDistribution={Object.keys(departureDist).length > 0 ? departureDist : undefined}
           />

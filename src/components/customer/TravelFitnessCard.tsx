@@ -179,7 +179,7 @@ function chartSummary(
 
   const climate = repFit.score;
   const pop = repSig?.popularity_score;
-  const peakMonth = signals
+  const peakMonth = signals && signals.length > 0
     ? signals.reduce((a, b) => (a.popularity_score > b.popularity_score ? a : b)).month
     : fitnessScores.reduce((a, b) => (a.score > b.score ? a : b)).month;
 
@@ -222,7 +222,11 @@ export default function TravelFitnessCard({
   const [expanded, setExpanded] = useState(false);
   const safeMonthlyNormals = Array.isArray(monthlyNormals) ? monthlyNormals : [];
   const safeFitnessScores = Array.isArray(fitnessScores) ? fitnessScores : [];
-  const safeSeasonalSignals = Array.isArray(seasonalSignals) ? seasonalSignals : null;
+  // 빈 JSON 배열은 "시즌 데이터가 없음"과 동일하게 취급한다. 빈 배열을
+  // truthy 값으로 유지하면 chartSummary가 reduce([])를 호출해 SSR 500을 낼 수 있다.
+  const safeSeasonalSignals = Array.isArray(seasonalSignals) && seasonalSignals.length > 0
+    ? seasonalSignals
+    : null;
   if (!safeFitnessScores.length || !safeMonthlyNormals.length) return null;
 
   const sel = safeFitnessScores.find((f) => f.month === selectedMonth) || safeFitnessScores[0];
