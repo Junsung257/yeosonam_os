@@ -1,0 +1,328 @@
+worktree C:/dev/yeosonam-os
+HEAD 34e43d8d50a9f1637d50faa337767fe174149dab
+branch refs/heads/codex/blog-quality-hardening-20260804
+
+worktree C:/dev/yeosonam-os-a11y-lint-cleanup
+HEAD f86c758f7b93a32ce9662ea43ba18a3675cc7784
+branch refs/heads/codex/a11y-lint-cleanup-20260719
+
+worktree C:/dev/yeosonam-os-admin-a11y-labels-p1
+HEAD 248f9ba34bea2a85dc2568b291b0fb719d62f1bf
+branch refs/heads/codex/admin-a11y-labels-p1-20260719
+
+worktree C:/dev/yeosonam-os-admin-auth-boundary-p0
+HEAD c4e1608dbf85212674c2bbe5b7f3558539e6d976
+branch refs/heads/codex/admin-auth-boundary-p0-20260719
+
+worktree C:/dev/yeosonam-os-admin-blog-categories-a11y-p1
+HEAD 6deb3407e331922ea504893adce03daae0c01901
+branch refs/heads/codex/admin-blog-categories-a11y-p1-20260720
+
+worktree C:/dev/yeosonam-os-admin-blog-edit-a11y-p1
+HEAD e6496fccd93919529ee6c7a82d2bac49883d33b1
+branch refs/heads/codex/admin-blog-edit-a11y-p1-20260720
+
+worktree C:/dev/yeosonam-os-admin-competitor-a11y
+HEAD 841dd8a892626455af370fe43d0b5bdc453050a1
+detached
+
+worktree C:/dev/yeosonam-os-admin-kpi-accuracy
+HEAD 91ea8010d9303d6d40c36b4113f8e524ad5a5aae
+branch refs/heads/codex/admin-kpi-accuracy-20260719
+
+worktree C:/dev/yeosonam-os-admin-marketing-a11y-p1
+HEAD f6a0fbecae6c688e4edcb1c3e32bbb6ad3f994ad
+branch refs/heads/codex/admin-marketing-a11y-p1-20260720
+
+worktree C:/dev/yeosonam-os-affiliate-remediation
+HEAD 4950100fe7978bfc94098982a2bee98313b4e63a
+branch refs/heads/affiliate-critical-remediation
+
+worktree C:/dev/yeosonam-os-agent-runtime-hardening
+HEAD ec58e6a2b122b87e66cc51b6314fcfa9fd6301e1
+branch refs/heads/main
+
+worktree C:/dev/yeosonam-os-agent-runtime-verification
+HEAD 9341391d929b4d56ce4734034358705339a159b8
+detached
+
+worktree C:/dev/yeosonam-os-analytics-clean
+HEAD c02072e5167d0c4a819be26be03aed033ff4716f
+branch refs/heads/codex/blog-collection-dynamic-hotfix-20260731
+
+worktree C:/dev/yeosonam-os-assemble-a11y
+HEAD 090e4314f37375258a12a401ec185b761642628f
+branch refs/heads/codex/admin-assemble-free-travel-a11y-20260721
+
+worktree C:/dev/yeosonam-os-auto-publish-loop-body-p1
+HEAD cfdfd50b09373ea8284424c437021d38870ea1a5
+branch refs/heads/codex/auto-publish-loop-body-p1-20260720
+
+worktree C:/dev/yeosonam-os-backend-p1-security
+HEAD fc31990fb9ccc7a564ea8ba7f633cb6a1ac43ee1
+branch refs/heads/codex/backend-p1-security-20260719
+
+worktree C:/dev/yeosonam-os-blog-area-price-guidance
+HEAD 6da65c6d1aa1ad721cd6f4a8349a2eb3bf806b16
+branch refs/heads/codex/blog-area-price-guidance
+
+worktree C:/dev/yeosonam-os-blog-audit-20260728
+HEAD fb5e589dcd4d2fcd850ee131fadfb042a98553e7
+branch refs/heads/codex/blog-destination-slug
+
+worktree C:/dev/yeosonam-os-blog-deepseek-v4
+HEAD 05e218ae7a161fbe063b91eb780116e6bbd06f5b
+branch refs/heads/codex/blog-deepseek-orchestrator-v4-20260815
+
+worktree C:/dev/yeosonam-os-blog-deepseek-v4-release
+HEAD c0812e8f6fab544b29f17db03bcb4b37934b0430
+branch refs/heads/codex/blog-v4-grounded-repair-v3
+
+worktree C:/dev/yeosonam-os-blog-direct-evidence
+HEAD 88d8b93fce9cc73bdd2132be2c554ca8684c070d
+branch refs/heads/codex/blog-unscheduled-research-buffer
+
+worktree C:/dev/yeosonam-os-blog-live-ops-20260815
+HEAD c3231ade9e66cb9bc4ce334f3a09665c45697022
+branch refs/heads/codex/blog-live-ops-drilldown-20260815
+
+worktree C:/dev/yeosonam-os-blog-prompt-r24
+HEAD e728571c5c929040bf70cccc107e7b85f1994b59
+branch refs/heads/codex/blog-success-generation-meta-hygiene-r36
+
+worktree C:/dev/yeosonam-os-blog-public-fallback
+HEAD 3f8503274946a8653291db11841b7d817f88c381
+branch refs/heads/codex/launch-hardening-20260720
+
+worktree C:/dev/yeosonam-os-blog-public-restore
+HEAD 9fc927a5740383cb31c990e89436f54a7f3c3637
+branch refs/heads/codex/blog-public-restore
+
+worktree C:/dev/yeosonam-os-blog-quality-573
+HEAD 65684cdd6e8685caeae189f3ca2347bd4eb5411d
+branch refs/heads/codex/yanji-package-render-contract-20260707
+
+worktree C:/dev/yeosonam-os-blog-quality-continuation
+HEAD d070856b867d04eac9bf2d00008b7ddfb0f1ae62
+branch refs/heads/codex/blog-entry-evidence-fallback-20260802
+
+worktree C:/dev/yeosonam-os-blog-quality-engine-v3
+HEAD 3770493e1ab233b516e629b6442f0824469ed98f
+branch refs/heads/codex/blog-v3-readiness-migration-hotfix
+
+worktree C:/dev/yeosonam-os-blog-recovery
+HEAD 24b17727e9fb10e9face6e047fcf9fa46c7723f0
+detached
+
+worktree C:/dev/yeosonam-os-blog-v4-content-factory
+HEAD c5138a4e602fcd1ae033340d0c3116f292e115e8
+branch refs/heads/codex/blog-v4-content-factory-20260819
+
+worktree C:/dev/yeosonam-os-campaign-boundary-p0
+HEAD e2f72600be5b645d228dae3a90f7e9077a08377a
+branch refs/heads/codex/campaign-boundary-p0-20260720
+
+worktree C:/dev/yeosonam-os-card-news-editor-a11y-p1
+HEAD 1b2b2f04b561b1ad8cee08a061e551296b0e09d6
+branch refs/heads/codex/card-news-editor-a11y-p1-20260720
+
+worktree C:/dev/yeosonam-os-card-news-write-auth-p0
+HEAD af282b010a74f38a407018d9bc1a414b014a309c
+branch refs/heads/codex/card-news-write-auth-p0-20260720
+
+worktree C:/dev/yeosonam-os-clobe-outflow-fix
+HEAD c19672342c6d790d1f4e87fceb9fc210acd96049
+branch refs/heads/codex/clobe-auto-sync-20260802
+
+worktree C:/dev/yeosonam-os-clobe-payments
+HEAD b6994941f4317e1ebce3913669fded29345e1322
+branch refs/heads/codex/payment-kpi-zero-hotfix-20260801
+
+worktree C:/dev/yeosonam-os-concierge-mock-block-p0
+HEAD 3925e9e00bc4d9f24f03d997d7f625df5127d241
+branch refs/heads/codex/concierge-mock-block-p0-20260719
+
+worktree C:/dev/yeosonam-os-content-generation-auth-p0
+HEAD b10846d32f0e9896be8fb2e4023620111377b6d2
+branch refs/heads/codex/content-generation-auth-p0-20260720
+
+worktree C:/dev/yeosonam-os-content-preview-sanitize-p1
+HEAD 58c458b3b685cea7713b733f8fe9bfa8b923d2b5
+branch refs/heads/codex/content-preview-sanitize-p1-20260719
+
+worktree C:/dev/yeosonam-os-cron-vercel-auth
+HEAD ee493145fc602d22da18c0b7ed3d8234388fea59
+branch refs/heads/codex/blog-publisher-vercel-cron-auth-20260719
+
+worktree C:/dev/yeosonam-os-deploy-blog-20260727
+HEAD d6205ae4eefaee58cd62051e9204370c88ba1f33
+branch refs/heads/codex/blog-root-cause-autopublish-hardening
+
+worktree C:/dev/yeosonam-os-destination-pillar-sanitize-p1
+HEAD 5d7c69082de8c3cabba95e8c6ab461cd70c3ffc2
+branch refs/heads/codex/destination-pillar-sanitize-p1-20260719
+
+worktree C:/dev/yeosonam-os-destinations-a11y
+HEAD 0a08c7dd5efa9093fb2f4bd89ac6f67a09628782
+branch refs/heads/codex/admin-destinations-a11y-20260721
+
+worktree C:/dev/yeosonam-os-finance-center
+HEAD ff8a8f9fa3f84a6765d6fde8079559a6a86af8ac
+branch refs/heads/codex/finance-center-audit-fixes
+
+worktree C:/dev/yeosonam-os-finance-integrity-20260811
+HEAD cde601e627398e1efbd834abbc573ff7183c7072
+branch refs/heads/codex/finance-sync-status-clarity-20260812
+
+worktree C:/dev/yeosonam-os-finance-ux-v4
+HEAD 8d804a07dbb1566e3074cc2a425f08ed970e2566
+branch refs/heads/codex/finance-allocation-classification-ssot
+
+worktree C:/dev/yeosonam-os-finance-v3
+HEAD 1aa47f702ab7031451143115fb8796d0fe0e0421
+branch refs/heads/codex/finance-v3-final-audit
+
+worktree C:/dev/yeosonam-os-frontend-launch-p1
+HEAD c22a254ebae412d2fe58eba2243825f2e8cdaa4d
+branch refs/heads/codex/frontend-launch-p1-20260719
+
+worktree C:/dev/yeosonam-os-ga-integration-20260727
+HEAD a02d9452cf531cfde0890e760c70009d9f002431
+branch refs/heads/codex/ga4-analytics-integration-fix
+
+worktree C:/dev/yeosonam-os-ga4
+HEAD 0d9685c929d72dada2b99c26c434fbd849f1af83
+branch refs/heads/codex/fix-ga4-runtime
+
+worktree C:/dev/yeosonam-os-group-rfq
+HEAD 008a32e06146d096960bbf0cb3a7c68b8e27a5fe
+branch refs/heads/codex/group-rfq-growth-hardening-20260629
+
+worktree C:/dev/yeosonam-os-info-v2-r16-fixes
+HEAD 87dfb20185ee27092e83232cd2317102a25da11a
+branch refs/heads/codex/informational-content-engine-v2-r16-fixes
+
+worktree C:/dev/yeosonam-os-info-v2-remediation
+HEAD 07f2c86d340212c255a0a38cf46ad5ba4d4860b8
+branch refs/heads/codex/informational-content-engine-v2-remediation
+
+worktree C:/dev/yeosonam-os-jarvis-optimization
+HEAD 83825fb49468dc035eb8123a76e45f1e5d44ea66
+branch refs/heads/codex/jarvis-optimization-20260705
+
+worktree C:/dev/yeosonam-os-jarvis-product-learning
+HEAD c3062ee0c11539543b61630fbd9840ed5c7082e6
+branch refs/heads/codex/jarvis-product-db-learning-20260705
+
+worktree C:/dev/yeosonam-os-marketing-operations
+HEAD d8ed7a55d79e8fa290566ef629720f0323198612
+branch refs/heads/codex/marketing-operations-rebuild-20260725
+
+worktree C:/dev/yeosonam-os-mcp-a11y
+HEAD 65ae8bfdc1c8661a4374303e6726b1a3f52d2dd1
+branch refs/heads/codex/admin-mcp-a11y-p1-20260721
+
+worktree C:/dev/yeosonam-os-meta-ads-paused-p0
+HEAD 153bd6ce9f2de64ff631b60653040ea7094b7320
+branch refs/heads/codex/meta-ads-paused-p0-20260720
+
+worktree C:/dev/yeosonam-os-meta-boundary-p1
+HEAD ff764411b14b35835d9de6cfc39e98449119f243
+branch refs/heads/codex/meta-publisher-boundary-p1-20260720
+
+worktree C:/dev/yeosonam-os-ops-boundary-p0
+HEAD 50b84f52d390c36c090de48f6f18efd280acc628
+branch refs/heads/codex/ops-boundary-p0-20260719
+
+worktree C:/dev/yeosonam-os-payment-fix
+HEAD 96bcab2de4a762dc08af65d07ddf1526033fdfbd
+branch refs/heads/codex/payment-auto-suggest-envelope-20260801
+
+worktree C:/dev/yeosonam-os-product-registration-v4
+HEAD add302ff3776c7092e5319334fa869cfa8cff446
+branch refs/heads/codex/product-registration-engine-v4-20260806
+
+worktree C:/dev/yeosonam-os-product-registration-v6
+HEAD 1e6b4a0da8cef5f17e53ec8fed12f0aae08281d6
+branch refs/heads/codex/product-registration-engine-v6-20260811
+
+worktree C:/dev/yeosonam-os-product-registration-v6-deploy
+HEAD ca3e0f4aa3109e1d086a5b47641622e6603369f7
+detached
+
+worktree C:/dev/yeosonam-os-product-registration-v61
+HEAD 1e6b4a0da8cef5f17e53ec8fed12f0aae08281d6
+branch refs/heads/codex/product-registration-v61-authority-20260820
+
+worktree C:/dev/yeosonam-os-protobufjs-audit
+HEAD 8077fd254a28f5ad1af778641b1222cfb4deadfd
+branch refs/heads/codex/protobufjs-audit-fix-20260721
+
+worktree C:/dev/yeosonam-os-public-egress-v1
+HEAD 9b9c6e0aa185a6917dc0c1bde17b8e9ba8373975
+branch refs/heads/codex/public-egress-boundary-v1
+
+worktree C:/dev/yeosonam-os-regression-drift-p1
+HEAD 24d52bb46cfaa0f710a11604e2e3f730ce3f2cb1
+branch refs/heads/codex/blog-regression-harness-drift-20260720b
+
+worktree C:/dev/yeosonam-os-release-audit-20260719
+HEAD e8f26eb1ab37a2ec6038b8aaa1ff76cb4f95852d
+branch refs/heads/codex/release-readiness-audit-20260719
+
+worktree C:/dev/yeosonam-os-release-gate-p0
+HEAD 4c509f25baf4383332890a3689e01ffe696e8520
+branch refs/heads/codex/release-gate-p0-20260719
+
+worktree C:/dev/yeosonam-os-revenue-rescue-p0
+HEAD ca1f46a73745281fde0817160cfa5dbfddf980c0
+branch refs/heads/codex/revenue-rescue-p0-revenue
+
+worktree C:/dev/yeosonam-os-rfq-auth-p0
+HEAD 0d7b153044a24c8bd47dec8cbf2c36d722df81e6
+branch refs/heads/codex/rfq-auth-p0-20260719
+
+worktree C:/dev/yeosonam-os-search-improvement-20260727
+HEAD 6ff64c967c9a32931e4d3d01a7e4adea92a202cf
+branch refs/heads/codex/blog-search-data-improvement-loop
+
+worktree C:/dev/yeosonam-os-sensitive-mock-failclosed-p1
+HEAD 2c97a063361e122bd0ddd8cc83277116d2c062de
+branch refs/heads/codex/sensitive-mock-failclosed-p1-20260719
+
+worktree C:/dev/yeosonam-os-settlement-bank-truth
+HEAD c74a01a5484b67fe8208c40b9ea3b43770e55a69
+branch refs/heads/codex/booking-drawer-envelope-20260803
+
+worktree C:/dev/yeosonam-os-settlement-cash-classification
+HEAD b00fae3615d13b021be224084e1a73ebce444d54
+branch refs/heads/codex/settlement-cash-classification-20260804
+
+worktree C:/dev/yeosonam-os-settlement-label-hardening
+HEAD f8c63aab8b9dc769a0b097a4ff41874225c64398
+branch refs/heads/codex/settlement-label-hardening-20260805
+
+worktree C:/dev/yeosonam-os-settlement-pdf-auth-p1
+HEAD a3eb9ae19b8f2df62e83b0aabcbe7c6b2a402e19
+branch refs/heads/codex/settlement-pdf-auth-p1-20260720
+
+worktree C:/dev/yeosonam-os-settlement-profit-erp
+HEAD c40262030a9f6216a863f19c00d56b5cbe862ad8
+branch refs/heads/codex/monthly-settlement-confirm-20260805
+
+worktree C:/dev/yeosonam-os-stabilization-coordinator
+HEAD 14f7b137391e623b7867c82055580d1f78b6c4c6
+branch refs/heads/codex/stabilization-coordinator-20260705
+
+worktree C:/dev/yeosonam-os-supabase-jwt-trust-p0
+HEAD 1b34650f097acc5cec08fbe0563f58d89883d230
+branch refs/heads/codex/supabase-jwt-trust-p0-20260719
+
+worktree C:/dev/yeosonam-os-tenant-portal-auth-p0
+HEAD 01feaeb1f236ba04f1cc685a22addb75a0aa9c2d
+branch refs/heads/codex/tenant-portal-auth-p0-20260719
+
+worktree C:/dev/yeosonam-os-travel-history-p1
+HEAD 348026d6db0102501447fa26b7d31ecaf44f079e
+branch refs/heads/codex/admin-magic-links-a11y-20260721
+

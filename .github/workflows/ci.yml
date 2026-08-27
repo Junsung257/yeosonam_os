@@ -111,6 +111,11 @@ jobs:
       - name: Build
         run: npm run build
         env:
+          # The 396-page app can exceed V8's 6 GB default while Next validates
+          # types. Match the existing strict type-check heap and fail quickly
+          # when an aborted build did not leave a complete verified artifact.
+          NODE_OPTIONS: "--max-old-space-size=8192"
+          NEXT_BUILD_RECOVERY_WAIT_MS: "30000"
           NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co"
           NEXT_PUBLIC_SUPABASE_ANON_KEY: "dummy-anon-key-for-ci"
           SUPABASE_SERVICE_ROLE_KEY: "dummy-service-role-key-for-ci"
@@ -154,6 +159,10 @@ jobs:
 
       - run: npm ci && npm run build
         env:
+          # Performance analysis performs a third full Next build; keep it on
+          # the same deterministic heap/recovery contract as both build gates.
+          NODE_OPTIONS: "--max-old-space-size=8192"
+          NEXT_BUILD_RECOVERY_WAIT_MS: "30000"
           NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co"
           NEXT_PUBLIC_SUPABASE_ANON_KEY: "dummy-anon-key-for-ci"
           SUPABASE_SERVICE_ROLE_KEY: "dummy-service-role-key-for-ci"

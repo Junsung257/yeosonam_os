@@ -3,7 +3,10 @@ import { createHash } from 'node:crypto';
 import type { CanonicalSection } from '@/lib/product-registration-v4/canonical-worker';
 import type { ProductSourceDocumentClass } from '@/lib/product-registration-v6/document-classifier';
 
-import type { ProductRegistrationBenchmarkCase } from './benchmark-metrics';
+import type {
+  ProductRegistrationBenchmarkCase,
+  ProductRegistrationBenchmarkExpectedOutcome,
+} from './benchmark-metrics';
 import { PRODUCT_REGISTRATION_BENCHMARK_SCHEMA_VERSION } from './engine-release-manifest';
 
 type JsonObject = Record<string, unknown>;
@@ -92,6 +95,7 @@ export type ReviewedBenchmarkAnnotation = {
 };
 
 export type BenchmarkGroundTruthSection = {
+  expectedOutcome: ProductRegistrationBenchmarkExpectedOutcome;
   title?: string | null;
   boundary?: BenchmarkSectionBoundary;
   productIdentity?: BenchmarkProductIdentityAxes;
@@ -143,7 +147,7 @@ export type BenchmarkFieldDiff = {
   unexpected: string[];
 };
 
-type ExtractedSectionFacts = BenchmarkGroundTruthSection & {
+type ExtractedSectionFacts = Omit<BenchmarkGroundTruthSection, 'expectedOutcome'> & {
   productIdentity: BenchmarkProductIdentityAxes;
   priceComponents: BenchmarkPriceComponent[];
   itinerary: BenchmarkItineraryDay[];
@@ -215,6 +219,12 @@ function validateEvidenceAnchors(anchors: BenchmarkEvidenceAnchor[], code: strin
 }
 
 function validateV2Section(section: BenchmarkGroundTruthSection, code: string, fullProductFacts = true): void {
+  if (![
+    'EXPECTED_PUBLISHABLE',
+    'EXPECTED_REVIEW_REQUIRED',
+    'EXPECTED_SOURCE_INCOMPLETE',
+    'EXPECTED_NON_PRODUCT',
+  ].includes(section.expectedOutcome)) throw new Error(`${code}:EXPECTED_OUTCOME_REQUIRED`);
   if (!section.boundary) throw new Error(`${code}:BOUNDARY_REQUIRED`);
   validateEvidenceAnchors([section.boundary.startAnchor, section.boundary.endAnchor], `${code}:BOUNDARY`);
   if (!fullProductFacts) {

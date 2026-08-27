@@ -55,18 +55,19 @@
 
 > Vercel 프로젝트 환경변수 설정 가이드 — Production 배포 전 필수 확인
 
-## 상품등록 통합 자동화 엔진 V6 (2026-08-11)
+## 상품등록 통합 자동화 엔진 V6.1 (2026-08-20)
 
-V6는 기본적으로 레거시 호환 또는 그림자 처리만 합니다. 운영 판매 정보는 앱과 DB authority가 모두 `kernel`이고, `PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED=1`, `PRODUCT_REGISTRATION_PUBLICATION_FREEZE=0`이며 cohort gate가 통과할 때만 CAS 공개를 시도합니다.
+V6.1은 기본 그림자·공개 동결 상태에서 운영합니다. 동결 중 개별 공개는 환경변수가 아니라 exact revision/snapshot/browser-proof에 묶인 일회성 `publication_release_authorizations` 승인권으로만 가능합니다. 일반 cohort 자동공개도 명시적 allowlist와 별도 릴리스 승인 전에는 켜지지 않습니다.
 
 | 변수 | 용도 | 안전한 기본값 |
 |---|---|---|
-| `PRODUCT_REGISTRATION_AUTHORITY_MODE` | `legacy`, `shadow`, `kernel` 중 등록 writer 권위 선택. `shadow`와 `kernel`은 V6 durable workflow를 사용하며 고객 공개는 `kernel`에서만 가능 | `legacy` |
+| `PRODUCT_REGISTRATION_AUTHORITY_MODE` | `legacy`, `shadow`, `kernel` 중 등록 writer 권위 선택. `shadow`와 `kernel`은 V6 durable workflow를 사용하며 legacy writer는 종료됨 | `shadow` |
 | `PRODUCT_REGISTRATION_PLATFORM_TENANT_ID` | 플랫폼 자체 업로드·공개 surface의 명시적 tenant UUID. 신규 kernel 업로드에서는 필수 | 미설정 |
 | `PRODUCT_REGISTRATION_V6_WORKFLOW_ENABLED` | 과거 호환 변수. 현재 workflow 권위는 `PRODUCT_REGISTRATION_AUTHORITY_MODE=shadow|kernel`에서만 결정하며 이 값만으로 켜지지 않음 | `0` |
 | `PRODUCT_REGISTRATION_V6_SHADOW_ENABLED` | revision·검증·snapshot을 비공개로 생성 | `1` |
 | `PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED` | verified/degraded 결과의 자동 CAS 공개 | `0` |
 | `PRODUCT_REGISTRATION_PUBLICATION_FREEZE` | `1`이면 모든 신규 V6 공개 차단 | `1` |
+| `PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH` | **퇴역 호환 변수. 무시됨.** 동결 공개를 우회하지 않으며, 공개에는 exact one-time release authorization이 필요 | `0` 또는 미설정 |
 | `PRODUCT_REGISTRATION_V6_BACKFILL_ENABLED` | 기존 `travel_packages`를 같은 Kernel로 비공개 재처리. migration·schema finalizer 이후 shadow에서만 켬 | `0` |
 | `PRODUCT_REGISTRATION_V6_PUBLIC_READER_REQUIRED` | 고객 면에서 pointer로 지정된 immutable snapshot만 읽기 | canary 전 `0`, 전환 후 `1` |
 | `PRODUCT_REGISTRATION_PROOF_SECRET` | snapshot·hash·package에 귀속된 proof URL HMAC secret | 무작위 32바이트 이상 |
@@ -130,6 +131,7 @@ LLM trace는 원문 prompt/response를 속성에 저장하지 않고 `gen_ai.ope
 | `GOOGLE_AI_API_KEY` | Gemini 2.5 Flash (블로그·카드뉴스·Pillar 생성) | `AIza...` |
 | `SUPABASE_JWT_SECRET` | Supabase **JWT 서명용 시크릿** (대시보드 → Project Settings → API → JWT Secret) | Base64 시크릿 |
 | `ADMIN_EMAILS` | **브라우저 쿠키 JWT**로 `/api` 어드민 호출 시 허용 이메일 (쉼표 구분, 대소문자 무시) | `admin@yeosonam.com` |
+| `PRODUCT_REGISTRATION_UPLOAD_TOKEN` | 자동 상품 원문 업로드 전용 토큰 (`x-product-registration-upload-token`). `/api/upload`에서만 허용되며 다른 관리자 API 권한은 부여하지 않음 | 미설정 |
 
 `ADMIN_EMAILS`가 비어 있으면 일반 로그인으로는 어드민 API가 거부됩니다. 서버 간 호출은 `Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>` 로 여전히 가능합니다.
 

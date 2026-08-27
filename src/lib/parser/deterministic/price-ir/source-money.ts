@@ -34,7 +34,10 @@ function stripDecorations(value: string): string {
     .normalize('NFKC')
     .trim()
     .replace(/^(?:판매\s*가|상품\s*가|행사\s*가|할인\s*가|최종\s*가|성인(?:\s*기준)?\s*(?:가|요금)?|1\s*인(?:당)?\s*(?:가|요금)?)\s*[:：]?\s*/iu, '')
-    .replace(/^\s*(?:₩|￦|KRW)\s*/iu, '')
+    // Some HWP exports render the won sign as a literal backslash (e.g. `\\1,499,000`).
+    // Treat it as a currency marker only when it is immediately before a money token;
+    // the original quote is still retained as evidence.
+    .replace(/^\s*(?:₩|￦|KRW|\\)\s*/iu, '')
     .replace(/\s*(?:원|KRW|\/\s*인|\/\s*성인)\s*$/iu, '')
     .replace(/\s*(?:특가|판매\s*가|상품\s*가|행사\s*가|할인\s*가|최종\s*가)\s*$/iu, '')
     .trim();
@@ -142,7 +145,7 @@ export function extractSourceWonAmounts(
     /[1-9]\d{0,3}(?:\.\d+)?\s*만\s*원/gu,
     /(?:[1-9]\d{1,3}|[1-9]\d{0,2}(?:,\d{3})+)\s*,(?:\s*[-–—]{1,8}|(?=\s*(?:$|[^\s\d-])))/gu,
     /[1-9]\d{0,2}(?:[,.]\d{3})+\s*(?:원|KRW)?/giu,
-    /(?:₩|￦|KRW)\s*[1-9]\d{4,8}|[1-9]\d{4,8}\s*(?:원|KRW)?/giu,
+    /(?:₩|￦|KRW|\\)\s*[1-9]\d{4,8}|[1-9]\d{4,8}\s*(?:원|KRW)?/giu,
   ];
   for (const pattern of explicitPatterns) {
     for (const match of normalized.matchAll(pattern)) add(match[0], match.index);

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v61-gold-review-packets-manifest-1",
+  "status": "BLOCKED_EXTERNAL_SOURCE_AND_HUMAN_REVIEW",
+  "requiredGoldSections": 400,
+  "recommendedReserveSections": 50,
+  "targetPacketCount": 450,
+  "packetsGenerated": 0,
+  "candidateTemplateManifest": "review-packet-candidate-templates.jsonl",
+  "candidateSourceTemplatesPrepared": 40,
+  "candidateSectionsPrepared": 69,
+  "sourceHashVerifiedPackets": 0,
+  "reviewerEvidence": {
+    "humanReviewerA": "NOT_SUPPLIED",
+    "humanReviewerB": "NOT_SUPPLIED",
+    "blindnessProven": false
+  },
+  "generationPolicy": "Generate packets only from original source plus verified hash; never generate from metadata-only rows."
+}

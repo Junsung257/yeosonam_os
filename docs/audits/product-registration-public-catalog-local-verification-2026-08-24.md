@@ -1,0 +1,130 @@
+# Product Registration and Public Catalog Local Verification
+
+Date: 2026-08-24
+Branch: `codex/product-publication-catalog-pr-20260824`
+Worktree: `C:\dev\yeosonam-os-product-public-pr`
+
+## Decision
+
+Gates 0-4 are implemented and verified on top of protected `main` commit
+`8931296529d9ecdb5a9bf2b8864982b3cdef1122`. Settlement, Vercel build-stability,
+and production admin-login fixes from current `main` are preserved. The large
+unfinished Blog V4 stack remains separate; only its isolated Product JSON-LD
+audit compatibility fix was carried over. The branch is ready for a protected
+PR and preview, but it is not production ready. No production database write,
+pointer mutation, production deployment, indexing request, or external
+communication occurred during local verification.
+
+## Implemented scope
+
+- reconciled the deployed product-registration lineage into a clean branch;
+- retired legacy publication mutations and exposed one exact admin truth;
+- added latest-revision fencing, reviewed publication requests, atomic channel
+  pointer changes, post-public canary compensation, and stranded-request
+  recovery through the existing convergence worker;
+- extended revision-bound typed commercial facts and atomically projected
+  `products`, `product_prices`, and `travel_packages`;
+- added grounded customer-copy V2 with deterministic facts, gateway-mediated
+  optional rewrite, evidence validation, and safe fallback;
+- added a service-role-only `public_catalog_view` read projection over exact
+  pointer/snapshot/proof lineage and typed future departures;
+- cut home, package list/search/detail, metadata/print, destinations, sitemap,
+  QA, Jarvis, recommendations, campaigns, influencer/affiliate surfaces, and
+  public product readers over to the allowlisted catalog;
+- server-rendered the initial package list and reduced the public search API to
+  13 customer fields;
+- removed mock activity, unsupported counters/claims, placeholder company data,
+  obsolete `.co.kr` customer references, and broken legal navigation;
+- retained the existing mobile-first design while adding truthful
+  package/cruise/golf/private-group information architecture.
+
+## Automated evidence
+
+| Gate | Result |
+|---|---|
+| Focused catalog/publication/trust tests | PASS |
+| Full Vitest | PASS — 860 files; 6,461 passed; 7 skipped |
+| TypeScript | PASS — 8 GB Node heap, exit 0 |
+| ESLint | PASS |
+| Next production build | PASS — Next.js 15.5.21; 396 static pages |
+| Migration-prefix audit | PASS — 553 files; 16 pre-existing collisions; 0 new |
+| Migration safety | PASS — 20 files; 21 FK indexes added concurrently; 12 exact historical lock-risk exceptions documented |
+| Structured-data audit | PASS — 5 Product nodes include descriptions |
+| Registration authority | PASS — kernel-only; authorized 1, legacy 0, unapproved 0 |
+| Runtime environment docs/code audits | PASS |
+| Vercel function-count audit | PASS — 26/50 |
+| Sensitive API guard audit | PASS |
+| Strict PII audit | PASS — 0 blockers |
+| Customer egress manifest | PASS — 29 registered catalog consumers |
+| `git diff --check` | PASS |
+
+The full build safely produced an empty catalog when no local service-role
+database was available; it did not fall back to legacy `approved` products.
+
+## Browser evidence
+
+The Vercel `agent-browser` CLI was unavailable, so the repository Playwright
+runtime was used as the documented fallback. The reusable verifier is
+`scripts/verify-public-catalog-local-browser.mjs`.
+
+The matrix covered `/`, `/packages`, `/cruise`, `/private-tour`, a destination,
+and `/about` at 390×844 and 1440×900. All 12 combinations returned HTTP 200,
+rendered the expected meaningful heading/content, showed no blocking overlay,
+emitted zero browser console errors, and contained none of the audited old
+domain or unsupported trust claims.
+
+Screenshots were inspected from the temporary local evidence directory. They
+are not committed because they are machine-local derivative artifacts.
+
+## Explained blockers
+
+1. A full empty-database migration replay reaches a pre-existing legacy
+   migration that assumes a `customers` table. The isolated temporary database
+   was removed; production was untouched. New migration static/security
+   contracts pass, but staging migration apply and query-plan evidence remain
+   mandatory.
+   PR CI also exposed 21 previously hidden schema-qualified FK index gaps. Two
+   forward-only `CONCURRENTLY` migrations close those gaps without changing
+   possibly applied migration history. Twelve non-concurrent indexes in five
+   reconciled historical files remain exact-hash exceptions; their approvals
+   record the risk and require statement timeouts, staging timing evidence, and
+   a controlled release window rather than authorizing a live apply.
+2. Blog-owned product attachment paths (`/api/blog`, blog detail/destination,
+   and angle matching) still use the exact published-snapshot helpers rather
+   than `public_catalog_view`. They remain safe from raw compatibility-table
+   fallback, but final cross-surface catalog parity must be reconciled when the
+   separate Blog V4 stack is made mergeable. This branch intentionally did not
+   absorb that 117-commit release stack.
+3. The Gate 0 production read showed V6.1 migrations were not applied and the
+   source-proof auto-publish environment flag was on. Both must be rechecked and
+   made safe before any staging/production data operation.
+4. Legacy product repair, the two Da Nang golden-product replays, live set
+   parity, query plans, cache/rollback drills, and 4-hour/24-hour observation
+   require controlled environment writes or elapsed production observation.
+5. Company, registration, insurance, and legal claims require owner-supplied
+   evidence and legal review. Missing facts are hidden rather than fabricated.
+
+## Required next sequence
+
+1. Push a protected PR and deploy an unaliased preview for the exact reviewed
+   SHA.
+2. Apply migrations to an approved staging environment; run RLS/grant tests,
+   query plans, catalog shadow parity, browser proof with real eligible cards,
+   kill-switch/cache/rollback drills, and structured-data audit.
+3. Repair and replay the two golden products twice under one release manifest.
+4. Request explicit approval for production migrations, release, and any data
+   repair. Only then prove production SHA parity and run 4-hour/24-hour
+   observation gates.
+
+## Final local status
+
+```text
+STATIC FINDINGS REPRODUCED: YES
+LOCAL IMPLEMENTATION GATES 0-4: PASS
+LOCAL TEST/TYPE/LINT/BUILD: PASS
+LOCAL BROWSER MATRIX: 12/12 PASS
+PRODUCTION WRITES: 0
+DEPLOYMENTS: 0
+PRODUCTION READY: NO
+NEXT STATE: PROTECTED PR/PREVIEW
+```

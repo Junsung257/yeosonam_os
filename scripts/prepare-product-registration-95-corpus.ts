@@ -247,6 +247,33 @@ async function processFile(
         rollingInferenceEligible: true,
       } : undefined,
     }));
+    // The publication policy intentionally does not know about corpus-level
+    // terminal classification.  Keep the benchmark labels aligned with the
+    // live workflow: past-only sections are archived and sections without a
+    // sale price are discarded, rather than being reported as blocked.
+    const pastOnlySectionIndexes = new Set(
+      normalized.qualityDiagnostics.departureDatePolicy.pastOnlySectionIndexes,
+    );
+    const discardedSourceSectionIndexes = new Set(salePricePartition.discardedSectionIndexes);
+    const terminalOutcomes = sections.map((_, index) =>
+      pastOnlySectionIndexes.has(index)
+        ? 'archived_all_departures_past'
+        : discardedSourceSectionIndexes.has(index)
+          ? 'discarded_source_incomplete'
+          : decisions[index]?.terminalOutcome ?? 'blocked_action_required',
+    );
+    const normalizedOutcomes = terminalOutcomes.map(outcome =>
+      outcome === 'published_verified' ? 'verified'
+        : outcome === 'published_degraded' ? 'degraded'
+          : 'blocked',
+    );
+    const normalizedSectionBlockers = sections.map((_, index) =>
+      terminalOutcomes[index] === 'archived_all_departures_past'
+        ? ['ALL_DEPARTURES_PAST']
+        : terminalOutcomes[index] === 'discarded_source_incomplete'
+          ? ['SOURCE_SALE_PRICE_ABSENT']
+          : decisions[index]?.blockers ?? [],
+    );
     base.prelabel = {
       sectionCount: normalized.sections.length,
       status: normalized.status,
@@ -260,10 +287,10 @@ async function processFile(
         const completeness = section.completeness as Record<string, unknown> | undefined;
         return Array.isArray(completeness?.blockers) ? completeness.blockers.map(String) : [];
       }),
-      outcomes: decisions.map(decision => decision.outcome),
-      terminalOutcomes: decisions.map(decision => decision.terminalOutcome),
-      blockers: decisions.flatMap(decision => decision.blockers),
-      sectionBlockers: decisions.map(decision => decision.blockers),
+      outcomes: normalizedOutcomes,
+      terminalOutcomes,
+      blockers: normalizedSectionBlockers.flat(),
+      sectionBlockers: normalizedSectionBlockers,
       sourceSalePriceDispositions: decisions.map(decision =>
         decision.sourceSalePriceDispositions[0]?.disposition.state ?? 'unknown'),
       ...(operationalReferenceDate ? {

@@ -4,19 +4,25 @@ import { createTextDocumentIR } from './document-ir';
 import { mergeSourceBundleDocumentIR } from './source-bundle-document-ir';
 import {
   buildCanonicalNormalization,
+  PRODUCT_REGISTRATION_V4_NORMALIZATION_VERSION,
   buildCanonicalRevisionSlices,
   canonicalNormalizationJobStatus,
   consolidatePassengerPriceRows,
   diagnoseDocumentIrTableProductSplit,
   extractSourceLodgingAlternative,
+  filterPriceCalendarByAccommodationRow,
   isSourceDepartureDateConfirmed,
+  linkSharedDateScopesAcrossVariants,
+  linkSharedPriceCalendarsAcrossSections,
   reconcileCatalogPreSplitLocalVariant,
   reconcileTableCommercialIncludedBenefits,
   reconcileTableCommercialGuideTip,
   segmentDocumentIR,
   selectCanonicalSectionForIdentity,
+  selectTablePriceCalendar,
   selectScopedCommercialCandidate,
   sliceCanonicalNormalizationForRevisionSections,
+  resolveVariantNights,
   type CanonicalSection,
 } from './canonical-worker';
 
@@ -27,6 +33,22 @@ describe('product registration V4 canonical worker', () => {
     text: '방콕 3박 5일 패키지\n출발일 2027-01-01\n성인 1,299,000원\n제1일 방콕 도착',
     parserEngine: 'text-utf8',
     parserVersion: '1',
+  });
+
+  it('uses the explicit source 4박6일 contract instead of counting a duplicated hotel row', () => {
+    const itinerary = {
+      days: Array.from({ length: 6 }, (_, index) => ({
+        day: index + 1,
+        hotel: { raw_text: index < 5 ? '호텔 또는 동급' : '' },
+      })),
+    } as any;
+
+    expect(resolveVariantNights({
+      variant: { duration_days: 6, course: '서안 4박6일', grade: null, title_parts: [] },
+      itinerary,
+      sourceText: '서안 품격 패키지 4박6일',
+    })).toBe(4);
+    expect(resolveVariantNights({ itinerary })).toBe(5);
   });
 
   it('keeps source hotel alternatives as one unconfirmed lodging pool', () => {
@@ -45,6 +67,55 @@ describe('product registration V4 canonical worker', () => {
       customerText: '5성(특급) 솔바이 멜리아 리조트 또는 소나가 리조트 또는 동급 예정',
       evidence: { line_start: 2, line_end: 5 },
     });
+  });
+
+  it('binds overlapping price rows to the titled accommodation variant', () => {
+    const evidence = (nodeId: string, quote: string) => ({
+      node_id: nodeId,
+      line_start: 1,
+      line_end: 1,
+      char_start: 0,
+      char_end: quote.length,
+      quote,
+    });
+    const variants = [{
+      price_calendar: [
+        { date: '2026-10-21', amount: 789000, currency: 'KRW', label: '10월 21일', evidence: evidence('city-price', '시내숙박 10월 21일 789,000원') },
+        { date: '2026-10-21', amount: 889000, currency: 'KRW', label: '10월 21일', evidence: evidence('mountain-price', '산위숙박 10월 21일 889,000원') },
+      ],
+      evidence_coverage: { price: true },
+    }] as any;
+    const documentIr = {
+      version: 'v4',
+      filename: 'huangshan.hwp',
+      sourceType: 'hwp',
+      pages: 1,
+      text: '시내숙박 10월 21일 789,000원\n산위숙박 10월 21일 889,000원',
+      nodes: [],
+      assets: [],
+      parser: { engine: 'test', version: '1' },
+      tables: [{
+        id: 'table-1',
+        rows: 2,
+        columns: 3,
+        cells: [
+          { id: 'city', nodeId: 'city-price', row: 0, column: 2, rowSpan: 1, colSpan: 1, text: '789,000원', evidence: { quoteHash: 'city' } },
+          { id: 'city-label', nodeId: 'city-label', row: 0, column: 1, rowSpan: 1, colSpan: 1, text: '시내숙박', evidence: { quoteHash: 'city-label' } },
+          { id: 'mountain', nodeId: 'mountain-price', row: 1, column: 2, rowSpan: 1, colSpan: 1, text: '889,000원', evidence: { quoteHash: 'mountain' } },
+          { id: 'mountain-label', nodeId: 'mountain-label', row: 1, column: 1, rowSpan: 1, colSpan: 1, text: '산위숙박', evidence: { quoteHash: 'mountain-label' } },
+        ],
+      }],
+    } as any;
+
+    const changed = filterPriceCalendarByAccommodationRow({
+      documentIr,
+      section: { index: 0, sectionKey: 's', titleHint: '[스탠다드] 황산 3박 4일', rawText: '상세 일정', rawTextHash: 'h', sourceNodeIds: [], evidence: [] },
+      variants,
+    });
+
+    expect(changed).toBe(1);
+    expect(variants[0].price_calendar).toHaveLength(1);
+    expect(variants[0].price_calendar[0]).toMatchObject({ amount: 789000, label: expect.stringContaining('숙박 범위: city') });
   });
 
   it('does not confuse a normal departure date with an explicitly confirmed departure', () => {
@@ -897,7 +968,7 @@ describe('product registration V4 canonical worker', () => {
       sourceDocumentId: 'source-1',
       extractionId: 'extraction-1',
     });
-    expect(normalized.version).toBe('v6-canonical-2026-08-17.57');
+    expect(normalized.version).toMatch(/^v6-canonical-\d{4}-\d{2}-\d+\.\d+$/u);
     expect(normalized.sourceDocumentId).toBe('source-1');
     expect(normalized.canonicalPayload.sections).toHaveLength(1);
     expect(normalized.qualityDiagnostics.sectionCount).toBe(1);
@@ -1226,6 +1297,42 @@ describe('product registration V4 canonical worker', () => {
     });
   });
 
+  it('does not manufacture a future year from a fully expired cross-year price matrix', async () => {
+    const expiredCrossYear = createTextDocumentIR({
+      filename: '[BX] 마쓰야마 25년12월-26년3월 골프.hwp',
+      sourceType: 'text',
+      parserEngine: 'text-utf8',
+      parserVersion: '1',
+      text: [
+        '상품: 마쓰야마 골프 2박3일',
+        '출발날짜',
+        '2025년 12월 – 26년 3월 26일 (매일 출발)',
+        '상품가 / 출발일',
+        '12/22-26‘2/28 / 869,000원',
+        '26‘3/1-3/18 / 799,000원',
+        '26‘3/19-3/26 / 829,000원',
+        'DAY 1 BX134 16:30 17:40',
+        '포함 항공료 호텔 식사',
+        '불포함 개인경비 싱글차지',
+      ].join('\n'),
+    });
+    const normalized = await buildCanonicalNormalization({
+      documentIr: expiredCrossYear,
+      sourceDocumentId: 'source-expired-cross-year',
+      extractionId: 'extraction-expired-cross-year',
+      departureDateReference: { referenceDate: '2026-08-19', rollingInferenceEligible: true },
+    });
+    const section = normalized.canonicalPayload.sections[0] as Record<string, any>;
+
+    expect(section.departureDatePolicy).toMatchObject({
+      disposition: 'past_only_excluded',
+      sourceProvesSectionExpired: true,
+      invalidDateCount: 0,
+      futureDatedEntryCount: 0,
+    });
+    expect(section.v3.ledger.variants[0].price_calendar).toEqual([]);
+  });
+
   it('accepts a valid YYMMDD departure token in the source filename as year evidence', async () => {
     const compactDateSource = createTextDocumentIR({
       filename: '[\uCD9C\uBC1C] 260417 \uD669\uC0B0 4\uBC155\uC77C.hwp',
@@ -1474,7 +1581,7 @@ describe('product registration V4 canonical worker', () => {
       evidence: [],
     }));
     const normalization = {
-      version: 'v6-canonical-2026-08-17.57' as const,
+      version: PRODUCT_REGISTRATION_V4_NORMALIZATION_VERSION as typeof PRODUCT_REGISTRATION_V4_NORMALIZATION_VERSION,
       sourceDocumentId: 'source', extractionId: 'extraction', rawTextHash: 'full', sections,
       canonicalPayload: { sections: [{ index: 0 }, { index: 1 }] },
       lineage: { attractionMasterHash: null },
@@ -1522,7 +1629,7 @@ describe('product registration V4 canonical worker', () => {
       { variant_key: '프리미어코스트|4박6일' },
     ];
     const normalization = {
-      version: 'v6-canonical-2026-08-17.57' as const,
+      version: PRODUCT_REGISTRATION_V4_NORMALIZATION_VERSION as typeof PRODUCT_REGISTRATION_V4_NORMALIZATION_VERSION,
       sourceDocumentId: 'source', extractionId: 'extraction', rawTextHash: 'full', sections: [section],
       canonicalPayload: {
         sections: [{ v3: { ledger: { document: { expected_products: 4 }, variants } } }],
@@ -1554,5 +1661,120 @@ describe('product registration V4 canonical worker', () => {
       };
       return [payloadSection.v3.ledger.document.expected_products, payloadSection.v3.ledger.variants.length];
     })).toEqual([[1, 1], [1, 1], [1, 1], [1, 1]]);
+  });
+
+  it('links one unambiguous price-only section to the matching itinerary section', () => {
+    const sections = [
+      {
+        index: 0,
+        sectionKey: 'price',
+        destinationHint: '오사카/고베',
+        v3: { ledger: { variants: [{ duration_days: 4, days: [], price_calendar: [
+          { date: '2026-09-01', amount: 969000, evidence: { quote: '969,000' } },
+        ] }] } },
+      },
+      {
+        index: 1,
+        sectionKey: 'itinerary',
+        destinationHint: '오사카/고베',
+        v3: { ledger: { variants: [{ duration_days: 4, days: [{ day: 1 }], flight_segments: [{ code: 'BX126' }], price_calendar: [] }] } },
+      },
+    ] as any[];
+
+    expect(linkSharedPriceCalendarsAcrossSections(sections)).toEqual([1]);
+    expect(sections[1]!.v3.ledger.variants[0].price_calendar).toEqual([
+      expect.objectContaining({ date: '2026-09-01', amount: 969000 }),
+    ]);
+    expect(sections[1]!.v3.ledger.variants[0].evidence_coverage.price).toBe(true);
+  });
+
+  it('does not link when two same-destination price sections are ambiguous', () => {
+    const sections = [
+      { destinationHint: '오사카', v3: { ledger: { variants: [{ duration_days: 4, days: [], price_calendar: [{ amount: 900000 }] }] } } },
+      { destinationHint: '오사카', v3: { ledger: { variants: [{ duration_days: 4, days: [], price_calendar: [{ amount: 950000 }] }] } } },
+      { destinationHint: '오사카', v3: { ledger: { variants: [{ duration_days: 4, days: [{ day: 1 }], price_calendar: [] }] } } },
+    ] as any[];
+    expect(linkSharedPriceCalendarsAcrossSections(sections)).toEqual([]);
+    expect(sections[2]!.v3.ledger.variants[0].price_calendar).toEqual([]);
+  });
+
+  it('matches country-labelled price axes to city-labelled itinerary evidence', () => {
+    const price = (amount: number) => ({
+      date: '2026-09-01',
+      amount,
+      currency: 'KRW',
+      label: `${amount}`,
+      evidence: { line_start: 1, line_end: 1, char_start: 0, char_end: 10, quote: `${amount}원` },
+    });
+    const calendars = [
+      { tableId: 'shared', durationDays: 5, gradeLabel: '1일자유 싱가폴3박', productLabelKind: 'package_grade' as const, prices: [price(1119000)], sourceNodeIds: [] },
+      { tableId: 'shared', durationDays: 5, gradeLabel: '전일관광 싱가폴3박', productLabelKind: 'package_grade' as const, prices: [price(1319000)], sourceNodeIds: [] },
+      { tableId: 'shared', durationDays: 5, gradeLabel: '2개국관광 조호2박+말라카1박', productLabelKind: 'package_grade' as const, prices: [price(1259000)], sourceNodeIds: [] },
+      { tableId: 'shared', durationDays: 5, gradeLabel: '관광+휴양 싱가폴1박+바탐2박', productLabelKind: 'package_grade' as const, prices: [price(1399000)], sourceNodeIds: [] },
+    ];
+
+    expect(selectTablePriceCalendar({
+      calendars,
+      durationDays: 5,
+      sectionRawText: '싱가폴+말레이시아 패키지 3박5일\n제2일차 조호바루\n제3일차 말라카 관광',
+    })?.gradeLabel).toBe('2개국관광 조호2박+말라카1박');
+    expect(selectTablePriceCalendar({
+      calendars,
+      durationDays: 5,
+      sectionRawText: '싱가포르+바탐 패키지 3박5일\n제3일차 바탐 이동',
+    })?.gradeLabel).toBe('관광+휴양 싱가폴1박+바탐2박');
+  });
+
+  it('links one shared date scope to a sibling hotel scalar price without copying the amount', () => {
+    const evidence = (quote: string) => ({ line_start: 1, line_end: 1, char_start: 0, char_end: quote.length, quote });
+    const variants = [
+      {
+        variant_key: ' 실속',
+        duration_days: 5,
+        price_calendar: [{ date: '2026-09-17', date_range: null, weekday: null, label: '9/17', amount: 679000, currency: 'KRW', evidence: evidence('679,000원') }],
+        evidence_coverage: { price: true },
+      },
+      {
+        variant_key: ' 고품격',
+        duration_days: 5,
+        price_calendar: [{ date: null, date_range: null, weekday: null, label: '969,000원', amount: 969000, currency: 'KRW', evidence: evidence('969,000원') }],
+        evidence_coverage: { price: true },
+      },
+    ] as any;
+
+    expect(linkSharedDateScopesAcrossVariants({
+      variants,
+      sectionRawText: '2026년 9월 17일 ~ 21일 [3박5일]',
+    })).toBe(1);
+    expect(variants[1].price_calendar).toEqual([
+      expect.objectContaining({ date: '2026-09-17', amount: 969000 }),
+    ]);
+  });
+
+  it('does not link sibling scalar prices when multiple date calendars exist', () => {
+    const evidence = (quote: string) => ({ line_start: 1, line_end: 1, char_start: 0, char_end: quote.length, quote });
+    const variants = [
+      {
+        duration_days: 5,
+        price_calendar: [
+          { date: '2026-09-17', date_range: null, weekday: null, label: '9/17', amount: 679000, currency: 'KRW', evidence: evidence('679,000원') },
+          { date: '2026-09-24', date_range: null, weekday: null, label: '9/24', amount: 689000, currency: 'KRW', evidence: evidence('689,000원') },
+        ],
+      },
+      {
+        duration_days: 5,
+        price_calendar: [{ date: '2026-10-01', date_range: null, weekday: null, label: '10/1', amount: 699000, currency: 'KRW', evidence: evidence('699,000원') }],
+      },
+      {
+        duration_days: 5,
+        price_calendar: [{ date: null, date_range: null, weekday: null, label: '969,000원', amount: 969000, currency: 'KRW', evidence: evidence('969,000원') }],
+      },
+    ] as any;
+
+    expect(linkSharedDateScopesAcrossVariants({
+      variants,
+      sectionRawText: '2026년 9월 17일 ~ 10월 1일 [3박5일]',
+    })).toBe(0);
+    expect(variants[2].price_calendar[0].date).toBeNull();
   });
 });

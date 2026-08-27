@@ -906,28 +906,37 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
     });
   }
 
+  const registrationStatus = (pkg.status ?? '').toLowerCase();
+  const registrationBlocked = ['blocked', 'rejected', 'quarantined', 'archived', 'expired']
+    .includes(registrationStatus);
   if (pkg.status === undefined && pkg.audit_status === undefined) {
     checks.push({
       id: 'C13',
-      label: 'customer visibility gate',
+      label: 'registration lifecycle gate',
       status: 'skip',
       detail: 'status fields unavailable',
     });
-  } else if (!isCustomerVisibleStatus(pkg.status)) {
+  } else if (registrationBlocked) {
     checks.push({
       id: 'C13',
-      label: 'customer visibility gate',
+      label: 'registration lifecycle gate',
       status: 'fail',
-      detail: `status=${pkg.status ?? 'null'} is not customer-visible`,
+      detail: `status=${pkg.status ?? 'null'} blocks registration quality`,
     });
   } else {
     checks.push({
       id: 'C13',
-      label: 'customer visibility gate',
+      label: 'registration lifecycle gate',
       status: 'pass',
-      detail: `status=${pkg.status}`,
+      detail: `status=${pkg.status ?? 'null'} may proceed to publication readiness review`,
     });
   }
+  checks.push({
+    id: 'C13P',
+    label: 'customer publication readiness',
+    status: 'skip',
+    detail: 'exact revision pointer, published snapshot, and mobile proof are evaluated by publication truth',
+  });
 
   const fixable: string[] = [];
   if (checks.find(c => c.id === 'C5')?.status === 'warn') fixable.push('C5:departure_days');

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "v61-dual-review-completion-controller-1",
+  "status": "WAITING_HUMAN_REVIEW",
+  "reviewerA": 0,
+  "reviewerB": 0,
+  "sameReviewerDetected": false,
+  "certificateEligible": false
+}

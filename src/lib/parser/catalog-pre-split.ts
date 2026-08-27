@@ -736,6 +736,12 @@ export function splitCatalogByItineraryHeaders(
     return text
       .slice(start, end < 0 ? text.length : end)
       .normalize('NFKC')
+      // Suppliers alternate between the registered English abbreviation and
+      // the Korean attraction name in a repeated price-card/detail heading
+      // (for example `USJ` vs `유니버셜`). Treat only these well-known aliases
+      // as the same identity; hotel/grade tokens remain untouched so distinct
+      // accommodation products cannot be collapsed.
+      .replace(/유니버셜|유니버설|유니버스스튜디오/giu, 'usj')
       .replace(/\b(?:PKG|PACKAGE)\b/giu, '')
       .replace(/(?:\uD328\uD0A4\uC9C0|\uC77C\uC815\uD45C|\uC694\uAE08\uD45C)/gu, '')
       .replace(/[^0-9A-Za-z\p{Script=Hangul}]+/gu, '')
@@ -759,6 +765,10 @@ export function splitCatalogByItineraryHeaders(
   const continuationIdentityMatches = (leftStart: number, rightStart: number): boolean => {
     const leftIdentity = normalizedBoundaryIdentity(leftStart);
     const rightIdentity = normalizedBoundaryIdentity(rightStart);
+    const leftLineEnd = text.indexOf('\n', leftStart);
+    const rightLineEnd = text.indexOf('\n', rightStart);
+    const leftLine = text.slice(leftStart, leftLineEnd < 0 ? text.length : leftLineEnd);
+    const rightLine = text.slice(rightStart, rightLineEnd < 0 ? text.length : rightLineEnd);
     if (leftIdentity.length >= 6 && leftIdentity === rightIdentity) return true;
     const leftTokens = boundaryIdentityTokens(leftStart);
     const rightTokens = boundaryIdentityTokens(rightStart);
@@ -769,13 +779,27 @@ export function splitCatalogByItineraryHeaders(
     const rightDiscriminators = discriminators.filter(value => rightIdentity.includes(value));
     if (leftDiscriminators.length > 0 && rightDiscriminators.length > 0
       && !leftDiscriminators.some(value => rightDiscriminators.includes(value))) return false;
+    // A supplier may put the same product's schedule wrapper (often prefixed
+    // with an airline code) before the detailed PKG card. In that layout the
+    // wrapper and PKG lines share only destination/country tokens after the
+    // duration and generic words are removed. Accept this narrow pair only
+    // when one side is explicitly a schedule label and the other a PKG label.
+    const wrapperPair = (
+      (/(?:\uC77C\s*\uC815\s*\uD45C|\uC138\uBD80\s*\uC77C\uC815)/u.test(leftLine)
+        && /\bPKG\b/iu.test(rightLine))
+      || (/(?:\uC77C\s*\uC815\s*\uD45C|\uC138\uBD80\s*\uC77C\uC815)/u.test(rightLine)
+        && /\bPKG\b/iu.test(leftLine))
+    );
+    const leftDuration = leftLine.match(/(?:\d+\s*박\s*\d+\s*일|\uBB34\s*\uBC15\s*\d+\s*일)/u)?.[0]?.replace(/\s+/gu, '') ?? '';
+    const rightDuration = rightLine.match(/(?:\d+\s*박\s*\d+\s*일|\uBB34\s*\uBC15\s*\d+\s*일)/u)?.[0]?.replace(/\s+/gu, '') ?? '';
+    if (wrapperPair && leftDuration.length > 0 && leftDuration === rightDuration && shared.length >= 2) return true;
     return shared.length >= 3 && union.size > 0 && shared.length / union.size >= 0.55;
   };
   const hasDaySequenceIn = (segment: string): boolean =>
     /(?:\uC81C\s*1\s*\uC77C|DAY\s*1|(?:^|\n)\s*1\s*\uC77C\s*\uCC28)/iu.test(segment)
     && /(?:\uC81C\s*2\s*\uC77C|DAY\s*2|(?:^|\n)\s*2\s*\uC77C\s*\uCC28)/iu.test(segment);
   const hasDeparturePriceTableIn = (segment: string): boolean => {
-    const explicitTable = /(?:\uCD9C\s*\uBC1C\s*\uC77C|\uCD9C\uBC1C\uC77C\uC790|\uC801\uC6A9\s*\uC77C\uC790)/u.test(segment)
+    const explicitTable = /(?:\uB0A0\s*\uC9DC|\uC77C\s*\uC790|\uCD9C\s*\uBC1C\s*(?:\uC694\s*)?\uC77C|\uCD9C\uBC1C\uC77C\uC790|\uC801\uC6A9\s*\uC77C\uC790)/u.test(segment)
       && /(?:\uD310\s*\uB9E4\s*\uAC00|\uC0C1\s*\uD488\s*\uAC00|\uC694\s*\uAE08)/u.test(segment);
     const calendarTable = /20\d{2}\s*\uB144\s*\d{1,2}\s*\uC6D4/u.test(segment)
       && /\uC77C\s*\n\s*\uC6D4\s*\n\s*\uD654\s*\n\s*\uC218\s*\n\s*\uBAA9\s*\n\s*\uAE08\s*\n\s*\uD1A0/u.test(segment);
@@ -819,6 +843,37 @@ export function splitCatalogByItineraryHeaders(
       const hasCommercialPair = /\uD3EC\s*\uD568/u.test(segment) && /\uBD88\s*\uD3EC\s*\uD568/u.test(segment);
       return hasDaySequence || hasCommercialPair;
   };
+  const titleOnlyEnvelopeContinuesInto = (start: number, end: number): boolean => {
+    const envelope = text.slice(start, end).trim();
+    if (envelope.length === 0 || envelope.length > 320) return false;
+    if (hasProductBody(start, end) || hasDeparturePriceTableIn(envelope)) return false;
+    const firstLine = envelope.split('\n').map(line => line.trim()).find(Boolean) ?? '';
+    const nextEnd = text.indexOf('\n', end);
+    const nextLine = text.slice(end, nextEnd < 0 ? text.length : nextEnd).trim();
+    const firstDuration = firstLine.match(/(?:\d+\s*박\s*\d+\s*일|\uBB34\s*\uBC15\s*\d+\s*일)/u)?.[0]?.replace(/\s+/gu, '') ?? '';
+    const nextDuration = nextLine.match(/(?:\d+\s*박\s*\d+\s*일|\uBB34\s*\uBC15\s*\d+\s*일)/u)?.[0]?.replace(/\s+/gu, '') ?? '';
+    if (!firstDuration || firstDuration !== nextDuration) return false;
+    // A short title before a decorated ``특가/패턴`` heading is a common HWP
+    // envelope split, not a second hotel/grade product. Only merge when a
+    // non-generic destination token is shared and neither line names a
+    // lodging/grade variant. Explicit hotel products remain separate.
+    const decoratedHeading = /(?:\uD2B9\uAC00|\uD328\uD134|\uC0C1\uD488|\uD328\uD0A4\uC9C0|PKG|\uAC00\uC131\uBE44)/iu.test(nextLine);
+    const datedItineraryHeading = /^(?:\uCD9C\s*\uBC1C|\uD589\s*\uC0AC|\uC694\uAE08|\uC0C1\s*\uD488\s*\uAC00|\d{1,2}\s*\uC6D4|\d{1,2}\s*[\/-]\s*\d{1,2})/iu.test(nextLine);
+    if (!decoratedHeading && !datedItineraryHeading) return false;
+    // Date-led continuations have no product label of their own. Preserve
+    // the preceding destination title even when it contains `노옵션`.
+    if (datedItineraryHeading) return true;
+    if (/(?:\uD638\uD154|\uB9AC\uC870\uD2B8|\uD5E4\uB09C|\uD504\uB9AC\uBBF8\uC5B4|\uACE8\uD504|\uC2E4\uC18D|\uD488\uACA9|\uD504\uB9AC\uBBF8\uC5C4|CROWN|PREMIUM|\uB178\uC635\uC158|\uB178\uC1FC\uD551|\uB178\uD300)/iu.test(`${firstLine} ${nextLine}`)) return false;
+    const tokens = (value: string) => value
+      .normalize('NFKC')
+      .replace(/\d+\s*박\s*\d+\s*일|\uBB34\s*\uBC15\s*\d+\s*일/giu, ' ')
+      .split(/[^0-9A-Za-z\p{Script=Hangul}]+/u)
+      .map(token => token.trim())
+      .filter(token => token.length >= 2);
+    const firstTokens = tokens(firstLine);
+    const nextTokens = new Set(tokens(nextLine));
+    return datedItineraryHeading || firstTokens.some(token => nextTokens.has(token));
+  };
   const boundaryLine = (start: number): string => {
     const end = text.indexOf('\n', start);
     return text.slice(start, end < 0 ? text.length : end).normalize('NFKC').replace(/[^0-9A-Za-z\p{Script=Hangul}]+/gu, '').toLocaleLowerCase('ko-KR');
@@ -837,25 +892,63 @@ export function splitCatalogByItineraryHeaders(
       if (index > 0 && isDurationRosterContinuation(start, detectedStarts[index + 1]!)) return false;
       return hasProductBody(start, detectedStarts[index + 1]);
     })
-    : detectedStarts.length === 2 && text.length >= 1_500
+    : detectedStarts.length === 2
       && !hasProductBody(detectedStarts[0], detectedStarts[1])
       && hasProductBody(detectedStarts[1], text.length)
       && (
         boundaryLine(detectedStarts[0]) === boundaryLine(detectedStarts[1])
         || hasDeparturePriceTableIn(text.slice(detectedStarts[0], detectedStarts[1]))
+        || (
+          hasDeparturePriceTableIn(text.slice(0, detectedStarts[1]))
+          && continuationIdentityMatches(detectedStarts[0], detectedStarts[1])
+        )
+        || titleOnlyEnvelopeContinuesInto(detectedStarts[0], detectedStarts[1])
       )
-      ? [detectedStarts[1]!]
+      // Keep the short envelope in the merged section.  It often contains
+      // the only destination/title for a following date-led itinerary card;
+      // dropping it would make the customer title meaningless.
+      ? [detectedStarts[0]!]
     : detectedStarts;
 
   if (starts.length <= 1) {
-    return { sharedPrefix: '', sections: [text] };
+    let section = text;
+    for (const droppedStart of continuationStartsToDrop) {
+      const tail = text.slice(droppedStart);
+      const detailOffset = tail.search(/\n\s*(?:(?:포\s*함|불\s*포\s*함)|(?:제\s*1\s*일|DAY\s*1))/iu);
+      const lineEnd = text.indexOf('\n', droppedStart);
+      const removeEnd = detailOffset >= 0
+        ? droppedStart + detailOffset + 1
+        : lineEnd >= 0 ? lineEnd + 1 : -1;
+      if (removeEnd <= droppedStart) continue;
+      section = `${section.slice(0, droppedStart)}${section.slice(removeEnd)}`;
+    }
+    return { sharedPrefix: '', sections: [section.trim()] };
   }
 
   const sharedPrefix = text.slice(0, starts[0]).trimEnd();
   const sections: string[] = [];
   for (let i = 0; i < starts.length; i++) {
     const end = i + 1 < starts.length ? starts[i + 1] : text.length;
-    sections.push(text.slice(starts[i], end).trim());
+    let section = text.slice(starts[i], end);
+    // The continuation detector above intentionally keeps the price-card
+    // envelope and the detailed itinerary in one product section. Remove the
+    // repeated heading line itself as well; otherwise the V3 ledger sees two
+    // variants (one with the price table and one with the itinerary) and the
+    // product is blocked for a false missing-price conflict. Only starts that
+    // already passed the same-product + price-card + itinerary proof reach
+    // this set, so distinct hotel/grade products remain untouched.
+    for (const droppedStart of continuationStartsToDrop) {
+      if (droppedStart <= starts[i] || droppedStart >= end) continue;
+      const tail = text.slice(droppedStart, end);
+      const detailOffset = tail.search(/\n\s*(?:(?:포\s*함|불\s*포\s*함)|(?:제\s*1\s*일|DAY\s*1))/iu);
+      const lineEnd = text.indexOf('\n', droppedStart);
+      const removeEnd = detailOffset >= 0
+        ? droppedStart + detailOffset + 1
+        : lineEnd >= 0 ? lineEnd + 1 : -1;
+      if (removeEnd <= droppedStart || removeEnd > end) continue;
+      section = `${section.slice(0, droppedStart - starts[i])}${section.slice(removeEnd - starts[i])}`;
+    }
+    sections.push(section.trim());
   }
   return { sharedPrefix, sections };
 }

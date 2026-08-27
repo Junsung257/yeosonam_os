@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildProductRegistrationV6ReadinessReport } from './readiness';
+import { PRODUCT_REGISTRATION_V4_NORMALIZATION_VERSION } from '@/lib/product-registration-v4/canonical-worker';
 
 const database = {
   v6ColumnAvailable: true,
@@ -45,7 +46,7 @@ const database = {
   majorCohortMinSafeOpenRate: 0.9,
   eligibleCohortCount: 1,
   benchmarkReleaseManifestHash: 'a'.repeat(64),
-  benchmarkNormalizationVersion: 'v6-canonical-2026-08-17.57',
+  benchmarkNormalizationVersion: PRODUCT_REGISTRATION_V4_NORMALIZATION_VERSION,
   benchmarkTermsPolicyHash: 'b'.repeat(64),
   benchmarkSupplierProfileVersion: 'registry:test',
   currentSupplierProfileVersion: 'registry:test',
@@ -62,7 +63,7 @@ const database = {
 describe('product registration V6 readiness', () => {
   it('blocks canary when workflow or browser proof is unavailable', () => {
     const report = buildProductRegistrationV6ReadinessReport({
-      config: { authorityMode: 'legacy', workflowEnabled: false, shadowEnabled: true, publishEnabled: false, publicationFrozen: true },
+      config: { authorityMode: 'legacy', workflowEnabled: false, shadowEnabled: true, publishEnabled: false, publicationFrozen: true, sourceProofAutoPublishEnabled: false },
       credentials: {
         proofSecret: true,
         browser: false,
@@ -83,7 +84,7 @@ describe('product registration V6 readiness', () => {
 
   it('allows a restricted canary while keeping full cohort publication limited', () => {
     const report = buildProductRegistrationV6ReadinessReport({
-      config: { authorityMode: 'kernel', workflowEnabled: true, shadowEnabled: true, publishEnabled: true, publicationFrozen: false },
+      config: { authorityMode: 'kernel', workflowEnabled: true, shadowEnabled: true, publishEnabled: true, publicationFrozen: false, sourceProofAutoPublishEnabled: false },
       credentials: {
         proofSecret: true,
         browser: true,
@@ -100,6 +101,7 @@ describe('product registration V6 readiness', () => {
 
     expect(report.readyForCanary).toBe(true);
     expect(report.readyForPublication).toBe(true);
+    expect(report.readyForSourceProof).toBe(false);
     expect(report.readyForFullCohort).toBe(false);
     expect(report.checks).toContainEqual(expect.objectContaining({
       code: 'V6_TRANSPORT_PROVIDERS_INCOMPLETE',
@@ -107,9 +109,45 @@ describe('product registration V6 readiness', () => {
     }));
   });
 
+  it('requires an exact release authorization while broad publication is frozen', () => {
+    const report = buildProductRegistrationV6ReadinessReport({
+      config: {
+        authorityMode: 'shadow',
+        workflowEnabled: true,
+        shadowEnabled: true,
+        publishEnabled: false,
+        publicationFrozen: true,
+        sourceProofAutoPublishEnabled: true,
+      },
+      credentials: {
+        proofSecret: true,
+        browser: true,
+        oag: false,
+        cirium: false,
+        clova: false,
+        googleDocumentAi: false,
+        ocrEnabled: false,
+        mediaProvider: false,
+      },
+      database: {
+        ...database,
+        authorityMode: 'shadow',
+        publicationFrozen: true,
+      },
+      currentBuildId: 'test-build',
+    });
+
+    expect(report.readyForSourceProof).toBe(false);
+    expect(report.readyForPublication).toBe(false);
+    expect(report.checks).toContainEqual(expect.objectContaining({
+      code: 'V6_RELEASE_AUTHORIZATION_REQUIRED',
+      status: 'warning',
+    }));
+  });
+
   it('blocks canary while a stale job or corpus defect remains', () => {
     const report = buildProductRegistrationV6ReadinessReport({
-      config: { authorityMode: 'kernel', workflowEnabled: true, shadowEnabled: true, publishEnabled: false, publicationFrozen: true },
+      config: { authorityMode: 'kernel', workflowEnabled: true, shadowEnabled: true, publishEnabled: false, publicationFrozen: true, sourceProofAutoPublishEnabled: false },
       credentials: {
         proofSecret: true,
         browser: true,
@@ -137,7 +175,7 @@ describe('product registration V6 readiness', () => {
 
   it('does not accept a benchmark without operational HWP/paste parity', () => {
     const report = buildProductRegistrationV6ReadinessReport({
-      config: { authorityMode: 'kernel', workflowEnabled: true, shadowEnabled: true, publishEnabled: true, publicationFrozen: false },
+      config: { authorityMode: 'kernel', workflowEnabled: true, shadowEnabled: true, publishEnabled: true, publicationFrozen: false, sourceProofAutoPublishEnabled: false },
       credentials: {
         proofSecret: true,
         browser: true,
@@ -161,7 +199,7 @@ describe('product registration V6 readiness', () => {
 
   it('blocks canary when a valid product was discarded as price-less', () => {
     const report = buildProductRegistrationV6ReadinessReport({
-      config: { authorityMode: 'kernel', workflowEnabled: true, shadowEnabled: true, publishEnabled: true, publicationFrozen: false },
+      config: { authorityMode: 'kernel', workflowEnabled: true, shadowEnabled: true, publishEnabled: true, publicationFrozen: false, sourceProofAutoPublishEnabled: false },
       credentials: {
         proofSecret: true,
         browser: true,

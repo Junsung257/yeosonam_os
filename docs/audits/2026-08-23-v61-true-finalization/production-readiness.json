@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "v61-production-readiness-1",
+  "status": "BLOCKED_PREREQUISITE",
+  "projectRef": "ixaxnvbmhzjvupissmly",
+  "readOnlyCheckedDate": "2026-08-23",
+  "engine": "CLOSED",
+  "productionAuthority": {
+    "authorityMode": "kernel",
+    "publicationFreeze": false,
+    "contractVersion": "product-registration-authority-1",
+    "interpretation": "Actual production DB value; it conflicts with the expected frozen-state claim and must not be silently normalized."
+  },
+  "requiredV61Migrations": [
+    { "path": "supabase/migrations/20260819235142_product_registration_v61_authority.sql", "sha256": "5c39d98e7a0363283ef1a1da9ee4795f7f07359c84f811d7110e40825f990dab", "productionPresent": false },
+    { "path": "supabase/migrations/20260819235152_product_registration_v61_workflow.sql", "sha256": "8d00313b0709a636c930d91c51c22063b529376bdc7a514b49e0ee1e775f33af", "productionPresent": false },
+    { "path": "supabase/migrations/20260819235155_product_registration_v61_surface_lineage.sql", "sha256": "abb661cc08f1d6c4c96e6959bf3bfdb72fb60dd6bd9ddd28e5aba6ef2af31540", "productionPresent": false },
+    { "path": "supabase/migrations/20260820100000_product_registration_v61_knowledge_ledger.sql", "sha256": "6a374cd54baa7c71ac5530f6ec7fc01362f24a04b9cfe073b3f5fc02d347d89b", "productionPresent": false }
+  ],
+  "v61ObjectPresence": {
+    "present": 0,
+    "required": 6,
+    "missing": [
+      "publication_freeze_manifests",
+      "publication_freeze_manifest_items",
+      "publication_release_authorizations",
+      "browser_proof_surface_links",
+      "surface_render_artifacts",
+      "product_revision_overlays"
+    ]
+  },
+  "currentCustomerPointers": {
+    "published": 9,
+    "blocked": 1,
+    "boundRevisionAndSnapshot": 10,
+    "unbound": 0
+  },
+  "readOnlyOperationalFacts": {
+    "publishedProofs": 247,
+    "failedProofs": 312,
+    "proofViewport": "390x844",
+    "deliveredOutboxEvents": 60,
+    "enabledPolicyRows": 1,
+    "enabledPolicyCohort": "verified-hwp-shadow-canary",
+    "interpretation": "The enabled row is a shadow-canary policy and is not evidence of automatic public rollout."
+  },
+  "supabaseAdvisors": {
+    "security": { "total": 74, "error": 1, "warn": 11, "info": 62, "releaseGate": "WARNINGS_PRESENT", "errorFinding": "security_definer_view on public_blog_slug_registry" },
+    "performance": { "total": 1295, "warn": 3, "info": 1292, "releaseGate": "WARNINGS_PRESENT" }
+  },
+  "decisions": {
+    "safeToDeclareFinalCompleteManualOnly": false,
+    "safeToApplyProductionMigrations": false,
+    "safeToRunCanary": false,
+    "automaticPublication": "NOT_AUTHORIZED"
+  },
+  "noProductionMutationPerformed": true
+}

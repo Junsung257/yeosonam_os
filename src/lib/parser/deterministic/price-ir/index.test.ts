@@ -154,6 +154,54 @@ ${MONTH_KO}7
     ]));
   });
 
+  it('binds a Korean month/day roster on the line above its sale price', () => {
+    const rawText = [
+      'PIC 호텔 괌 노쇼핑 패키지 4박5일',
+      '7월20일, 23일, 8월21일',
+      '859,000원',
+      '8월24일, 31일',
+      '799,000원',
+      '상품가 및 출발일',
+      '포함사항 왕복항공료 호텔 조식',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 5 });
+    const pricesByDate = new Map(result.rows.map(row => [row.date, row.adult_price]));
+
+    expect(['pdf_date_price_table', 'product_price_vertical_date_table']).toContain(result.source);
+    expect(pricesByDate).toEqual(new Map([
+      ['2026-07-20', 859000],
+      ['2026-07-23', 859000],
+      ['2026-08-21', 859000],
+      ['2026-08-24', 799000],
+      ['2026-08-31', 799000],
+    ]));
+  });
+
+  it('recovers a vertical HWP price followed by multiple month/day groups', () => {
+    const rawText = [
+      '상품명 오사카 3박4일',
+      '판매가',
+      '★900,000★',
+      '4월 20,22,27,29',
+      '4월 21,26,28',
+      '5월 6,11,13,18,20',
+      '950,000',
+      '6월 10,17,24',
+      '7월 1,8',
+      '포함사항 왕복항공료 호텔 식사',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 4 });
+    const pricesByDate = new Map(result.rows.map(row => [row.date, row.adult_price]));
+
+    expect(result.source).toBe('product_price_vertical_date_table');
+    expect(pricesByDate.get('2026-04-20')).toBe(900_000);
+    expect(pricesByDate.get('2026-05-20')).toBe(900_000);
+    expect(pricesByDate.get('2026-06-17')).toBe(950_000);
+    expect(pricesByDate.get('2026-07-08')).toBe(950_000);
+  });
+
   it('does not turn per-person labels into phantom day-one departures', () => {
     const rawText = [
       '[LJ] Da Nang Hoi An 3N5D',
@@ -554,6 +602,19 @@ BX341 21:55 01:25
       ['2026-10-07', 1399000],
     ]);
     expect(result.rows.some(row => row.date === '2026-09-30')).toBe(false);
+  });
+
+  it('binds a scalar price to a departure roster when the price label follows it', () => {
+    const result = extractPriceIR(`출 발 일 자
+2026년 9월 23일, 24일 예정
+▶ \\1,499,000
+예상판매가격
+날 짜
+제1일`, { year: 2026 });
+    expect(result.rows).toEqual([
+      expect.objectContaining({ date: '2026-09-23', adult_price: 1_499_000 }),
+      expect.objectContaining({ date: '2026-09-24', adult_price: 1_499_000 }),
+    ]);
   });
 });
 
@@ -1354,6 +1415,65 @@ PKG ZE 푸꾸옥 2색골프 에스츄리+빈펄 3박5일
 });
 
 describe('extractPriceIR labeled departure date list price', () => {
+  it('keeps flattened HWP price blocks attached to their own date roster', () => {
+    const rawText = [
+      '[KE] 다낭/호이안 3박4일 노팁노옵션',
+      '499,000원',
+      '9/13, 14, 15, 16, 17',
+      '기    간',
+      '*8월 발권 조건',
+      '/',
+      '상 품 가',
+      '579,000원',
+      '9/21, 22',
+      '전일정 5성 (2인1실 기준)',
+      '날 짜',
+      '제1일 부산 → 다낭',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 4 });
+    const pricesByDate = new Map(result.rows.map(row => [row.date, row.adult_price]));
+
+    expect(result.source).toBe('labeled_date_list_price');
+    expect(pricesByDate).toEqual(new Map([
+      ['2026-09-13', 499000],
+      ['2026-09-14', 499000],
+      ['2026-09-15', 499000],
+      ['2026-09-16', 499000],
+      ['2026-09-17', 499000],
+      ['2026-09-21', 579000],
+      ['2026-09-22', 579000],
+    ]));
+    expect(pricesByDate.has('2026-09-18')).toBe(false);
+  });
+
+  it('keeps native-rhwp date-before-price cell order attached to each roster', () => {
+    const rawText = [
+      '[KE] 다낭/호이안 3박4일 노팁노옵션',
+      '기    간',
+      '/',
+      '상 품 가',
+      '9/13, 14, 15, 16, 17',
+      '499,000원',
+      '*8월 발권 조건',
+      '9/21, 22',
+      '579,000원',
+      '룸 타 입',
+      '전일정 5성 (2인1실 기준)',
+      '날 짜',
+      '제1일 부산 → 다낭',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 4 });
+    const pricesByDate = new Map(result.rows.map(row => [row.date, row.adult_price]));
+
+    expect(result.source).toBe('labeled_date_list_price');
+    expect(pricesByDate.get('2026-09-13')).toBe(499000);
+    expect(pricesByDate.get('2026-09-17')).toBe(499000);
+    expect(pricesByDate.get('2026-09-21')).toBe(579000);
+    expect(pricesByDate.get('2026-09-22')).toBe(579000);
+  });
+
   it('recovers source-backed prices from 출발일 list plus 요금표 adult child line', () => {
     const rawText = `
 투어코코넛 나트랑/달랏 5성 3박5일 상품 안내
@@ -1386,5 +1506,27 @@ describe('extractPriceIR labeled departure date list price', () => {
       }),
     ]);
     expect(result.rows.some(row => row.adult_price === 7)).toBe(false);
+  });
+
+  it('binds arrow-formatted date and sale-price rows in one flattened cell', () => {
+    const rawText = [
+      '방콕 파타야 LIGHT 3박5일',
+      '행사일자',
+      '7/19, 23, 30 단 3날짜 선착순',
+      '상품가',
+      '7/19 → 499,900원',
+      '7/23 → 629,900원',
+      '7/30 → 699,900원',
+      '일자',
+      '제1일 부산 방콕',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 5 });
+    expect(result.source).toBe('labeled_date_list_price');
+    expect(result.rows.map(row => [row.date, row.adult_price])).toEqual([
+      ['2026-07-19', 499900],
+      ['2026-07-23', 629900],
+      ['2026-07-30', 699900],
+    ]);
   });
 });

@@ -2,7 +2,7 @@ import type { MetadataRoute } from 'next';
 import { supabaseAdmin } from '@/lib/supabase';
 import { encodeDestinationPathSegment } from '@/lib/regions';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
-import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { listPublicCatalog } from '@/lib/public-catalog';
 import { loadPublicBlogCatalog } from '@/lib/blog-public-catalog';
 import { isBlogSlugRedirectTombstone } from '@/lib/blog-slug-redirects';
 
@@ -19,6 +19,7 @@ type ActiveDestinationSitemapRow = {
 type PublicPackageDestinationSitemapRow = {
   id: string | null;
   destination: string | null;
+  lastVerifiedAt?: string | null;
   status?: string | null;
   publication_state?: string | null;
   package_revision?: number | null;
@@ -58,8 +59,8 @@ function getSafeSitemapDestination(row: ActiveDestinationSitemapRow): string | n
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const routes: MetadataRoute.Sitemap = [
     { url: BASE_URL, lastModified: new Date(), changeFrequency: 'daily', priority: 1.0 },
-    { url: `${BASE_URL}/group`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.9 },
     { url: `${BASE_URL}/private-tour`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.85 },
+    { url: `${BASE_URL}/cruise`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.85 },
     { url: `${BASE_URL}/packages`, lastModified: new Date(), changeFrequency: 'daily', priority: 0.9 },
     { url: `${BASE_URL}/destinations`, lastModified: new Date(), changeFrequency: 'daily', priority: 0.9 },
     { url: `${BASE_URL}/concierge`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.8 },
@@ -70,10 +71,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   const [packageDestinations, canonicalPosts] = await Promise.all([
-    listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: PACKAGE_LIMIT })
-      .then(rows => rows as unknown as PublicPackageDestinationSitemapRow[])
+    listPublicCatalog(supabaseAdmin, { limit: PACKAGE_LIMIT })
+      .then(rows => rows as PublicPackageDestinationSitemapRow[])
       .catch(error => {
-        console.warn('[sitemap] pointer-only package catalog unavailable:', error);
+        console.warn('[sitemap] public catalog unavailable:', error);
         return [];
       }),
     loadPublicBlogCatalog()
@@ -85,6 +86,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ]);
 
   const snapshotDestinations = packageDestinations;
+  for (const pkg of packageDestinations) {
+    if (!pkg.id) continue;
+    routes.push({
+      url: `${BASE_URL}/packages/${encodeURIComponent(pkg.id)}`,
+      lastModified: safeLastModified(pkg.lastVerifiedAt),
+      changeFrequency: 'daily',
+      priority: 0.9,
+    });
+  }
   const publicDestinations = new Map<string, ActiveDestinationSitemapRow>();
   for (const pkg of snapshotDestinations) {
     const destination = pkg.destination?.trim();

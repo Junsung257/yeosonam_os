@@ -12,10 +12,7 @@ import { loadMrtHotelQualityMap } from '@/lib/mrt-hotel-intel';
 import { computeEffectivePrice, type EffectivePriceResult } from './effective-price';
 import { topsis, type CriterionType } from './topsis';
 import { loadBrandEntries, type HotelBrandEntry } from './hotel-brands';
-import { SCORING_ELIGIBLE_STATUSES } from '@/lib/visibility-status';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { listPublicCatalog } from '@/lib/public-catalog';
 
 export interface RecommendBestInput {
   destination: string;
@@ -169,15 +166,22 @@ export async function recommendBestPackages(
   input: RecommendBestInput,
 ): Promise<RecommendBestResult> {
   const policy = input.policy ?? await getActivePolicy();
-  const window = input.departure_window_days
-    ?? policy.fallback_rules?.departure_window_days ?? 3;
-
-  // 1) 후보 조회 — status='approved'|'active' 가 노출 조건 (실 스키마)
+  // 1) 후보 권위는 public_catalog_view. 점수 계산에 필요한 내부 feature만
+  // 공개 ID로 한정해 compatibility projection에서 읽는다.
+  const publicCatalog = await listPublicCatalog(supabaseAdmin, {
+    destination: input.destination,
+    limit: 100,
+  });
+  const publicTitleById = new Map(publicCatalog.map((item) => [item.id, item.title]));
+  const publicIds = [...publicTitleById.keys()];
+  const groupKey = `${input.destination}|d${input.duration_days ?? '*'}`;
+  if (publicIds.length === 0) {
+    return { group_key: groupKey, group_size: 0, policy_version: policy.version, ranked: [] };
+  }
   let q = supabaseAdmin
     .from('travel_packages')
     .select(PACKAGE_SELECT_COLS)
-    .ilike('destination', `%${input.destination}%`)
-    .in('status', SCORING_ELIGIBLE_STATUSES as unknown as string[])
+    .in('id', publicIds)
     .limit(100);
 
   // departure_date 컬럼 제거 — price_dates jsonb 내부에서 처리. 그룹 키도 destination + duration 으로 변경
@@ -185,20 +189,12 @@ export async function recommendBestPackages(
 
   const { data, error } = await q;
   if (error) throw new Error(`패키지 조회 실패: ${error.message}`);
-  const eligibleRows = ((data ?? []) as Array<RawPackageRow & {
-    title: string;
-    publication_state?: string | null;
-    package_revision?: number | null;
-  }>)
-    .filter((row) => isPublicPublicationState(row.publication_state ?? null))
-    .filter((row) => isCustomerPubliclyOpenable(row as unknown as Record<string, unknown>));
-  const candidates = (await fetchAndMergeCurrentPublicPackageCardSnapshots(
-    supabaseAdmin,
-    eligibleRows as unknown as Array<Record<string, unknown>>,
-  )) as unknown as Array<RawPackageRow & { title: string }>;
+  const candidates = ((data ?? []) as unknown as Array<RawPackageRow & { title: string }>).map((row) => ({
+    ...row,
+    title: publicTitleById.get(row.id) ?? row.title,
+  }));
 
   // 그룹 키: destination + duration (출발일 컬럼 없음 — price_dates 의 dates는 제각각)
-  const groupKey = `${input.destination}|d${input.duration_days ?? '*'}`;
   if (candidates.length === 0) {
     return { group_key: groupKey, group_size: 0, policy_version: policy.version, ranked: [] };
   }
@@ -280,14 +276,18 @@ export async function recomputeAllScores(): Promise<{
   policy_version: string;
 }> {
   const policy = await getActivePolicy(true);
+  const publicCatalog = await listPublicCatalog(supabaseAdmin, { limit: 5_000 });
+  const publicIds = publicCatalog.map((item) => item.id);
+  if (publicIds.length === 0) {
+    return { groups: 0, packages: 0, policy_id: policy.id, policy_version: policy.version };
+  }
 
   const { data, error } = await supabaseAdmin
     .from('travel_packages')
     .select(PACKAGE_SELECT_COLS)
-    .in('status', SCORING_ELIGIBLE_STATUSES as unknown as string[]);
+    .in('id', publicIds);
   if (error) throw new Error(`전체 조회 실패: ${error.message}`);
-  const all = ((data ?? []) as unknown as Array<RawPackageRow & { title: string }>)
-    .filter((row) => isCustomerPubliclyOpenable(row as unknown as Record<string, unknown>));
+  const all = (data ?? []) as unknown as Array<RawPackageRow & { title: string }>;
 
   // ── v3 (2026-04-29): 출발일 펼치기 → 정확 같은 날 그룹 (옵션 A) ───
   // 한 패키지의 N개 price_dates 각각이 별도 점수 단위.
