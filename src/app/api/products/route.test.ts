@@ -47,5 +47,8 @@ describe('/api/products route boundary', () => {
       expect(body, method).not.toContain(".from('products')");
       expect(body, method).not.toMatch(/\.(insert|update|delete)\(/);
     }
+    expect(route).toContain('PRODUCT_DIRECT_CREATE_RETIRED');
+    expect(route).toContain('PRODUCT_DIRECT_UPDATE_RETIRED');
+    expect(route).toContain('PRODUCT_DIRECT_DELETE_RETIRED');
   });
 });

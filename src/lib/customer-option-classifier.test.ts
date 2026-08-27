@@ -30,4 +30,8 @@ describe('customer option classifier', () => {
     expect(isCustomerOptionalTourCandidate('기사/가이드경비. $50/인')).toBe(false);
     expect(isCustomerOptionalTourCandidate('노옵션')).toBe(false);
   });
+
+  it('does not turn an explicitly provided product special into a paid option', () => {
+    expect(isCustomerOptionalTourCandidate('상품특전 : 바나나보트 체험 서비스(현지옵션 $20) 서비스 제공')).toBe(false);
+  });
 });

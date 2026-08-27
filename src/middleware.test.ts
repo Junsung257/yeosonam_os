@@ -116,11 +116,50 @@ describe('middleware cron resource saver', () => {
     expect(response.headers.get('x-middleware-next')).toBe('1');
   });
 
+  it('passes a bearer-authenticated product registration cron through middleware', async () => {
+    vi.stubEnv('CRON_SECRET', 'test-cron-secret');
+
+    const response = await middleware(new NextRequest(
+      'https://www.yeosonam.com/api/cron/product-registration-v5-convergence',
+      { headers: { authorization: 'Bearer test-cron-secret' } },
+    ));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it.each([
+    '/api/cron/product-registration-v5-convergence',
+    '/api/cron/product-registration-v5-outbox',
+  ])('keeps product registration maintenance route %s public to its route-local guard', async (path) => {
+    const response = await middleware(new NextRequest(`https://www.yeosonam.com${path}`));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
   it('does not resource-save a trusted Clobe bank sync invocation', async () => {
     vi.stubEnv('DB_RESOURCE_SAVER_MODE', '1');
 
     const response = await middleware(new NextRequest(
       'https://www.yeosonam.com/api/cron/clobe-bank-sync',
+      { headers: { 'x-vercel-cron': '1' } },
+    ));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it.each([
+    'product-registration-v5-outbox',
+    'product-registration-v5-convergence',
+    'product-registration-v6-watchdog',
+    'product-registration-schedule-revalidation',
+  ])('does not resource-save essential product registration cron: %s', async (cron) => {
+    vi.stubEnv('DB_RESOURCE_SAVER_MODE', '1');
+
+    const response = await middleware(new NextRequest(
+      `https://www.yeosonam.com/api/cron/${cron}`,
       { headers: { 'x-vercel-cron': '1' } },
     ));
 
@@ -134,7 +173,7 @@ describe('middleware cron resource saver', () => {
     ));
 
     expect(response.status).toBe(410);
-    expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+    expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow, noarchive, nosnippet');
   });
 
   it.each([
@@ -146,7 +185,7 @@ describe('middleware cron resource saver', () => {
     ));
 
     expect(response.status).toBe(410);
-    expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+    expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow, noarchive, nosnippet');
   });
 });
 
@@ -167,7 +206,7 @@ describe('middleware blog public status contract', () => {
     const response = await middleware(new NextRequest('https://www.yeosonam.com/blog/review-blocked-fixture'));
 
     expect(response.status).toBe(404);
-    expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+    expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow, noarchive, nosnippet');
     expect(fetchSpy).toHaveBeenCalledWith(
       expect.objectContaining({ pathname: '/rest/v1/public_blog_slug_registry' }),
       expect.not.objectContaining({ headers: expect.objectContaining({ apikey: 'service-key' }) }),
@@ -329,6 +368,31 @@ describe('middleware backend P0 server-token pass-through', () => {
     }));
 
     expect(response.status).toBe(403);
+  });
+
+  it('allows the upload-only registration token on /api/upload', async () => {
+    vi.stubEnv('PRODUCT_REGISTRATION_UPLOAD_TOKEN', 'registration-upload-token');
+
+    const response = await middleware(new NextRequest('https://www.yeosonam.com/api/upload', {
+      method: 'POST',
+      headers: { 'x-product-registration-upload-token': 'registration-upload-token' },
+    }));
+
+    // Middleware deliberately leaves the upload-only token to the route-local
+    // Node guard; it cannot authorize a request by itself at the Edge.
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('does not let the upload-only token reach other admin endpoints', async () => {
+    vi.stubEnv('PRODUCT_REGISTRATION_UPLOAD_TOKEN', 'registration-upload-token');
+
+    const response = await middleware(new NextRequest('https://www.yeosonam.com/api/admin/product-registration/v6/readiness', {
+      method: 'GET',
+      headers: { 'x-product-registration-upload-token': 'registration-upload-token' },
+    }));
+
+    expect(response.status).toBe(307);
   });
 });
 

@@ -102,6 +102,10 @@ function normalizeCandidate(definition: CandidateDefinition): PriceIRCandidate {
     if (rowRichness(row) > rowRichness(existing)) byExactValue.set(exactKey, row);
   }
   const rows = sortRows([...byExactValue.values()]);
+  // Keep internally conflicted candidates in the evidence graph. Resolution
+  // decides whether a coherent peer should outrank them; if no peer exists we
+  // still need to return the source rows so the publication gate can explain
+  // the ambiguity instead of reporting an extraction failure.
   const valid = rows.length > 0;
   return {
     source: definition.source,
@@ -175,12 +179,20 @@ function candidateDefinitions(rawText: string, options: PriceIROptions): Candida
   const verticalGrade = extractVerticalGradePriceIR(rawText, options);
   const productVerticalRows = extractProductPriceVerticalDateRows(rawText, options);
   const pdfDateRows = extractPdfDatePriceRows(rawText, options);
+  const labeledDateListRows = extractLabeledDateListPriceRows(rawText, options);
+  // A spot-date block often appears before the real weekday/period calendar.
+  // When the document explicitly contains both sections, the calendar parser
+  // must own the result so surcharge/range rows are not reduced to one spot
+  // date. Standalone date-list documents keep the higher-specificity path.
+  const labeledDateListPriority = /출\s*발\s*요\s*일|출발\s*요일/u.test(rawText)
+    ? 60
+    : 150;
   const productVerticalUsesNamedGrade = productVerticalRows.some(row => (
     String(row.note ?? '').startsWith('source_vertical_grade_price')
     || String(row.note ?? '').startsWith('source_korean_grade_date_price')
   ));
   const productVerticalUsesTrustedStructure = productVerticalUsesNamedGrade
-    || productVerticalRows.some(row => /^(?:source_korean_amount_before_date|source_korean_date_before_amount|source_korean_grouped_dates_before_price|source_korean_duration_section_price|source_korean_hotel_month_day|source_korean_month_duration_price)/u.test(String(row.note ?? '')));
+    || productVerticalRows.some(row => /^(?:source_korean_amount_before_date|source_korean_amount_before_grouped_dates|source_korean_date_before_amount|source_korean_grouped_dates_before_price|source_korean_duration_section_price|source_korean_hotel_month_day|source_korean_month_duration_price)/u.test(String(row.note ?? '')));
   const productVerticalHasCompleteGenericCoverage = productVerticalRows.length > 0
     && productVerticalRows.length >= pdfDateRows.length;
   return [
@@ -192,7 +204,7 @@ function candidateDefinitions(rawText: string, options: PriceIROptions): Candida
     { source: 'commercial_price_relation', rows: extractCommercialPriceRelationRows(rawText, options), specificity: prioritizedCommercial ? 5 : 2, priority: prioritizedCommercial ? 175 : 5 },
     { source: 'spot_weekday_table', rows: extractSpotWeekdayRows(rawText, options), specificity: 5, priority: 170 },
     { source: 'compact_grade_period_table', rows: extractCompactGradePeriodRows(rawText, options), specificity: 4, priority: 160 },
-    { source: 'labeled_date_list_price', rows: extractLabeledDateListPriceRows(rawText, options), specificity: 5, priority: 150 },
+    { source: 'labeled_date_list_price', rows: labeledDateListRows, specificity: 5, priority: labeledDateListPriority },
     { source: 'single_period_product_price', rows: extractSinglePeriodProductPriceRows(rawText, options), specificity: 3, priority: 140 },
     { source: 'cruise_cabin_price_table', rows: extractCruiseCabinPriceRows(rawText, options), specificity: 4, priority: 130 },
     { source: 'hotel_column_matrix', rows: extractHotelColumnMatrixRows(rawText, options), specificity: 4, priority: 120 },
@@ -226,7 +238,7 @@ export function extractPriceIRCandidates(rawText: string, options: PriceIROption
 }
 
 export function resolvePriceIRCandidates(candidates: PriceIRCandidate[]): PriceIRResult {
-  const valid = candidates
+  const rankedValid = candidates
     .filter(candidate => candidate.valid && candidate.rows.length > 0)
     .sort((left, right) => (
       right.priority - left.priority
@@ -235,6 +247,18 @@ export function resolvePriceIRCandidates(candidates: PriceIRCandidate[]): PriceI
       || right.tiers.length - left.tiers.length
       || left.source.localeCompare(right.source)
     ));
+  // A flattened document can make one parser emit a Cartesian product with
+  // several different prices for the same departure date. If another parser
+  // produced a conflict-free calendar, prefer that coherent candidate even
+  // when its nominal parser priority is lower. When it is the only candidate,
+  // retain it so the caller still receives the conflict evidence and can gate
+  // publication explicitly rather than losing all source facts.
+  const hasConflictFreeCandidate = rankedValid.some(candidate => (
+    !candidate.issues.some(issue => issue.startsWith('INTERNAL_SCOPE_CONFLICT:'))
+  ));
+  const valid = hasConflictFreeCandidate
+    ? rankedValid.filter(candidate => !candidate.issues.some(issue => issue.startsWith('INTERNAL_SCOPE_CONFLICT:')))
+    : rankedValid;
   if (valid.length === 0) {
     return {
       source: 'none',
@@ -298,8 +322,15 @@ export function resolvePriceIRCandidates(candidates: PriceIRCandidate[]): PriceI
   // A broader parser may extend a direct-date seed only when it reproduces
   // every selected scope and value. No averaging, cheapest-price choice, or
   // majority vote is allowed.
+  // A literal date-list parser may find one special-date row inside a larger
+  // weekday/period calendar.  It is still useful as a source-backed seed, but
+  // when a lower-priority candidate reproduces that row and adds the complete
+  // calendar, the broader candidate is the authoritative result.  Without
+  // this extension the special-date parser wins on priority and silently
+  // drops the ordinary departure dates.
   const extensibleSeed = topCandidate.source === 'explicit_date_weekday_price'
-    || topCandidate.source === 'commercial_price_relation';
+    || topCandidate.source === 'commercial_price_relation'
+    || topCandidate.source === 'labeled_date_list_price';
   for (const candidate of extensibleSeed
     ? valid.filter(item => item.priority < topCandidate.priority && item.specificity < highestSpecificity)
     : []) {

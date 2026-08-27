@@ -6,11 +6,10 @@ describe('QA chat package context public snapshot gate', () => {
   it('loads package context through current public snapshots, not supplier raw fields', () => {
     const source = readFileSync(join(process.cwd(), 'src/lib/qa-chat-packages.ts'), 'utf8');
 
-    expect(source).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
-    expect(source).toContain('isPublicPublicationState');
-    expect(source).toContain(".in('publication_state', ['approved', 'published'])");
-    expect(source).toContain('toQaCustomerPackageRows');
-    expect(source).toContain("typeof row.title === 'string'");
+    expect(source).toContain('listPublicCatalog');
+    expect(source).toContain('getPublicCatalogDetail');
+    expect(source).toContain('toQaCustomerPackage');
+    expect(source).not.toContain(".from('travel_packages')");
     expect(source).not.toContain('raw_text');
     expect(source).not.toContain('safeRawTextExcerpt');
     expect(source).not.toContain('여소남 추천 패키지');

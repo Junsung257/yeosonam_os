@@ -24,8 +24,17 @@ function parseFullDateList(line: string, fallbackYear?: number): string[] {
   for (const match of line.matchAll(/\b(20\d{2})[./-](\d{1,2})[./-](\d{1,2})\b/g)) {
     push(toIsoDate(Number(match[1]), Number(match[2]), Number(match[3])));
   }
-  for (const match of line.matchAll(/\b(20\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\b/g)) {
+  for (const match of line.matchAll(/(20\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/g)) {
     push(toIsoDate(Number(match[1]), Number(match[2]), Number(match[3])));
+  }
+
+  // Korean schedules often abbreviate the month/year once:
+  // `2026년 9월 23일, 24일 예정`. Expand the continuation days while
+  // retaining the exact source line as evidence.
+  for (const match of line.matchAll(/(20\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일((?:\s*[,，]\s*\d{1,2}\s*일?)+)/gu)) {
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    for (const day of match[4]!.match(/\d{1,2}/gu) ?? []) push(toIsoDate(year, month, Number(day)));
   }
 
   if (dates.length > 0) return dates;
@@ -51,6 +60,123 @@ function lineHasPriceLabel(line: string): boolean {
   return /요금표|상품가|판매가|행사가|성인(?:요금|가격)?|대인(?:요금|가격)?/.test(line.replace(/\s+/g, ''));
 }
 
+type IndexedDateGroup = { index: number; dates: string[] };
+type IndexedPriceLine = { index: number; amount: number };
+
+function lineDateGroup(line: string, year: number): string[] {
+  const normalized = line.normalize('NFKC').trim();
+  // Ticketing/booking deadlines contain dates too, but they are conditions,
+  // not departure scopes. Never let them become a price calendar row.
+  if (!normalized || /(?:발권|예약|취소|환불|마감|조건|기준|이후|이전|까지)/u.test(normalized)) return [];
+  const dates = parseFullDateList(normalized, year);
+  if (dates.length === 0 || dates.length > 60) return [];
+  // A date roster must be date-shaped. This rejects ordinary itinerary text
+  // that happens to contain a number such as a hotel room or flight number.
+  const dateOnly = normalized
+    .replace(/\([일월화수목금토](?:요일)?\)/gu, '')
+    .replace(/[일월화수목금토](?:요일)?/gu, '')
+    .replace(/출발/gu, '')
+    .replace(/\d{4}\s*년/gu, '')
+    .replace(/\d{1,2}\s*(?:월|\/|\.)/gu, '')
+    .replace(/\d{1,2}\s*일/gu, '')
+    .replace(/[\s,./-]/gu, '');
+  return /^\d+$/u.test(dateOnly) ? dates : [];
+}
+
+function lineSinglePrice(line: string): number | null {
+  if (isExcludedPriceLine(line)) return null;
+  // Per-person rows belong to the PDF/date-table readers. Treating them as a
+  // scalar product price here can steal only the nearest roster and suppress
+  // the stronger row-wise parser.
+  if (/(?:\b1\s*인|\/\s*인|성인|대인|아동|소아)/u.test(line)) return null;
+  const values = [...line.matchAll(/(?:₩\s*)?(\d{1,3}(?:,\d{3})+|\d{5,8})\s*(?:원|KRW)?/giu)]
+    .map(match => parseMoney(match[1]))
+    .filter((value): value is number => value != null);
+  return values.length === 1 ? values[0]! : null;
+}
+
+/**
+ * HWP tables are sometimes flattened in this order:
+ *
+ *   499,000원
+ *   9/13, 14, 15
+ *   (label cells)
+ *   579,000원
+ *   9/21, 22
+ *
+ * The old global fallback saw the later price label and applied 579,000 to
+ * every date. This reader binds each scalar price to the nearest date roster
+ * on either side of the flattening boundary. Both HWP reading orders occur in
+ * the wild: price→date and date→price. It is enabled only when every matched
+ * pair is local and a product-price label exists, so established vertical
+ * table readers keep their authority.
+ */
+function extractFlattenedPriceBeforeDateRows(
+  lines: string[],
+  rawText: string,
+  options: PriceIROptions,
+): MatrixPriceRow[] {
+  const year = inferredYear(rawText, options.year);
+  const dateGroups: IndexedDateGroup[] = lines
+    .map((line, index) => ({ index, dates: lineDateGroup(line, year) }))
+    .filter((value): value is IndexedDateGroup => value.dates.length > 0);
+  if (dateGroups.length === 0) return [];
+
+  const priceLines: IndexedPriceLine[] = lines
+    .map((line, index) => ({ index, amount: lineSinglePrice(line) }))
+    .filter((value): value is IndexedPriceLine => value.amount != null);
+  const hasProductPriceLabel = lines.some(lineHasPriceLabel);
+  if (!hasProductPriceLabel) return [];
+  // A single scalar may legitimately apply to every explicit roster in a
+  // supplier block; preserve the established single-price fallback for that
+  // case. This reader is only for one-price-per-roster flattening.
+  if (priceLines.length < 2 || dateGroups.length !== priceLines.length) return [];
+
+  const usedDates = new Set<number>();
+  const rows: MatrixPriceRow[] = [];
+  const hasPriceBetween = (left: number, right: number): boolean => (
+    priceLines.some(price => price.index > left && price.index < right)
+  );
+  const dateGroupsForPrice = (price: IndexedPriceLine): IndexedDateGroup[] => {
+    const nearby = dateGroups
+      .filter(group => Math.abs(group.index - price.index) <= 3)
+      .filter(group => !usedDates.has(group.index))
+      .filter(group => !hasPriceBetween(Math.min(group.index, price.index), Math.max(group.index, price.index)))
+      .map(group => ({ group, distance: Math.abs(group.index - price.index) }))
+      .sort((left, right) => left.distance - right.distance || left.group.index - right.group.index);
+    if (nearby.length === 0) return [];
+    // A tie means the flattened stream lost the physical row boundary. Do
+    // not guess between two equally close rosters.
+    if (nearby[1]?.distance === nearby[0]!.distance) return [];
+    return [nearby[0]!.group];
+  };
+
+  for (const price of priceLines) {
+    const groups = dateGroupsForPrice(price);
+    if (groups.length === 0) continue;
+    for (const group of groups) {
+      usedDates.add(group.index);
+      for (const date of group.dates) {
+        rows.push({
+          date,
+          adult_price: price.amount,
+          child_price: null,
+          note: 'labeled_date_list_price',
+          status: 'available',
+        });
+      }
+    }
+  }
+
+  const byDate = new Map<string, MatrixPriceRow>();
+  for (const row of rows) {
+    const existing = byDate.get(row.date);
+    if (existing && existing.adult_price !== row.adult_price) return [];
+    byDate.set(row.date, row);
+  }
+  return [...byDate.values()].sort((left, right) => left.date.localeCompare(right.date));
+}
+
 function isExcludedPriceLine(line: string): boolean {
   return /(가이드|기사|팁|매너|비자|써차지|서차지|싱글|유류|옵션|선택|마사지|쇼핑|취소|환불|보험|불포함)/.test(line);
 }
@@ -68,6 +194,9 @@ function extractSplitLabelPriceRows(lines: string[], rawText: string, options: P
   const headerLines = lines.slice(0, itineraryHeader > 0 ? itineraryHeader : Math.min(lines.length, 80));
   if (!headerLines.some(line => /^(?:\uAE30\uAC04|\uCD9C\uBC1C\uC77C(?:\uC790|\uC815)?)$/u.test(line.replace(/\s+/g, '')))) return [];
   if (!headerLines.some(lineHasPriceLabel)) return [];
+
+  const flattenedRows = extractFlattenedPriceBeforeDateRows(headerLines, rawText, options);
+  if (flattenedRows.length > 0) return flattenedRows;
 
   const candidatePrices = headerLines.flatMap((line, index) => {
     if (isExcludedPriceLine(line)) return [];
@@ -95,6 +224,36 @@ function extractSplitLabelPriceRows(lines: string[], rawText: string, options: P
   }));
 }
 
+function extractArrowDatePriceRows(
+  lines: string[],
+  options: PriceIROptions,
+): MatrixPriceRow[] {
+  const rows: MatrixPriceRow[] = [];
+  const seen = new Set<string>();
+  for (const line of lines) {
+    if (isExcludedPriceLine(line)) continue;
+    const match = line.match(/^(.*?)\s*(?:→|⇒|➜|⟶|▶|->|=>|:)\s*(?:₩\s*)?(\d{1,3}(?:,\d{3})+|\d{5,8})\s*(?:원|KRW)?\s*$/iu);
+    if (!match) continue;
+    const amount = parseMoney(match[2]);
+    if (amount == null) continue;
+    const dates = parseFullDateList(match[1]!, options.year);
+    if (dates.length === 0 || dates.length > 60) continue;
+    for (const date of dates) {
+      const key = `${date}|${amount}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push({
+        date,
+        adult_price: amount,
+        child_price: null,
+        note: 'labeled_date_list_price',
+        status: 'available',
+      });
+    }
+  }
+  return rows;
+}
+
 function extractAdultChildPrices(lines: string[], fromIndex: number): {
   adult: number;
   child: number | null;
@@ -104,7 +263,15 @@ function extractAdultChildPrices(lines: string[], fromIndex: number): {
     // Excluded fees remain non-sale even when the line says the same fee
     // applies to adults and children.
     if (isExcludedPriceLine(line)) continue;
-    if (!lineHasPriceLabel(line) && !/성인/.test(line)) continue;
+    // HWP exports frequently flatten the scalar before its label:
+    // `▶ 1,499,000` followed by `예상판매가격`.  The departure-date label
+    // bounds this search to the commercial header, so allow a bare scalar
+    // when a price label is immediately adjacent instead of requiring the
+    // label to be on the same visual line.
+    const followingPriceLabel = lines
+      .slice(i + 1, Math.min(lines.length, i + 4))
+      .some(lineHasPriceLabel);
+    if (!lineHasPriceLabel(line) && !/성인/.test(line) && !followingPriceLabel) continue;
 
     const adult = parseMoney(
       line.match(/(?:성인|대인)\s*(?:요금|가격)?\s*[:：]?\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{5,8})\s*원?/)?.[1]
@@ -129,7 +296,7 @@ export function extractLabeledDateListPriceRows(
     .split(/\r?\n/)
     .map(line => line.trim())
     .filter(Boolean);
-  const rows: MatrixPriceRow[] = [];
+  const rows: MatrixPriceRow[] = extractArrowDatePriceRows(lines, options);
   const seen = new Set<string>();
 
   for (let i = 0; i < lines.length; i++) {

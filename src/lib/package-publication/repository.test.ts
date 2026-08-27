@@ -104,6 +104,11 @@ function makeSnapshotFetchSupabaseMock(row: Record<string, unknown> | null, resu
     canonical_revision_id: row.canonical_revision_id ?? 'canonical-revision-test',
     ...row,
   } : null;
+  const snapshotJson = effectiveRow?.snapshot_json
+    && typeof effectiveRow.snapshot_json === 'object'
+    && !Array.isArray(effectiveRow.snapshot_json)
+    ? effectiveRow.snapshot_json as Record<string, unknown>
+    : {};
   const snapshotChain = {
     select: () => snapshotChain,
     eq: () => snapshotChain,
@@ -114,6 +119,19 @@ function makeSnapshotFetchSupabaseMock(row: Record<string, unknown> | null, resu
   };
   return {
     rpc(name: string) {
+      if (name === 'get_product_registration_customer_route_state') {
+        return Promise.resolve({
+          data: effectiveRow ? {
+            state: 'PUBLIC',
+            catalog_product_id: effectiveRow.catalog_product_id,
+            package_id: effectiveRow.package_id,
+            revision_id: effectiveRow.canonical_revision_id,
+            snapshot_id: effectiveRow.id,
+            pointer_version: 1,
+          } : { state: 'NOT_FOUND' },
+          error: null,
+        });
+      }
       if (name === 'get_product_registration_availability_overlays') {
         return Promise.resolve({ data: [], error: null });
       }
@@ -130,6 +148,32 @@ function makeSnapshotFetchSupabaseMock(row: Record<string, unknown> | null, resu
       throw new Error(`unexpected rpc ${name}`);
     },
     from(table: string) {
+      if (table === 'public_catalog_view') {
+        const publicCatalogRow = effectiveRow ? {
+          id: effectiveRow.package_id,
+          catalog_product_id: effectiveRow.catalog_product_id,
+          revision_id: effectiveRow.canonical_revision_id,
+          snapshot_id: effectiveRow.id,
+          snapshot_hash: effectiveRow.snapshot_hash,
+          pointer_version: 1,
+          booking_mode: 'inquiry',
+          last_verified_at: effectiveRow.created_at,
+          public_detail: {
+            ...snapshotJson,
+            package_revision: effectiveRow.package_revision,
+            card_projection: effectiveRow.card_projection,
+            lp_projection: effectiveRow.lp_projection,
+            route_text_dump: effectiveRow.route_text_dump,
+            renderer_build_id: effectiveRow.renderer_build_id,
+          },
+        } : null;
+        const query = {
+          select() { return query; },
+          eq() { return query; },
+          async maybeSingle() { return { data: publicCatalogRow, error: null }; },
+        };
+        return query;
+      }
       if (table === 'travel_packages') {
         const identityChain: any = {
           select: () => identityChain,

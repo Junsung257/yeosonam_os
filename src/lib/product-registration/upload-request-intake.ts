@@ -42,7 +42,7 @@ export type UploadRequestIntakeResult = {
   forceReprocess: boolean;
 } | {
   ok: false;
-  status: 400 | 422;
+  status: 400 | 413 | 415 | 422;
   payload: Record<string, unknown>;
 };
 
@@ -174,7 +174,7 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
     if (file.size > PRODUCT_REGISTRATION_V4_MAX_BYTES) {
       return {
         ok: false,
-        status: 400,
+        status: 413,
         payload: { error: '파일 크기는 10MB 이하여야 합니다.' },
       };
     }
@@ -216,7 +216,7 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
   if (!sourceType) {
     return {
       ok: false,
-      status: 400,
+      status: 415,
       payload: { success: false, code: 'SOURCE_TYPE_UNSUPPORTED', error: '지원하지 않는 상품 원본 형식입니다.' },
     };
   }
@@ -246,7 +246,7 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
     if (!ALLOWED_UPLOAD_EXTENSIONS.includes(ext)) {
       return {
         ok: false,
-        status: 400,
+        status: 415,
         payload: { error: `지원하지 않는 파일 형식입니다. (${ALLOWED_UPLOAD_EXTENSIONS.join(', ')})` },
       };
     }

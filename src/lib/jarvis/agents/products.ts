@@ -1,10 +1,15 @@
 import { supabaseAdmin } from '@/lib/supabase'
+import {
+  getPublishedProductFactById,
+  getPublishedProductFacts,
+  getPublishedComparisonFacts,
+  toJarvisPublishedPackage,
+} from '@/lib/product-registration-authority/read-model'
 import { PRODUCTS_PROMPT } from '../prompts'
 import { AgentRunParams, AgentRunResult } from '../types'
 import { runDeepSeekAgentLoop } from '../deepseek-agent-loop'
-import { recommendBestPackages } from '@/lib/scoring/recommend'
 import { getActivePolicy } from '@/lib/scoring/policy'
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status'
+import { listPublicCatalog } from '@/lib/public-catalog'
 
 const PRODUCTS_TOOLS_RAW = [
   {
@@ -289,36 +294,45 @@ const PRODUCTS_TOOLS_RAW = [
 
 const PRODUCTS_TOOLS = PRODUCTS_TOOLS_RAW
 
+async function getCustomerCatalogIdSet(options: { destination?: string; ids?: string[]; limit?: number } = {}) {
+  const catalog = await listPublicCatalog(supabaseAdmin, {
+    limit: Math.max(1, Math.min(500, options.limit ?? 200)),
+    ...(options.destination ? { destination: options.destination } : {}),
+    ...(options.ids ? { ids: options.ids } : {}),
+  })
+  return new Set(catalog.map((item) => item.id))
+}
+
 async function executeTool(toolName: string, args: any): Promise<any> {
   switch (toolName) {
     case 'search_packages': {
-      let query = supabaseAdmin
-        .from('travel_packages')
-        .select('id, title, destination, base_price, departure_date, duration_days, status, created_at')
-        .order('created_at', { ascending: false })
-        .limit(args.limit || 10)
-      if (args.destination) query = query.ilike('destination', `%${args.destination}%`)
-      if (args.departure_from) query = query.gte('departure_date', args.departure_from)
-      if (args.departure_to) query = query.lte('departure_date', args.departure_to)
-      if (args.min_price) query = query.gte('base_price', args.min_price)
-      if (args.max_price) query = query.lte('base_price', args.max_price)
-      if (args.status) query = query.eq('status', args.status)
-      const { data, error } = await query
-      if (error) throw error
-      return data
+      const catalogIds = await getCustomerCatalogIdSet({
+        destination: typeof args.destination === 'string' ? args.destination : undefined,
+        limit: Number(args.limit || 10),
+      })
+      const facts = await getPublishedProductFacts({
+        supabase: supabaseAdmin,
+        destination: typeof args.destination === 'string' ? args.destination : undefined,
+        limit: Number(args.limit || 10),
+      })
+      return facts.filter(fact => catalogIds.has(fact.packageId) && fact.departureInstances.some(row =>
+        (!args.departure_from || row.departure_date >= String(args.departure_from))
+        && (!args.departure_to || row.departure_date <= String(args.departure_to))
+        && (row.adult_selling_price === null || !args.min_price || row.adult_selling_price >= Number(args.min_price))
+        && (row.adult_selling_price === null || !args.max_price || row.adult_selling_price <= Number(args.max_price)),
+      )).map(toJarvisPublishedPackage)
     }
     case 'get_package_detail': {
-      const { data, error } = await supabaseAdmin
-        .from('travel_packages')
-        .select('*')
-        .eq('id', args.package_id)
-        .limit(1)
-      if (error) throw error
-      return data?.[0] || null
+      const catalogIds = await getCustomerCatalogIdSet({ ids: [String(args.package_id)], limit: 1 })
+      if (!catalogIds.has(String(args.package_id))) return null
+      const fact = await getPublishedProductFactById({ supabase: supabaseAdmin, productId: String(args.package_id) })
+      return fact ? toJarvisPublishedPackage(fact) : null
     }
     case 'get_package_hotel_mrt_cache': {
       const pid = args.package_id as string
       if (!pid) throw new Error('package_id 필수')
+      const catalogIds = await getCustomerCatalogIdSet({ ids: [pid], limit: 1 })
+      if (!catalogIds.has(pid)) return { error: '현재 고객 공개 가능한 상품이 아닙니다.' }
       const { fetchHotelIntelForJarvis } = await import('@/lib/mrt-hotel-intel')
       const dep = typeof args.departure_date === 'string' ? args.departure_date : null
       const rows = await fetchHotelIntelForJarvis(pid, dep)
@@ -358,27 +372,77 @@ async function executeTool(toolName: string, args: any): Promise<any> {
       }
     }
     case 'recommend_package': {
-      let query = supabaseAdmin
-        .from('travel_packages')
-        .select('id, title, destination, base_price, departure_date, duration_days, highlights, status')
-        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-        .order('created_at', { ascending: false })
-        .limit(3)
-      if (args.destination) query = query.ilike('destination', `%${args.destination}%`)
-      if (args.budget_per_person) query = query.lte('base_price', args.budget_per_person)
-      const { data, error } = await query
-      if (error) throw error
-      return data
+      const catalogIds = await getCustomerCatalogIdSet({
+        destination: typeof args.destination === 'string' ? args.destination : undefined,
+        limit: 20,
+      })
+      const facts = await getPublishedProductFacts({
+        supabase: supabaseAdmin,
+        destination: typeof args.destination === 'string' ? args.destination : undefined,
+        limit: 20,
+      })
+      return facts
+        .filter(fact => catalogIds.has(fact.packageId))
+        .map(toJarvisPublishedPackage)
+        .filter(pkg => !args.budget_per_person
+          || (typeof pkg.price_dates === 'object' && Array.isArray(pkg.price_dates)
+            && pkg.price_dates.some((row: any) => typeof row?.price === 'number' && row.price <= Number(args.budget_per_person))))
+        .slice(0, 3)
     }
     case 'recommend_best_packages': {
       if (!args.destination) throw new Error('destination 필수')
-      const result = await recommendBestPackages({
-        destination: args.destination,
-        departure_date: args.departure_date ?? null,
-        departure_window_days: args.departure_window_days,
-        duration_days: args.duration_days ?? null,
-        limit: args.limit ?? 3,
-      })
+      const catalogIds = await getCustomerCatalogIdSet({ destination: String(args.destination), limit: 200 });
+      const facts = (await getPublishedComparisonFacts({ supabase: supabaseAdmin, limit: 200 }))
+        .filter(fact => catalogIds.has(fact.packageId));
+      const destination = String(args.destination).toLocaleLowerCase();
+      const requestedDate = typeof args.departure_date === 'string' ? args.departure_date : null;
+      const resultRows = facts
+        .filter(fact => {
+          const searchable = [fact.cardProjection.destination, fact.cardProjection.title, fact.lpProjection.destination]
+            .filter(value => typeof value === 'string').join(' ').toLocaleLowerCase();
+          if (!searchable.includes(destination)) return false;
+          if (args.duration_days && Number(fact.lpProjection.duration ?? fact.cardProjection.duration) !== Number(args.duration_days)) return false;
+          return fact.departureInstances.some(row => row.adult_selling_price !== null
+            && ['PRICED', 'REQUEST_ONLY'].includes(row.pricing_state)
+            && (!requestedDate || row.departure_date === requestedDate));
+        })
+        .map(fact => {
+          const departure = fact.departureInstances
+            .filter(row => row.adult_selling_price !== null && (!requestedDate || row.departure_date === requestedDate))
+            .sort((left, right) => left.adult_selling_price! - right.adult_selling_price!)[0]!;
+          return { fact, departure };
+        })
+        .sort((left, right) => left.departure.adult_selling_price! - right.departure.adult_selling_price!)
+        .slice(0, Number(args.limit ?? 3));
+      const result = {
+        group_key: `${args.destination}:${requestedDate ?? 'open-date'}`,
+        group_size: resultRows.length,
+        policy_version: 'v6.1-published-price-facts',
+        ranked: resultRows.map(({ fact, departure }, index) => ({
+          package_id: fact.packageId,
+          title: String(fact.cardProjection.title ?? fact.lpProjection.title ?? ''),
+          destination: String(fact.cardProjection.destination ?? fact.lpProjection.destination ?? args.destination),
+          departure_date: departure.departure_date,
+          duration_days: Number(fact.lpProjection.duration ?? fact.cardProjection.duration ?? 0),
+          list_price: departure.adult_selling_price!,
+          effective_price: departure.adult_selling_price!,
+          rank: index + 1,
+          features: {
+            shopping_count: null,
+            hotel_avg_grade: null,
+            mrt_hotel_quality_score: null,
+            meal_count: null,
+            free_option_count: null,
+            is_direct_flight: null,
+          },
+          breakdown: {
+            why: [
+              '현재 customer publication pointer에 연결된 검증된 날짜별 성인 판매가 기준입니다.',
+              departure.booking_state === 'MANUAL_CONFIRMATION_REQUIRED' ? '특별요금이라 예약 가능 여부는 별도 확인이 필요합니다.' : '예약 상태는 공개 revision의 booking fact를 따릅니다.',
+            ],
+          },
+        })),
+      };
       // recommendation_outcomes 노출 누적 (LTR ground truth 자동 시작)
       try {
         const rows = result.ranked.map(r => ({
@@ -473,15 +537,40 @@ async function executeTool(toolName: string, args: any): Promise<any> {
       return { ok: true, ack_id: id };
     }
     case 'top_recommended_packages': {
-      const { getTopRecommendedPackages } = await import('@/lib/scoring/top-recommended');
-      const result = await getTopRecommendedPackages({
-        limit: typeof args.limit === 'number' ? args.limit : 20,
+      const catalogIds = await getCustomerCatalogIdSet({
         destination: typeof args.destination === 'string' ? args.destination : undefined,
-        departureFrom: typeof args.departure_from === 'string' ? args.departure_from : undefined,
-        departureTo: typeof args.departure_to === 'string' ? args.departure_to : undefined,
-        maxRank: typeof args.max_rank === 'number' ? args.max_rank : 1,
+        limit: 200,
       });
-      return { count: result.length, packages: result };
+      const facts = (await getPublishedComparisonFacts({ supabase: supabaseAdmin, limit: 200 }))
+        .filter(fact => catalogIds.has(fact.packageId));
+      const destination = typeof args.destination === 'string' ? args.destination.toLocaleLowerCase() : null;
+      const from = typeof args.departure_from === 'string' ? args.departure_from : null;
+      const to = typeof args.departure_to === 'string' ? args.departure_to : null;
+      const packages = facts
+        .filter(fact => {
+          const text = [fact.cardProjection.destination, fact.cardProjection.title, fact.lpProjection.destination]
+            .filter(value => typeof value === 'string').join(' ').toLocaleLowerCase();
+          return (!destination || text.includes(destination))
+            && fact.departureInstances.some(row => row.adult_selling_price !== null
+              && (!from || row.departure_date >= from)
+              && (!to || row.departure_date <= to));
+        })
+        .map(fact => {
+          const departure = fact.departureInstances
+            .filter(row => row.adult_selling_price !== null)
+            .sort((left, right) => left.adult_selling_price! - right.adult_selling_price!)[0]!;
+          return {
+            package_id: fact.packageId,
+            title: String(fact.cardProjection.title ?? fact.lpProjection.title ?? ''),
+            destination: String(fact.cardProjection.destination ?? fact.lpProjection.destination ?? ''),
+            departure_date: departure.departure_date,
+            price: departure.adult_selling_price,
+            booking_state: departure.booking_state,
+          };
+        })
+        .sort((left, right) => left.price! - right.price!)
+        .slice(0, typeof args.limit === 'number' ? args.limit : 20);
+      return { count: packages.length, packages };
     }
     case 'list_admin_alerts': {
       let q = supabaseAdmin.from('admin_alerts')
@@ -499,72 +588,65 @@ async function executeTool(toolName: string, args: any): Promise<any> {
       const bId = args.package_id_b as string;
       if (!aId || !bId) throw new Error('package_id_a, package_id_b 필수');
       const date = args.departure_date as string | undefined;
-      let q = supabaseAdmin
-        .from('package_scores')
-        .select('package_id, departure_date, list_price, effective_price, rank_in_group, group_size, shopping_count, hotel_avg_grade, meal_count, free_option_count, is_direct_flight, breakdown, travel_packages!inner(title, product_highlights)')
-        .in('package_id', [aId, bId]);
-      if (date) q = q.eq('departure_date', date);
-      const { data, error } = await q.limit(10);
-      if (error) throw error;
-      const rows = (data ?? []) as unknown as Array<{
-        package_id: string; departure_date: string;
-        list_price: number; effective_price: number; rank_in_group: number;
-        shopping_count: number; hotel_avg_grade: number | null; meal_count: number;
-        free_option_count: number; is_direct_flight: boolean;
-        breakdown: { why?: string[]; deductions?: Record<string, number> };
-        travel_packages: { title: string; product_highlights: string[] | null } | { title: string; product_highlights: string[] | null }[];
-      }>;
-      const a = rows.find(r => r.package_id === aId);
-      const b = rows.find(r => r.package_id === bId);
-      if (!a || !b) return { error: '같은 출발일에 양쪽 패키지가 없어요' };
-      const titleOf = (r: typeof a) => Array.isArray(r.travel_packages) ? r.travel_packages[0]?.title : r.travel_packages?.title;
-      const highlightsOf = (r: typeof a) => {
-        const t = Array.isArray(r.travel_packages) ? r.travel_packages[0] : r.travel_packages;
-        return t?.product_highlights ?? [];
-      };
-      const { comparePackages } = await import('@/lib/scoring/pairwise-diff');
-      const diff = comparePackages(
-        {
-          features: {
-            package_id: a.package_id, destination: '', departure_date: a.departure_date,
-            duration_days: 0, list_price: a.list_price,
-            shopping_count: a.shopping_count, hotel_avg_grade: a.hotel_avg_grade,
-            meal_count: a.meal_count, free_option_count: a.free_option_count,
-            is_direct_flight: a.is_direct_flight, land_operator_id: null, reliability_score: 0.7, days_since_created: null,
-            confirmation_rate: 0, free_time_ratio: 0, korean_meal_count: 0, special_meal_count: 0,
-            hotel_location: null, flight_time: null, climate_score: 50, popularity_score: 50, itinerary: null,
-          },
-          effective_price: a.effective_price,
-          product_highlights: highlightsOf(a),
-        },
-        {
-          features: {
-            package_id: b.package_id, destination: '', departure_date: b.departure_date,
-            duration_days: 0, list_price: b.list_price,
-            shopping_count: b.shopping_count, hotel_avg_grade: b.hotel_avg_grade,
-            meal_count: b.meal_count, free_option_count: b.free_option_count,
-            is_direct_flight: b.is_direct_flight, land_operator_id: null, reliability_score: 0.7, days_since_created: null,
-            confirmation_rate: 0, free_time_ratio: 0, korean_meal_count: 0, special_meal_count: 0,
-            hotel_location: null, flight_time: null, climate_score: 50, popularity_score: 50, itinerary: null,
-          },
-          effective_price: b.effective_price,
-          product_highlights: highlightsOf(b),
-        }
-      );
+      const catalogIds = await getCustomerCatalogIdSet({ ids: [aId, bId], limit: 2 });
+      const facts = (await getPublishedComparisonFacts({ supabase: supabaseAdmin, limit: 200 }))
+        .filter(fact => catalogIds.has(fact.packageId));
+      const aFact = facts.find(fact => fact.packageId === aId);
+      const bFact = facts.find(fact => fact.packageId === bId);
+      const departureOf = (fact: typeof aFact) => fact?.departureInstances
+        .filter(row => (!date || row.departure_date === date) && row.adult_selling_price !== null)
+        .sort((left, right) => left.departure_date.localeCompare(right.departure_date))[0] ?? null;
+      const aDeparture = aFact ? departureOf(aFact) : null;
+      const bDeparture = bFact ? departureOf(bFact) : null;
+      if (!aFact || !bFact || !aDeparture || !bDeparture || (date && aDeparture.departure_date !== bDeparture.departure_date)) {
+        return { error: '같은 검증 출발일에 양쪽 패키지가 없어요' };
+      }
+      const titleOf = (fact: NonNullable<typeof aFact>) => String(fact.cardProjection.title ?? fact.lpProjection.title ?? '');
+      const priceDelta = aDeparture.adult_selling_price! - bDeparture.adult_selling_price!;
+      const cheaper = priceDelta < 0 ? aId : priceDelta > 0 ? bId : null;
       return {
-        a: { package_id: aId, title: titleOf(a), list_price: a.list_price, rank: a.rank_in_group },
-        b: { package_id: bId, title: titleOf(b), list_price: b.list_price, rank: b.rank_in_group },
-        summary: diff.summary,
-        better_axis: diff.better_axis,
-        worse_axis: diff.worse_axis,
-        price_delta: diff.price_delta,
+        a: { package_id: aId, title: titleOf(aFact), departure_date: aDeparture.departure_date, list_price: aDeparture.adult_selling_price, booking_state: aDeparture.booking_state },
+        b: { package_id: bId, title: titleOf(bFact), departure_date: bDeparture.departure_date, list_price: bDeparture.adult_selling_price, booking_state: bDeparture.booking_state },
+        summary: cheaper
+          ? [`동일 출발일 기준 성인 판매가는 ${cheaper === aId ? 'A' : 'B'} 상품이 ${Math.abs(priceDelta).toLocaleString()}원 낮습니다.`, '필수 현지비·객실·라운드 조건은 각 상품의 검증된 포함/불포함 facts를 함께 확인해야 합니다.']
+          : ['동일 출발일 기준 성인 판매가는 같습니다.', '필수 현지비·객실·라운드 조건은 각 상품의 검증된 포함/불포함 facts를 함께 확인해야 합니다.'],
+        better_axis: cheaper ? 'price' : null,
+        worse_axis: null,
+        price_delta: priceDelta,
       };
     }
     case 'recommend_multi_intent': {
       const queries = Array.isArray(args.queries) ? args.queries : []
       if (queries.length === 0) throw new Error('queries 배열 필요')
-      const { runMultiIntent, formatMultiIntentAnswer } = await import('@/lib/scoring/multi-intent')
-      const sections = await runMultiIntent(queries as Parameters<typeof runMultiIntent>[0])
+      const catalogIds = await getCustomerCatalogIdSet({ limit: 200 });
+      const facts = (await getPublishedComparisonFacts({ supabase: supabaseAdmin, limit: 200 }))
+        .filter(fact => catalogIds.has(fact.packageId));
+      const sections: Array<{
+        label: string;
+        group_size: number;
+        intent_used: unknown;
+        ranked: Array<{ package_id: string; title: string; list_price: number; rank: number; breakdown: { why: string[] } }>;
+      }> = queries.map((query: any) => {
+        const destination = typeof query?.destination === 'string' ? query.destination.toLocaleLowerCase() : null;
+        const rows = facts.filter(fact => {
+          const text = [fact.cardProjection.destination, fact.cardProjection.title, fact.lpProjection.destination]
+            .filter(value => typeof value === 'string').join(' ').toLocaleLowerCase();
+          return !destination || text.includes(destination);
+        }).map(fact => {
+          const departure = fact.departureInstances
+            .filter(row => row.adult_selling_price !== null)
+            .sort((left, right) => left.adult_selling_price! - right.adult_selling_price!)[0];
+          return departure ? {
+            package_id: fact.packageId,
+            title: String(fact.cardProjection.title ?? fact.lpProjection.title ?? ''),
+            list_price: departure.adult_selling_price!,
+            rank: 0,
+            breakdown: { why: ['현재 공개 snapshot의 검증된 날짜별 판매가 기준입니다.'] },
+          } : null;
+        }).filter(Boolean).sort((left: any, right: any) => left.list_price - right.list_price).slice(0, 3)
+          .map((row: any, index: number) => ({ ...row, rank: index + 1 }));
+        return { label: String(query?.label ?? query?.intent ?? '상품 추천'), group_size: rows.length, intent_used: query?.intent ?? null, ranked: rows };
+      });
       // outcomes 자동 누적
       try {
         const rows: Array<Record<string, unknown>> = []
@@ -595,7 +677,7 @@ async function executeTool(toolName: string, args: any): Promise<any> {
             rank: r.rank, why: r.breakdown.why,
           })),
         })),
-        formatted_answer: formatMultiIntentAnswer(sections),
+        formatted_answer: sections.map(s => `${s.label}: ${s.ranked.map(r => `${r.title} (${r.list_price.toLocaleString()}원)`).join(', ') || '조건에 맞는 공개 상품이 없습니다.'}`).join('\n'),
       }
     }
     case 'list_attractions': {
@@ -718,12 +800,11 @@ async function executeTool(toolName: string, args: any): Promise<any> {
         value = String(args.value).split(',').map((s: string) => s.trim())
       }
 
-      // before 스냅샷 (변경 전 값 저장)
-      const { data: before } = await supabaseAdmin
-        .from('travel_packages')
-        .select(args.field)
-        .eq('id', args.package_id)
-        .limit(1);
+      // before 스냅샷은 현재 공개 revision에서만 읽습니다. correction은
+      // 별도 action으로 남기고 legacy projection을 직접 수정하지 않습니다.
+      const beforeFact = await getPublishedProductFactById({ supabase: supabaseAdmin, productId: String(args.package_id) })
+      const beforePackage = beforeFact ? toJarvisPublishedPackage(beforeFact) : null
+      const beforeValue = beforePackage?.[args.field] ?? beforeFact?.cardProjection[args.field] ?? beforeFact?.lpProjection[args.field] ?? null
 
       const { data: actionRows, error } = await supabaseAdmin
         .from('agent_actions')
@@ -734,7 +815,7 @@ async function executeTool(toolName: string, args: any): Promise<any> {
           payload: {
             package_id: args.package_id,
             field: args.field,
-            previous_value: before?.[0]?.[args.field] ?? null,
+            previous_value: beforeValue,
             proposed_value: value,
             fact_authority: 'none_requires_source_evidence',
           },
@@ -749,26 +830,23 @@ async function executeTool(toolName: string, args: any): Promise<any> {
         action_id: actionRows?.[0]?.id,
         package_id: args.package_id,
         field: args.field,
-        old_value: before?.[0]?.[args.field] ?? null,
+        old_value: beforeValue,
         proposed_value: value,
         next_step: '원문 evidence를 연결한 correction revision 검증이 필요합니다.',
       }
     }
     case 'delete_package': {
       if (!args.package_id) throw new Error('package_id 필수')
-      const { data: pkg } = await supabaseAdmin
-        .from('travel_packages')
-        .select('id, title')
-        .eq('id', args.package_id)
-        .limit(1);
-      if (!pkg || pkg.length === 0) throw new Error('패키지를 찾을 수 없습니다')
+      const pkgFact = await getPublishedProductFactById({ supabase: supabaseAdmin, productId: String(args.package_id) })
+      const pkg = pkgFact ? toJarvisPublishedPackage(pkgFact) : null
+      if (!pkg) throw new Error('패키지를 찾을 수 없습니다')
 
       const { data: actionRows, error } = await supabaseAdmin
         .from('agent_actions')
         .insert({
           agent_type: 'products',
           action_type: 'retire_product',
-          summary: `[판매중단 후보] ${pkg[0].title}`,
+          summary: `[판매중단 후보] ${pkg.title}`,
           payload: {
             package_id: args.package_id,
             reason: args.reason ?? '사유 미지정',
@@ -785,7 +863,7 @@ async function executeTool(toolName: string, args: any): Promise<any> {
         proposed: true,
         action_id: actionRows?.[0]?.id,
         package_id: args.package_id,
-        title: pkg[0].title,
+        title: pkg.title,
         next_step: '상품 row 삭제 없이 availability overlay 판매중단으로 처리해야 합니다.',
       }
     }

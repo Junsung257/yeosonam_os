@@ -166,7 +166,7 @@ function PriceSection({ priceFrom, compareAtPrice, deadlineDays, ticketingCondit
         ) : null}
         {discount != null && discount > 0 && (
           <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-[var(--brand-light)] text-[var(--brand-dark)]">
-            랜드사 정상가 대비 {discount}%
+            할인 적용 {discount}%
           </span>
         )}
       </div>

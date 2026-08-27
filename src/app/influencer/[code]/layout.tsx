@@ -163,7 +163,7 @@ export default function InfluencerLayout({ children }: { children: React.ReactNo
         <footer className="border-t border-gray-200 bg-white py-4 mt-auto">
           <div className="max-w-6xl mx-auto px-4 flex justify-between items-center text-xs text-gray-400">
             <span>여소남 파트너 포털</span>
-            <span>문의: partner@yeosonam.co.kr</span>
+            <span>문의: partner@yeosonam.com</span>
           </div>
         </footer>
       </div>

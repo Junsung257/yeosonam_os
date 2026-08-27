@@ -3,7 +3,6 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const PUBLIC_ATTRACTION_SURFACES = [
-  'src/app/page.tsx',
   'src/app/destinations/page.tsx',
   'src/app/destinations/region/[region]/page.tsx',
   'src/app/things-to-do/page.tsx',
@@ -22,15 +21,11 @@ describe('public attraction surface gates', () => {
     expect(text).toContain('is_active');
   });
 
-  it('does not let home destination imagery use raw attraction photos', () => {
+  it('does not query raw attraction rows for home imagery', () => {
     const text = source('src/app/page.tsx');
-    const queryIndex = text.indexOf(".from('attractions')");
-    const filterIndex = text.indexOf('isCustomerRenderableAttraction', queryIndex);
-    const imageMatchIndex = text.indexOf('const destsWithImages', queryIndex);
-
-    expect(queryIndex).toBeGreaterThan(-1);
-    expect(filterIndex).toBeGreaterThan(queryIndex);
-    expect(imageMatchIndex).toBeGreaterThan(filterIndex);
+    expect(text).not.toContain(".from('attractions')");
+    expect(text).not.toContain('pickAttractionPhotoUrl');
+    expect(text).toContain('item.heroImage');
   });
 
   it('does not let destination index fallback images use raw attraction photos', () => {

@@ -1,39 +1,34 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { Suspense } from 'react';
+
+import { listPublicCatalog } from '@/lib/public-catalog';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+
 import PackagesClient from './PackagesClient';
 import Loading from './loading';
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
 
-// 옵션 4a — Page 가 searchParams 안 받음 → 정적 prerender (`○`).
-//   클라이언트(PackagesClient) 가 useSearchParams + SWR 로 `/api/packages/search` fetch.
-//   API route 응답에 Cache-Control: s-maxage=60, swr=300 헤더 → Vercel Edge CDN cache.
-//
-// 트레이드오프: 첫 hydration 시 skeleton, hydration 후 결과 fetch.
-//   metadata: 정적 (`searchParams` access 하면 모든 page/segment 가 dynamic 됨 —
-//             https://www.buildwithmatija.com/blog/nextjs-searchparams-static-generation-fix).
-//             검색어별 title 동적 못함 = SEO 측 손해. 검색 결과 URL 은 indexable 의도 없음.
-//   장기 (Next.js 16 PPR stable): server searchParams + 정적 shell 양립 가능.
+export const revalidate = 300;
 
 export const metadata: Metadata = {
-  title: '패키지 상품',
-  description: '여소남 단체·패키지 여행 상품. 중국·일본·동남아·마카오 등 인기 여행지 — 확정일·요금 비교.',
+  title: '패키지·크루즈·골프 여행상품',
+  description: '부산 출발 패키지·크루즈·골프 상품의 출발일, 최근 확인 가격과 예약 조건을 비교하세요.',
   alternates: { canonical: `${BASE_URL}/packages` },
 };
 
-export default function PackagesPage() {
-  // useSearchParams 사용 client component 는 Suspense boundary 필수
-  // (Next.js 공식: https://nextjs.org/docs/app/api-reference/functions/use-search-params#prerendering)
-  // 이게 있어야 Page 본문이 정적 prerender (`○`) 되고 PackagesClient 만 client-side render.
+export default async function PackagesPage() {
+  const packages = isSupabaseConfigured
+    ? await listPublicCatalog(supabaseAdmin, { limit: 500 }).catch((error) => {
+        console.error('[packages] public catalog unavailable', error);
+        return [];
+      })
+    : [];
+
   return (
-    <>
-      <h1 className="sr-only">여소남 패키지 여행 상품</h1>
-      <Link href="/group" className="sr-only">여행 상품 문의</Link>
-      <Suspense fallback={<Loading />}>
-        <PackagesClient />
-      </Suspense>
-    </>
+    <Suspense fallback={<Loading />}>
+      <PackagesClient initialPackages={packages} />
+    </Suspense>
   );
 }

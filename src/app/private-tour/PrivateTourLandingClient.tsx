@@ -376,7 +376,7 @@ export default function PrivateTourLandingClient() {
           무료 맞춤 견적 의뢰
         </h2>
         <p className="text-center text-slate-600 mb-8 text-sm">
-          3분만 입력하세요. 접수 즉시 24시간 내 제안해드립니다.
+          필요한 조건을 입력하면 담당자가 확인 후 다음 단계를 안내합니다.
         </p>
 
         {/* 진행률 표시줄 */}
@@ -918,7 +918,7 @@ export default function PrivateTourLandingClient() {
             <div className="text-5xl">🎉</div>
             <h2 className="text-2xl font-bold text-gray-900">견적 요청 완료!</h2>
             <p className="text-sm text-slate-600">
-              24시간 이내에 맞춤 제안을 보내드립니다.
+              담당자가 요청 내용을 확인한 뒤 맞춤 제안 절차를 안내합니다.
               {doneData.shareUrl ? (
                 <>
                   <br />

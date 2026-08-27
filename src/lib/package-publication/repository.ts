@@ -5,6 +5,7 @@ import {
   blockingCustomerVisibleTextIssues,
 } from '@/lib/customer-visible-text-audit';
 import { evaluateCustomerSurfaceParity } from './customer-surface-parity';
+import { resolveCustomerRouteState } from './customer-route-state';
 import type { PublicSnapshotGateInput } from './publish-gate';
 import type { PublicPackageSnapshot } from './types';
 
@@ -61,7 +62,10 @@ function hasBlockingSnapshotCopy(pkg: AnyRecord, row: SnapshotRow): boolean {
     .some(issue => !issue.safeFixable);
 }
 
-export function snapshotPackage(row: SnapshotRow): AnyRecord | null {
+export function snapshotPackage(
+  row: SnapshotRow,
+  options: { allowProofCopyIssues?: boolean } = {},
+): AnyRecord | null {
   const snapshot = asRecord(row.snapshot_json);
   const pkg = asRecord(snapshot?.package);
   const cardProjection = asRecord(row.card_projection);
@@ -97,7 +101,14 @@ export function snapshotPackage(row: SnapshotRow): AnyRecord | null {
       created_at: row.created_at,
     },
   };
-  return hasBlockingSnapshotCopy(customerPackage, row) ? null : customerPackage;
+  // A signed proof is a private diagnostic render of an immutable candidate.
+  // It must be able to show the exact text that caused a proof or copy gate to
+  // fail; otherwise the proof route returns a misleading 404 and the workflow
+  // records a system failure without any inspectable customer output. Public
+  // readers keep the strict audit below, while proof callers opt in explicitly.
+  return !options.allowProofCopyIssues && hasBlockingSnapshotCopy(customerPackage, row)
+    ? null
+    : customerPackage;
 }
 
 /** Loads one exact immutable snapshot for a signed V6 proof request. It does
@@ -105,6 +116,7 @@ export function snapshotPackage(row: SnapshotRow): AnyRecord | null {
 export async function fetchPublicPackageSnapshotById(
   supabase: SupabaseClient,
   snapshotId: string,
+  options: { allowProofCopyIssues?: boolean } = {},
 ): Promise<{ row: SnapshotRow; package: AnyRecord } | null> {
   const { data, error } = await supabase
     .from('public_package_snapshots')
@@ -113,12 +125,77 @@ export async function fetchPublicPackageSnapshotById(
     .in('status', ['candidate', 'approved', 'published'])
     .maybeSingle();
   if (error || !data) return null;
-  const pkg = snapshotPackage(data as SnapshotRow);
+  const pkg = snapshotPackage(data as SnapshotRow, options);
   return pkg ? { row: data as SnapshotRow, package: pkg } : null;
 }
 
-/** Single pointer-first customer read. Route aliases, catalog identity,
- * publication pointer and immutable snapshot are the complete read path. */
+export type CurrentPublicPackageResolution =
+  | { state: 'PUBLIC'; row: SnapshotRow; package: AnyRecord }
+  | { state: 'UNDER_REVIEW' }
+  | { state: 'NOT_FOUND' }
+  | { state: 'UNAVAILABLE' };
+
+/**
+ * Visibility-first customer read. The lightweight authority RPC must decide
+ * under-review/not-found before this function is allowed to select snapshot_json.
+ */
+export async function resolveCurrentPublicPackage(
+  supabase: SupabaseClient,
+  input: {
+    tenantId: string;
+    packageRef: string;
+    channel?: string;
+    locale?: string;
+  },
+): Promise<CurrentPublicPackageResolution> {
+  const routeState = await resolveCustomerRouteState(supabase, input);
+  if (routeState.state !== 'PUBLIC') return routeState;
+  const { data, error } = await supabase
+    .from('public_catalog_view')
+    .select('id,catalog_product_id,revision_id,snapshot_id,snapshot_hash,pointer_version,booking_mode,last_verified_at,public_detail')
+    .eq('id', routeState.packageId)
+    .eq('catalog_product_id', routeState.catalogProductId)
+    .eq('revision_id', routeState.revisionId)
+    .eq('snapshot_id', routeState.snapshotId)
+    .eq('pointer_version', routeState.pointerVersion)
+    .maybeSingle();
+  if (error) return { state: 'UNAVAILABLE' };
+  if (!data) return { state: 'NOT_FOUND' };
+  const detail = asRecord(data.public_detail);
+  if (!detail) return { state: 'NOT_FOUND' };
+  const row: SnapshotRow = {
+    id: String(data.snapshot_id),
+    package_id: String(data.id),
+    catalog_product_id: String(data.catalog_product_id),
+    package_revision: asNumber(detail.package_revision) ?? 1,
+    canonical_revision_id: String(data.revision_id),
+    snapshot_hash: String(data.snapshot_hash),
+    snapshot_json: detail,
+    card_projection: asRecord(detail.card_projection) ?? {},
+    lp_projection: asRecord(detail.lp_projection) ?? {},
+    route_text_dump: Array.isArray(detail.route_text_dump)
+      ? detail.route_text_dump.filter((item): item is string => typeof item === 'string')
+      : [],
+    renderer_build_id: asNonEmptyString(detail.renderer_build_id),
+    status: 'published',
+    created_at: String(data.last_verified_at),
+  };
+  const pkg = snapshotPackage(row);
+  return pkg
+    ? {
+        state: 'PUBLIC',
+        row,
+        package: {
+          ...pkg,
+          booking_mode: asNonEmptyString(data.booking_mode) ?? 'inquiry',
+          last_verified_at: String(data.last_verified_at),
+        },
+      }
+    : { state: 'NOT_FOUND' };
+}
+
+/** Backwards-compatible public-only reader. New customer routes should use the
+ * discriminated resolver so UNDER_REVIEW never degrades into a 404. */
 export async function getCurrentPublicPackage(
   supabase: SupabaseClient,
   input: {
@@ -128,104 +205,10 @@ export async function getCurrentPublicPackage(
     locale?: string;
   },
 ): Promise<{ row: SnapshotRow; package: AnyRecord } | null> {
-  const channel = input.channel ?? 'customer';
-  const locale = input.locale ?? 'ko-KR';
-  const uuidRef = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.packageRef);
-  let catalogProductId: string | null = uuidRef ? input.packageRef : null;
-  let legacyPackageId: string | null = uuidRef ? input.packageRef : null;
-  if (!uuidRef) {
-    const { data: resolved, error: resolveError } = await supabase.rpc(
-      'resolve_product_registration_public_route',
-      {
-        p_tenant_id: input.tenantId,
-        p_route_ref: input.packageRef,
-        p_channel: channel,
-        p_locale: locale,
-      },
-    );
-    const route = asRecord(resolved);
-    if (resolveError || !route) return null;
-    catalogProductId = asNonEmptyString(route.catalog_product_id);
-    legacyPackageId = asNonEmptyString(route.package_id);
-  }
-
-  const pointerSelect = 'tenant_id,package_id,catalog_product_id,current_revision_id,current_snapshot_id,state';
-  let pointerResult = catalogProductId
-    ? await supabase
-      .from('product_registration_v5_publication_pointers')
-      .select(pointerSelect)
-      .eq('catalog_product_id', catalogProductId)
-      .eq('tenant_id', input.tenantId)
-      .eq('channel', channel)
-      .eq('locale', locale)
-      .maybeSingle()
-    : { data: null, error: null };
-  // A UUID route can be either the stable catalog id or the historical
-  // package id. Try catalog first, then the compatibility id without guessing
-  // which namespace the incoming UUID belongs to.
-  if (!pointerResult.data && legacyPackageId) {
-    pointerResult = await supabase
-      .from('product_registration_v5_publication_pointers')
-      .select(pointerSelect)
-      .eq('package_id', legacyPackageId)
-      .eq('tenant_id', input.tenantId)
-      .eq('channel', channel)
-      .eq('locale', locale)
-      .maybeSingle();
-  }
-  const { data: pointer, error: pointerError } = pointerResult;
-  if (pointerError || !pointer || pointer.state !== 'published'
-    || !pointer.package_id || !pointer.catalog_product_id
-    || !pointer.current_snapshot_id || !pointer.current_revision_id) return null;
-  const packageId = String(pointer.package_id);
-
-  const { data, error } = await supabase
-    .from('public_package_snapshots')
-    .select('id, package_id, catalog_product_id, package_revision, canonical_revision_id, snapshot_hash, snapshot_json, card_projection, lp_projection, route_text_dump, renderer_build_id, status, created_at')
-    .eq('id', pointer.current_snapshot_id)
-    .eq('tenant_id', input.tenantId)
-    .eq('package_id', packageId)
-    .eq('catalog_product_id', pointer.catalog_product_id)
-    .eq('canonical_revision_id', pointer.current_revision_id)
-    .eq('status', 'published')
-    .maybeSingle();
-  if (error || !data) return null;
-  const row = data as SnapshotRow;
-  const pkg = snapshotPackage(row);
-  if (!pkg) return null;
-
-  const supplier = typeof pkg.land_operator === 'string' ? pkg.land_operator : '';
-  const { data: switches, error: switchError } = await supabase
-    .from('product_registration_v5_kill_switches')
-    .select('scope,scope_key')
-    .eq('tenant_id', input.tenantId)
-    .eq('active', true)
-    .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
-  if (switchError) return null;
-  if ((switches ?? []).some(item => item.scope === 'global'
-    || (item.scope === 'product' && [packageId, pointer.catalog_product_id, '*'].includes(String(item.scope_key)))
-    || (item.scope === 'supplier' && [supplier, '*'].includes(String(item.scope_key))))) return null;
-  const { data: overlays, error: overlayError } = await supabase.rpc(
-    'get_product_registration_availability_overlays',
-    {
-      p_catalog_product_ids: [pointer.catalog_product_id],
-      p_channel: input.channel ?? 'customer',
-    },
-  );
-  if (overlayError || !Array.isArray(overlays)) return null;
-  if (overlays.some(item => {
-    const overlay = asRecord(item);
-    if (!overlay) return false;
-    return overlay.catalog_product_id === pointer.catalog_product_id
-      && ['closed', 'sold_out', 'suspended'].includes(String(overlay.sale_state ?? ''));
-  })) return null;
-
-  // Canonical lineage and attraction publishability are revision/snapshot
-  // validation concerns. Re-querying mutable registration or attraction rows
-  // here would make an already-proved immutable snapshot change meaning between
-  // customer requests. Runtime reads are therefore pointer + immutable
-  // snapshot + operational kill/availability controls only.
-  return { row, package: pkg };
+  const resolved = await resolveCurrentPublicPackage(supabase, input);
+  return resolved.state === 'PUBLIC'
+    ? { row: resolved.row, package: resolved.package }
+    : null;
 }
 
 export async function fetchLatestPublicPackageSnapshot(

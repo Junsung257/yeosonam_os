@@ -12,6 +12,7 @@ describe('legacy package approval route boundary', () => {
     const route = routeSource();
 
     expect(route).toContain('LEGACY_PACKAGE_APPROVAL_RETIRED');
+    expect(route).toContain('CAS publication pointer');
     expect(route).toContain('{ status: 410');
     expect(route).toContain("next: '/admin/product-registration'");
     expect(route).not.toContain('createPublicPackageSnapshotAndDecision');
@@ -26,6 +27,7 @@ describe('legacy package approval route boundary', () => {
     expect(route).toContain('if (!params?.id)');
     expect(route).toContain("{ status: 400 }");
     expect(route).toContain('export const PATCH = withAdminGuard(patchHandler)');
+    expect(route).toContain('Cache-Control');
     expect(route).not.toContain('export async function PATCH');
   });
 });

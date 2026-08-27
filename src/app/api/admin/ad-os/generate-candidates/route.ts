@@ -36,7 +36,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   const { data: packages, error: packageError } = await supabaseAdmin
     .from('travel_packages')
     .select('id')
-    .in('publication_state', ['approved', 'published'])
+    .eq('publication_state', 'published')
     .order('created_at', { ascending: false })
     .limit(limit * 4);
 

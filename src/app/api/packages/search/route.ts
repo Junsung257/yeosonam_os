@@ -1,244 +1,90 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import {
-  normalizeDepartureHub,
-  hubMatchesDepartureAirport,
-  type DepartureHubId,
-} from '@/lib/departure-hub';
-import { pickUnusedAttractionPhotoUrl } from '@/lib/image-url';
-import { logError } from '@/lib/sentry-logger';
-import { getPersonalizedOverride } from '@/lib/recommendation/personalized';
-import { getActivePolicy } from '@/lib/scoring/policy';
-import { buildRecommendationDisplay, type PackageScoreDisplayRow } from '@/lib/scoring/recommendation-display';
-import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { NextRequest } from 'next/server';
 
-// 옵션 4a 패턴 — Page 정적 prerender 를 위해 server-side fetch 를 API 로 이관.
-// 응답에 Cache-Control 헤더 적용 → Vercel Edge CDN 이 query string 별 cache.
-// (Page 는 dynamic 페이지여도 next.config.js headers() 가 덮어쓰여지는 문제 회피 —
-//  근거: https://github.com/vercel/next.js/issues/22319, /issues/69920)
+import { apiResponse } from '@/lib/api-response';
+import { hubMatchesDepartureAirport, normalizeDepartureHub } from '@/lib/departure-hub';
+import { logError } from '@/lib/sentry-logger';
+import { listPublicCatalog, type PublicCatalogItem } from '@/lib/public-catalog';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+
+function includesQuery(item: PublicCatalogItem, query: string): boolean {
+  if (!query) return true;
+  return [item.title, item.destination, item.country, item.departureAirport]
+    .filter((value): value is string => Boolean(value))
+    .join(' ')
+    .toLocaleLowerCase('ko-KR')
+    .includes(query);
+}
+
+function inMonth(item: PublicCatalogItem, month: string): boolean {
+  return !month || item.availableDates.some((entry) => entry.date.startsWith(month));
+}
+
+function inPriceRange(item: PublicCatalogItem, minimum: number | null, maximum: number | null): boolean {
+  const candidate = item.price ?? item.availableDates
+    .map((entry) => entry.price)
+    .filter((price): price is number => typeof price === 'number' && price > 0)
+    .sort((left, right) => left - right)[0] ?? null;
+  if (candidate === null) return minimum === null && maximum === null;
+  return (minimum === null || candidate >= minimum) && (maximum === null || candidate <= maximum);
+}
+
+function numberParam(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({
-      packages: [],
-      imageByPkgId: {},
-      recommendedIds: [],
-      recommendedReasonMap: {},
-      scoreByPkgId: {},
-      scoreReasonMap: {},
-      rankByPkgId: {},
-      comparisonGroupSizeMap: {},
-      hub: 'all' as DepartureHubId,
-      filterForClient: '',
-    });
+    return apiResponse({ packages: [], total: 0 });
   }
 
   try {
     const { searchParams } = request.nextUrl;
-    const destination = searchParams.get('destination') || '';
-    const rawFilter = searchParams.get('filter') || '';
-    let hub = normalizeDepartureHub(searchParams.get('hub'));
-    if (rawFilter === '인천출발' && !searchParams.get('hub')) hub = 'incheon';
-    const filterForClient = rawFilter === '인천출발' ? '' : rawFilter;
+    const query = (searchParams.get('q') ?? '').trim().toLocaleLowerCase('ko-KR');
+    const destination = (searchParams.get('destination') ?? '').trim().toLocaleLowerCase('ko-KR');
+    const month = (searchParams.get('month') ?? '').trim();
+    const productKind = (searchParams.get('category') ?? '').trim();
+    const hub = normalizeDepartureHub(searchParams.get('hub'));
+    const minimum = numberParam(searchParams.get('priceMin'));
+    const maximum = numberParam(searchParams.get('priceMax'));
+    const limit = Math.max(1, Math.min(100, numberParam(searchParams.get('limit')) ?? 50));
 
-    const q = (searchParams.get('q') || '').trim();
-    const month = searchParams.get('month') || '';
-    const priceMin = searchParams.get('priceMin') || '';
-    const priceMax = searchParams.get('priceMax') || '';
-    const urgency = searchParams.get('urgency') || '';
-    const category = searchParams.get('category') || '';
-    const sb = supabaseAdmin;
-
-    const urgencyOn = urgency === '1';
-    const fetchLimit = urgencyOn ? 200 : 50;
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() + 14);
-    const cutoffStr = cutoff.toISOString().slice(0, 10);
-    const safeQuery = q.replace(/[%,]/g, ' ').toLowerCase();
-    const rawPackages = (await listCurrentPublicPackageCardSnapshots(sb, { limit: 5_000 }))
-      .filter((pkg: any) => !destination || String(pkg.destination ?? '').toLowerCase().includes(destination.toLowerCase()))
-      .filter((pkg: any) => !urgencyOn || pkg.product_type === 'urgency' || String(pkg.ticketing_deadline ?? '') <= cutoffStr)
-      .filter((pkg: any) => urgencyOn || hub === 'all' || hubMatchesDepartureAirport(hub, pkg.departure_airport))
-      .filter((pkg: any) => !category || pkg.category === category)
-      .filter((pkg: any) => !safeQuery || `${String(pkg.destination ?? '')} ${String(pkg.title ?? '')} ${String(pkg.display_title ?? '')}`.toLowerCase().includes(safeQuery))
-      .slice(0, fetchLimit) as any[];
-
-    const today = new Date().toISOString().slice(0, 10);
-    let aliveRaw = rawPackages
-      .filter((p: any) => {
-        const pd = (p.price_dates || []) as Array<{ date?: string }>;
-        if (pd.length === 0) return true;
-        return pd.some(d => d?.date && d.date >= today);
-      });
-
-    if (urgencyOn && hub !== 'all') {
-      aliveRaw = aliveRaw.filter((p: any) => hubMatchesDepartureAirport(hub, p.departure_airport));
-    }
-
-    aliveRaw = aliveRaw.slice(0, 50);
-
-    const packages = aliveRaw.map((pkg: any) => ({
-      ...pkg,
-      products: Array.isArray(pkg.products) ? pkg.products[0] ?? null : pkg.products,
+    const catalog = await listPublicCatalog(supabaseAdmin, {
+      limit: 5_000,
+      ...(productKind ? { productKind } : {}),
+    });
+    const packages = catalog
+      .filter((item) => !destination || item.destination?.toLocaleLowerCase('ko-KR').includes(destination))
+      .filter((item) => hub === 'all' || hubMatchesDepartureAirport(hub, item.departureAirport))
+      .filter((item) => includesQuery(item, query))
+      .filter((item) => inMonth(item, month))
+      .filter((item) => inPriceRange(item, minimum, maximum));
+    const publicPackages = packages.slice(0, limit).map((item) => ({
+      id: item.id,
+      slug: item.slug,
+      productKind: item.productKind,
+      title: item.title,
+      destination: item.destination,
+      departureAirport: item.departureAirport,
+      duration: item.duration,
+      heroImage: item.heroImage,
+      priceDisplay: item.priceDisplay,
+      availableDates: item.availableDates,
+      badges: item.badges,
+      bookingMode: item.bookingMode,
+      lastVerifiedAt: item.lastVerifiedAt,
     }));
 
-    // 관광지 사진 — 지역/국가별 Map으로 O(1) 조회 (기존 O(N²) 루프 제거)
-    const attractionLimit = destination || q ? 180 : 240;
-    let attractionQuery = sb
-      .from('attractions')
-      .select('name, photos, country, region, mention_count')
-      .not('photos', 'is', null)
-      .order('mention_count', { ascending: false })
-      .limit(attractionLimit);
-
-    const hintParts = Array.from(
-      new Set(
-        (aliveRaw ?? [])
-          .flatMap((p: any) => String(p?.destination || '').split(/[\/,\s]/))
-          .map((s: string) => s.trim())
-          .filter((s: string) => s.length >= 2),
-      ),
-    ).slice(0, 6);
-    if (hintParts.length > 0) {
-      const ors = hintParts
-        .map((part) => `region.ilike.%${part}%,country.ilike.%${part}%`)
-        .join(',');
-      attractionQuery = attractionQuery.or(ors);
-    }
-
-    const { data: attractions } = await attractionQuery;
-
-    // attractions를 region/country별 Map으로 인덱싱 (O(1) 조회)
-    const countryIndex = new Map<string, any[]>();
-    const regionIndex = new Map<string, any[]>();
-    for (const a of (attractions ?? [])) {
-      const c = (a.country || '').toLowerCase();
-      const r = (a.region || '').toLowerCase();
-      if (a.photos?.length > 0) {
-        if (c) {
-          if (!countryIndex.has(c)) countryIndex.set(c, []);
-          countryIndex.get(c)!.push(a);
-        }
-        if (r && r !== c) {
-          if (!regionIndex.has(r)) regionIndex.set(r, []);
-          regionIndex.get(r)!.push(a);
-        }
-      }
-    }
-    // 각 버킷 mention_count 내림차순 정렬 (1회)
-    for (const idx of [countryIndex, regionIndex]) {
-      for (const [, list] of idx) {
-        list.sort((a: any, b: any) => (b.mention_count || 0) - (a.mention_count || 0));
-      }
-    }
-
-    const _usedPhotoUrls = new Set<string>();
-    const imageByPkgId: Record<string, string | null> = {};
-    for (const pkg of packages) {
-      let chosen: string | null = null;
-      const destParts = (pkg.destination || '').split(/[\/,\s]/).map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-      // Map 조회로 O(1): 패키지 destination → country/region 키로 바로 찾기
-      for (const part of destParts) {
-        const partLc = part.toLowerCase();
-        const candidates = countryIndex.get(partLc) ?? regionIndex.get(partLc) ?? [];
-        for (const attr of candidates) {
-          const url = pickUnusedAttractionPhotoUrl(attr.photos, _usedPhotoUrls);
-          if (url) { chosen = url; break; }
-        }
-        if (chosen) break;
-      }
-      if (!chosen) {
-        const thumb = ((pkg as Record<string, unknown>).thumbnail_urls as string[] | undefined)?.find((u: string) => u?.startsWith('http'));
-        if (thumb) chosen = thumb;
-      }
-      imageByPkgId[pkg.id] = chosen ?? null;
-    }
-
-    // ── 개인화 추천 (x-customer-id 헤더 기반) ──────────────
-    const customerId = request.headers.get('x-customer-id') || '';
-    const pkgIds = packages.map((p: { id?: string }) => p.id).filter(Boolean) as string[];
-    let recommendedIds: string[] = [];
-    const recommendedReasonMap: Record<string, string[]> = {};
-    let personalizedPayload: { reason: string } | undefined;
-
-    if (customerId && pkgIds.length > 0) {
-      // 개인화: customer_unified_profile 기반 weight override
-      const policy = await getActivePolicy();
-      const personalized = await getPersonalizedOverride(customerId, policy);
-      if (personalized) {
-        // Find packages matching boosted destinations
-        const boostedPkgs = packages.filter((p: any) =>
-          personalized.boostedDestinations.some(
-            (d) => p.destination?.toLowerCase().includes(d.toLowerCase()),
-          ),
-        );
-        recommendedIds = boostedPkgs.map((p: any) => p.id).slice(0, 5);
-        for (const pkg of boostedPkgs.slice(0, 5)) {
-          recommendedReasonMap[pkg.id] = [personalized.reason];
-        }
-        personalizedPayload = { reason: personalized.reason };
-      }
-      // profile 없으면 fall through → 일반 추천
-    }
-
-    const scoreByPkgId: Record<string, ReturnType<typeof buildRecommendationDisplay>> = {};
-    const scoreReasonMap: Record<string, string[]> = {};
-    const rankByPkgId: Record<string, number> = {};
-    const comparisonGroupSizeMap: Record<string, number> = {};
-
-    // 그룹 점수 전체 전달: 리뷰가 없는 상품도 비교판정 UI를 띄울 수 있게 한다.
-    if (pkgIds.length > 0) {
-      const { data: scores } = await sb
-        .from('package_scores')
-        .select('package_id, group_key, departure_date, list_price, effective_price, topsis_score, rank_in_group, group_size, breakdown, shopping_count, hotel_avg_grade, free_option_count, is_direct_flight, duration_days')
-        .in('package_id', pkgIds)
-        .order('group_size', { ascending: false })
-        .order('rank_in_group', { ascending: true });
-      const bestRows = new Map<string, PackageScoreDisplayRow>();
-      for (const raw of (scores ?? []) as PackageScoreDisplayRow[]) {
-        if (!raw.package_id || bestRows.has(raw.package_id)) continue;
-        bestRows.set(raw.package_id, raw);
-      }
-      for (const [packageId, row] of bestRows.entries()) {
-        const display = buildRecommendationDisplay(row);
-        scoreByPkgId[packageId] = display;
-        if (display) {
-          scoreReasonMap[packageId] = display.reasons;
-          if (display.rankInGroup != null) rankByPkgId[packageId] = display.rankInGroup;
-          comparisonGroupSizeMap[packageId] = display.groupSize;
-          if (display.hasComparison && display.rankInGroup === 1 && !recommendedIds.includes(packageId)) {
-            recommendedIds.push(packageId);
-          }
-          if (!recommendedReasonMap[packageId]) recommendedReasonMap[packageId] = display.reasons;
-        }
-      }
-    }
-
-    return NextResponse.json(
-      {
-        packages,
-        imageByPkgId,
-        recommendedIds,
-        recommendedReasonMap,
-        scoreByPkgId,
-        scoreReasonMap,
-        rankByPkgId,
-        comparisonGroupSizeMap,
-        hub,
-        filterForClient,
-        personalized: personalizedPayload,
-      },
-      {
-        // Vercel Edge CDN: query string 별 cache key 누적 HIT.
-        // API route 응답 헤더는 dynamic page 와 달리 그대로 적용됨.
-        headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' },
-      },
+    return apiResponse(
+      { packages: publicPackages, total: packages.length },
+      { headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' } },
     );
   } catch (error) {
-    logError('[api/packages/search] GET failed', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : '검색 실패' },
-      { status: 500 },
+    logError('[api/packages/search] public catalog lookup failed', error);
+    return apiResponse(
+      { error: '상품 목록을 불러오지 못했습니다.', code: 'PUBLIC_CATALOG_UNAVAILABLE' },
+      { status: 503 },
     );
   }
 }

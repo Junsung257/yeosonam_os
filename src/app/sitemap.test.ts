@@ -5,6 +5,32 @@ const queriedTables: string[] = [];
 
 function queryResult(table: string) {
   const dataByTable: Record<string, unknown[]> = {
+    public_catalog_view: [
+      {
+        tenant_id: '00000000-0000-0000-0000-000000000001',
+        id: 'pkg-osaka',
+        catalog_product_id: 'catalog-osaka',
+        slug: 'pkg-osaka',
+        product_kind: 'package',
+        title: 'Osaka public title',
+        destination: 'osaka',
+        country: 'Japan',
+        departure_airport: 'Gimhae',
+        duration: 4,
+        nights: 3,
+        price: 599000,
+        price_display: '599,000원부터',
+        hero_image: 'https://cdn.yeosonam.com/public/osaka-hero.jpg',
+        badges: [],
+        available_dates: [{ date: '2026-09-12', price: 599000 }],
+        booking_mode: 'inquiry',
+        last_verified_at: '2026-08-24T00:00:00.000Z',
+        snapshot_id: 'snapshot-osaka',
+        snapshot_hash: 'a'.repeat(64),
+        revision_id: 'revision-osaka',
+        pointer_version: 1,
+      },
+    ],
     travel_packages: [
       {
         id: 'pkg-osaka',
@@ -144,10 +170,9 @@ describe('sitemap', () => {
     expect(urls).not.toContain(`${expectedBaseUrl}/destinations/hidden`);
     expect(urls).toContain(`${expectedBaseUrl}/blog/osaka-weather`);
     expect(urls).not.toContain(`${expectedBaseUrl}/blog/travel-emergency-medicine-summer-checklist`);
-    expect(urls.some((url) => /\/packages\/[^/]+$/.test(url))).toBe(false);
+    expect(urls).toContain(`${expectedBaseUrl}/packages/pkg-osaka`);
     expect(queriedTables).not.toContain('travel_packages');
-    expect(queriedTables).toContain('product_registration_v5_publication_pointers');
-    expect(queriedTables).toContain('public_package_snapshots');
+    expect(queriedTables).toContain('public_catalog_view');
     expect(queriedTables).toContain('public_blog_content_creatives');
   });
 });

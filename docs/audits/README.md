@@ -14,7 +14,7 @@ Last updated: 2026-08-27
 - 2026-08-15 — Blog live operations browser verification: publisher health, queue visibility, effective policy, runtime schema, and fail-closed release decision: `blog-live-ops-verification-2026-08-15.md`
 - 2026-08-15 — Blog DeepSeek Orchestrator V4 local verification: DeepSeek-only quality routing, off-peak generation/daytime publication split, durable attempt evidence, Naver fallback, 1,494 blog tests, and production build: `blog-deepseek-orchestrator-v4-verification-2026-08-15.md`
 
-Last updated: 2026-08-15
+Last updated: 2026-08-20
 
 This folder is an evidence archive, not the current operating playbook.
 
@@ -38,6 +38,9 @@ Search this folder only when you need historical evidence, investigation details
 
 These audits contain recent evidence for the current product-registration engine. They are still evidence, not the source of truth:
 
+- 2026-08-20 — V6.1 Release 0 evidence: clean integration worktree, preserved dirty-worktree patch, untracked inventory, worktree manifest, and no production writes: `2026-08-20-product-registration-v61-release0.md`
+- 2026-08-23 — V6.1 finalization raw worktree/production inventories are intentionally not tracked in the integration PR. Current reproducible findings and release gates are summarized in `product-registration-p0-integration-refresh-2026-08-27.md`; new Phase 5 evidence must be regenerated from the current release manifest.
+
 | Area | File |
 |---|---|
 | Learning engine verification | `2026-06-08-product-registration-learning-engine-audit.md` |
@@ -50,8 +53,14 @@ These audits contain recent evidence for the current product-registration engine
 
 ## Product Registration And Mobile Landing
 
+- 2026-08-19 — `2026-08-19-product-registration-full-downloads-conditional-shopping-v15.md`: Full 1,172-file HWP replay after guide-fee/tip separation and conditional no-shopping scope fix; 822/864 structurally safe terminal outcomes, 42 source-bound blockers, complete evidence/render contract, and final build/test evidence.
+
 | Date | File | Use |
 |---|---|---|
+| 2026-08-27 | `product-registration-p0-integration-refresh-2026-08-27.md` | Current-main/production SHA parity, refreshed 7/2/9/0 public-set mismatch, 9/9 revision parity, missing V6.1/public-catalog contracts, and zero-write integration decision. |
+| 2026-08-24 | `product-registration-p0-reproduction-2026-08-24.md` | Shared product-registration/public-catalog Gate 0: production Git/DB/env authority split, same-time 7/2/9/0 catalog mismatch, 410 admin UI, trust/runtime findings, and zero-write implementation decision. |
+| 2026-08-24 | `product-registration-public-catalog-local-verification-2026-08-24.md` | Gates 0-4 local implementation evidence: exact publication/catalog authority, 6,435 tests, type/lint/build, 12-route browser matrix, zero production writes, and explicit release blockers. |
+| 2026-08-18 | `2026-08-18-product-registration-live-auto-upload.md` | Real HWP upload without admin login, V6 workflow terminal `published_degraded`, immutable snapshot/proof/pointer parity, and mobile customer/CTA verification. |
 | 2026-08-17 | `2026-08-17-product-registration-real-hwp-mobile-proof.md` | Real Phu Quoc HWP production workflow, source-backed revision/snapshot, exact-hash 390×844 package and LP proof, customer-fact corrections, proof-analytics isolation, DB advisor hardening, and remaining corpus launch gate. |
 | 2026-08-16 | `2026-08-16-product-registration-v138-guide-commercial-scope.md` | V138 actual-source replay, guide-fee commercial/heading/clause scoping, genuine contradiction preservation, zero comparable regression, 5,626-test verification, and remaining launch gates. |
 | 2026-08-16 | `2026-08-16-product-registration-v95-grade-duration-customer-facts.md` | V95 actual-source replay, Xian grade/duration product identity, customer-fact isolation, year/deadline corrections, contradiction gates, 5,590-test verification, and remaining launch gates. |

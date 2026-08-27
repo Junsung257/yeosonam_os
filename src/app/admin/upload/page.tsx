@@ -270,11 +270,6 @@ function packageIdsForItem(item: Partial<Pick<QueueItem, 'dbId' | 'dbIds' | 'reg
   return [...new Set(ids.filter((value): value is string => typeof value === 'string' && value.trim().length > 0))];
 }
 
-function isPublicPackageStatus(status: string | null | undefined): boolean {
-  const normalized = (status ?? '').toLowerCase();
-  return ['active', 'approved', 'selling', 'available', 'published'].includes(normalized);
-}
-
 function verifyStatusLabel(status: VerifyDisplayStatus | undefined): string {
   if (status === 'verifying') return '검증 중';
   if (status === 'clean') return '검증 통과';
@@ -1240,10 +1235,10 @@ export default function UploadPage() {
                   <>
                     {doneCount > 0 && (
                       <button type="button"
-                        onClick={() => router.push('/admin/packages')}
+                        onClick={() => router.push('/admin/product-registration')}
                         className="flex-1 bg-white border border-admin-border-strong text-admin-text-2 py-2 rounded text-admin-sm hover:bg-admin-bg transition"
                       >
-                        상품 목록에서 확인
+                        공개 관제에서 확인
                       </button>
                     )}
                     <button type="button"
@@ -1431,13 +1426,13 @@ export default function UploadPage() {
                             )}
                             {item.dbId && (item.gate === 'BLOCKED' || item.gate === 'REVIEW_NEEDED') && (
                               <a
-                                href={`/admin/packages?status=REVIEW_NEEDED&q=${encodeURIComponent(item.title ?? '')}`}
+                                href="/admin/product-registration"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-[11px] font-medium text-blue-600 hover:text-blue-800 underline"
-                                title="상품관리에서 destination/가격 보완 후 승인"
+                                title="상품등록 공개 관제에서 차단 사유와 다음 행동 확인"
                               >
-                                상품관리에서 보완 →
+                                공개 차단 사유 확인 →
                               </a>
                             )}
                             {item.landOperator && (
@@ -1477,8 +1472,8 @@ export default function UploadPage() {
                                 >
                                   <div className="flex flex-wrap items-center gap-2">
                                     <span className="font-mono text-green-700 font-bold">{r.short_code ?? r.package_id.slice(0, 8)}</span>
-                                    <span className={`px-1.5 py-0.5 rounded font-medium ${r.status === 'approved' ? 'bg-green-200 text-green-800' : 'bg-yellow-200 text-yellow-800'}`}>
-                                      {r.status === 'approved' ? '✅ 판매중' : '⏳ 검토'}
+                                    <span className={`px-1.5 py-0.5 rounded font-medium ${r.status === 'approved' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-200 text-yellow-800'}`}>
+                                      {r.status === 'approved' ? '호환 승인' : '호환 검토'}
                                     </span>
                                     <span className={`px-1.5 py-0.5 rounded border font-semibold ${verifyStatusClass(displayStatus)}`}>
                                       {verifyStatusLabel(displayStatus)}
@@ -1490,14 +1485,7 @@ export default function UploadPage() {
                                     {r.airline && <span className="text-blue-600">{r.airline}</span>}
                                     {r.departure_days && <span className="text-admin-muted-2">{r.departure_days}</span>}
                                     <a href={`/admin/packages/${r.package_id}/review`} target="_blank" rel="noopener noreferrer" className="text-slate-700 hover:underline font-medium ml-auto">상품검수</a>
-                                    {isPublicPackageStatus(r.status) ? (
-                                      <>
-                                        <a href={r.mobile_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">📱 상세</a>
-                                        <a href={r.lp_url} target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline font-medium">🔗 LP</a>
-                                      </>
-                                    ) : (
-                                      <span className="text-orange-600 font-medium" title="검토 상태라 고객 공개 URL은 NOT_FOUND가 정상입니다.">📱 고객 비공개</span>
-                                    )}
+                                    <a href="/admin/product-registration" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">고객 공개 확인</a>
                                     <a href={r.a4_url} target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline font-medium">📄 A4</a>
                                   </div>
                                   {verifyIssue && (

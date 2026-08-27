@@ -89,6 +89,166 @@ describe('buildDocumentIrTablePriceCalendars', () => {
     ]));
   });
 
+  it('parses month/day rosters under named package columns without an 출발일 header', () => {
+    const rows = [
+      ['날짜', '', '', '1일자유 싱가폴3박', '전일관광 싱가폴3박'],
+      ['8월', '16,17,18', '', '1,119,000', '1,319,000'],
+      ['', '22,23', '', '1,099,000', '1,239,000'],
+    ];
+    const cells = rows.flatMap((values, row) => values.flatMap((text, column) => text ? [{
+      id: `named-month-${row}-${column}`,
+      nodeId: `named-month-node-${row}-${column}`,
+      row,
+      column,
+      rowSpan: row === 1 && column === 0 ? 2 : 1,
+      colSpan: row === 0 && column === 0 ? 3 : 1,
+      text,
+      evidence: { page: 0, quoteHash: `named-month-${row}-${column}` },
+    }] : []));
+    const text = `2026년 싱가포르 3박5일\n${cells.map(cell => cell.text).join('\n')}`;
+    const ir: DocumentIR = {
+      version: 'v4', sourceType: 'hwp', filename: 'named-month.hwp', text, pages: 1,
+      parser: { engine: 'test', version: '1' }, nodes: [],
+      tables: [{ id: 'named-month', page: 0, rows: rows.length, columns: 5, cells }], assets: [],
+    };
+
+    const result = buildDocumentIrTablePriceCalendars({
+      documentIr: ir,
+      sectionRawText: text,
+      fallbackYear: 2026,
+      fallbackDurationDays: 5,
+    });
+
+    expect(result.map(calendar => calendar.gradeLabel)).toEqual([
+      '1일자유 싱가폴3박',
+      '전일관광 싱가폴3박',
+    ]);
+    expect(result[0]?.prices).toEqual(expect.arrayContaining([
+      expect.objectContaining({ date: '2026-08-16', amount: 1_119_000 }),
+      expect.objectContaining({ date: '2026-08-23', amount: 1_099_000 }),
+    ]));
+  });
+
+  it('binds a one-off date and shorthand sale amount from the same source cell', () => {
+    const cell = {
+      id: 'one-off-cell', nodeId: 'one-off-node', row: 0, column: 0,
+      rowSpan: 1, colSpan: 1,
+      text: '9월15일 단하루!! 선착순20명 399.000원',
+      evidence: { page: 0, quoteHash: 'one-off-quote' },
+    };
+    const text = `2026년 다낭 3박5일\n${cell.text}`;
+    const ir: DocumentIR = {
+      version: 'v4', sourceType: 'hwp', filename: 'one-off.hwp', text, pages: 1,
+      parser: { engine: 'test', version: '1' }, nodes: [],
+      tables: [{ id: 'one-off', page: 0, rows: 1, columns: 1, cells: [cell] }], assets: [],
+    };
+    const result = buildDocumentIrTablePriceCalendars({
+      documentIr: ir,
+      sectionRawText: text,
+      fallbackYear: 2026,
+      fallbackDurationDays: 5,
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0]?.prices).toEqual([
+      expect.objectContaining({ date: '2026-09-15', amount: 399_000 }),
+    ]);
+  });
+
+  it('reads row-spanned duration/month cells with a single price column', () => {
+    const values = [
+      { row: 0, column: 0, rowSpan: 1, text: '출발일' },
+      { row: 0, column: 1, rowSpan: 1, text: '판매가' },
+      { row: 1, column: 0, rowSpan: 3, text: '3박4일' },
+      { row: 1, column: 1, rowSpan: 2, text: '8월' },
+      { row: 1, column: 2, rowSpan: 1, text: '30일' },
+      { row: 1, column: 3, rowSpan: 1, text: '829,000' },
+      { row: 2, column: 2, rowSpan: 1, text: '31일' },
+      { row: 2, column: 3, rowSpan: 1, text: '799,000' },
+      { row: 3, column: 1, rowSpan: 1, text: '9월' },
+      { row: 3, column: 2, rowSpan: 1, text: '19, 20, 21' },
+      { row: 3, column: 3, rowSpan: 1, text: '899,000' },
+      { row: 4, column: 0, rowSpan: 1, text: '4박5일' },
+      { row: 4, column: 1, rowSpan: 1, text: '9월' },
+      { row: 4, column: 2, rowSpan: 1, text: '1일' },
+      { row: 4, column: 3, rowSpan: 1, text: '799,000' },
+    ];
+    const table: DocumentIrTable = {
+      id: 'rowspan-duration-price', page: 0, rows: 5, columns: 4,
+      cells: values.map((cell, index) => ({
+        id: `cell-${index}`,
+        nodeId: `node-${index}`,
+        row: cell.row,
+        column: cell.column,
+        rowSpan: cell.rowSpan,
+        colSpan: 1,
+        text: cell.text,
+        evidence: { page: 0, quoteHash: `quote-${index}` },
+      })),
+    };
+    const text = `2026년 장가계 3박4일 4박5일\n${values.map(cell => cell.text).join('\n')}`;
+    const ir: DocumentIR = {
+      version: 'v4', sourceType: 'hwp', filename: 'rowspan-duration.hwp', text, pages: 1,
+      parser: { engine: 'test', version: '1' }, nodes: [], tables: [table], assets: [],
+    };
+
+    const result = buildDocumentIrTablePriceCalendars({
+      documentIr: ir,
+      sectionRawText: text,
+      fallbackYear: 2026,
+    });
+
+    expect(result).toHaveLength(2);
+    expect(result.find(calendar => calendar.durationDays === 4)?.prices).toEqual(expect.arrayContaining([
+      expect.objectContaining({ date: '2026-08-30', amount: 829_000 }),
+      expect.objectContaining({ date: '2026-08-31', amount: 799_000 }),
+      expect.objectContaining({ date: '2026-09-20', amount: 899_000 }),
+    ]));
+    expect(result.find(calendar => calendar.durationDays === 5)?.prices).toEqual([
+      expect.objectContaining({ date: '2026-09-01', amount: 799_000 }),
+    ]);
+  });
+
+  it('carries a stacked sale price across row-spanned month dates', () => {
+    const values = [
+      { row: 0, column: 0, text: '세부직항 레체팩 3박5일', rowSpan: 1 },
+      { row: 1, column: 0, text: '출발일', rowSpan: 1 },
+      { row: 1, column: 1, text: '요 금', rowSpan: 1 },
+      { row: 2, column: 0, text: '3월', rowSpan: 1 },
+      { row: 2, column: 1, text: '1,2,4,7,21,28', rowSpan: 2 },
+      { row: 2, column: 2, text: '699,000↴\n599,000', rowSpan: 4 },
+      { row: 3, column: 0, text: '4월', rowSpan: 1 },
+      { row: 4, column: 0, text: '5월', rowSpan: 1 },
+      { row: 4, column: 1, text: '9,17,19,26', rowSpan: 2 },
+    ];
+    const cells: DocumentIrTable['cells'] = values.map((cell, index) => ({
+      id: `stacked-month-${index}`,
+      nodeId: `stacked-month-${index}`,
+      row: cell.row,
+      column: cell.column,
+      rowSpan: cell.rowSpan,
+      colSpan: 1,
+      text: cell.text,
+      evidence: { page: 0, quoteHash: `stacked-month-${index}` },
+    }));
+    const text = `2026년 세부직항 레체팩 3박5일\n${cells.map(cell => cell.text).join('\n')}`;
+    const ir: DocumentIR = {
+      version: 'v4', sourceType: 'hwp', filename: 'stacked-month.hwp', text, pages: 1,
+      parser: { engine: 'test', version: '1' }, nodes: [],
+      tables: [{ id: 'stacked-month', page: 0, rows: 6, columns: 3, cells }], assets: [],
+    };
+
+    const result = buildDocumentIrTablePriceCalendars({
+      documentIr: ir,
+      sectionRawText: text,
+      fallbackYear: 2026,
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.prices).toEqual(expect.arrayContaining([
+      expect.objectContaining({ date: '2026-03-01', amount: 599_000, list_price: 699_000 }),
+    ]));
+  });
+
   it('parses supplier slash-wrapped date ranges and keeps the Korean crown grade axis', () => {
     const values = [
       { row: 0, column: 0, rowSpan: 1, text: '출발일' },
@@ -473,6 +633,50 @@ describe('buildDocumentIrTablePriceCalendars', () => {
     ]));
   });
 
+  it('treats concise PKG cells beside 출발일 as independent package axes and carries merged dates', () => {
+    const rows = [
+      ['7월 8일 ~ 8월 26일 수(4박5일), 일(3박4일)', '', '부산-호화호특 BX3455 08:30-10:55'],
+      ['출발일', '요일', '호화호특 노노 PKG', '호화호특 노노노 PKG', '호화호특 고품경 노노노 PKG'],
+      ['7월 12일, 8월 23일', '3박4일 (일)', '999,000', '1,149,000', '1,299,000'],
+      ['7월 19일', '', '1,049,000', '1,199,000', '1,349,000'],
+      ['7월 8일, 8월 26일', '4박5일 (수)', '1,049,000', '1,199,000', '1,459,000'],
+    ];
+    const cells = rows.flatMap((values, row) => values.flatMap((text, column) => text ? [{
+      id: `pkg-axis-${row}-${column}`,
+      nodeId: `pkg-axis-node-${row}-${column}`,
+      row,
+      column,
+      rowSpan: 1,
+      colSpan: 1,
+      text,
+      evidence: { page: 0, quoteHash: `pkg-axis-${row}-${column}` },
+    }] : []));
+    const text = `2026년 부산 내몽고 3박4일 4박5일 PKG\n${cells.map(cell => cell.text).join('\n')}`;
+    const ir: DocumentIR = {
+      version: 'v4', sourceType: 'hwp', filename: 'compact-pkg-axis.hwp', text, pages: 1,
+      parser: { engine: 'test', version: '1' }, nodes: [],
+      tables: [{ id: 'compact-pkg-axis', page: 0, rows: rows.length, columns: 5, cells }], assets: [],
+    };
+
+    const result = buildDocumentIrTablePriceCalendars({ documentIr: ir, sectionRawText: text, fallbackYear: 2026 });
+    expect(result.map(calendar => [calendar.durationDays, calendar.gradeLabel])).toEqual(expect.arrayContaining([
+      [4, '호화호특 노노 PKG'],
+      [4, '호화호특 노노노 PKG'],
+      [4, '호화호특 고품경 노노노 PKG'],
+      [5, '호화호특 노노 PKG'],
+      [5, '호화호특 노노노 PKG'],
+      [5, '호화호특 고품경 노노노 PKG'],
+    ]));
+    expect(result).toHaveLength(6);
+    expect(result.find(calendar => calendar.durationDays === 4 && calendar.gradeLabel === '호화호특 노노 PKG')?.prices)
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ date: '2026-07-12', amount: 999_000 }),
+        expect.objectContaining({ date: '2026-07-19', amount: 1_049_000 }),
+      ]));
+    expect(result.find(calendar => calendar.durationDays === 4 && calendar.gradeLabel === '호화호특 노노 PKG')?.prices).toHaveLength(3);
+    expect(result.find(calendar => calendar.durationDays === 5 && calendar.gradeLabel === '호화호특 노노 PKG')?.prices).toHaveLength(2);
+  });
+
   it('does not create phantom shorthand days from a mixed full-date list', () => {
     const rows = [
       ['패턴', '출 발 일 자', '상품가'],
@@ -794,6 +998,37 @@ describe('buildDocumentIrTablePriceCalendars', () => {
       durationDays: 5,
       prices: [{ date: '2026-05-05', amount: 629_000 }],
     });
+  });
+
+  it('reads compact departure-confirmed rows without inventing a formal price header', () => {
+    const rows = [
+      ['출발 / 확정', ''],
+      ['4/12(일) 1,099,000원', ''],
+      ['4/19(일) 1,149,000원', ''],
+      ['4/15(수) 마감', ''],
+    ];
+    const cells = rows.flatMap((values, row) => values.flatMap((text, column) => text ? [{
+      id: `compact-confirmed-${row}-${column}`,
+      nodeId: `compact-confirmed-node-${row}-${column}`,
+      row, column, rowSpan: 1, colSpan: 1, text,
+      evidence: { page: 0, quoteHash: `compact-confirmed-${row}-${column}` },
+    }] : []));
+    const text = `2026년 장가계 노노노 3박4일\n${cells.map(cell => cell.text).join('\n')}`;
+    const ir: DocumentIR = {
+      version: 'v4', sourceType: 'hwp', filename: 'compact-confirmed.hwp', text, pages: 1,
+      parser: { engine: 'test', version: '1' }, nodes: [],
+      tables: [{ id: 'compact-confirmed', page: 0, rows: rows.length, columns: 2, cells }], assets: [],
+    };
+    const result = buildDocumentIrTablePriceCalendars({
+      documentIr: ir,
+      sectionRawText: text,
+      fallbackYear: 2026,
+      fallbackDurationDays: 4,
+    });
+    expect(result[0]?.prices.map(price => [price.date, price.amount])).toEqual([
+      ['2026-04-12', 1_099_000],
+      ['2026-04-19', 1_149_000],
+    ]);
   });
 
   it('binds a weekday commercial price to a Korean month roster with repeated day suffixes', () => {
@@ -1892,6 +2127,47 @@ describe('buildDocumentIrTablePriceCalendars', () => {
       .toEqual(expect.arrayContaining([expect.objectContaining({ date: '2026-09-03', amount: 1_599_000 })]));
     expect(result.find(calendar => calendar.durationDays === 6 && calendar.gradeLabel === 'Crown')?.prices)
       .toEqual(expect.arrayContaining([expect.objectContaining({ date: '2026-09-13', amount: 1_899_000 })]));
+  });
+
+  it('keeps adjacent duration amount columns as separate products', () => {
+    const cells: DocumentIrTable['cells'] = [
+      { id: 'h-date', nodeId: 'h-date', row: 0, column: 0, rowSpan: 1, colSpan: 2, text: '출 발 일 [컴 12%]', evidence: { page: 0, quoteHash: 'h-date' } },
+      { id: 'h-3', nodeId: 'h-3', row: 0, column: 2, rowSpan: 1, colSpan: 1, text: '2박3일 36H', evidence: { page: 0, quoteHash: 'h-3' } },
+      { id: 'h-4', nodeId: 'h-4', row: 0, column: 3, rowSpan: 1, colSpan: 1, text: '3박4일 54H', evidence: { page: 0, quoteHash: 'h-4' } },
+      { id: 'range', nodeId: 'range', row: 1, column: 0, rowSpan: 5, colSpan: 1, text: '9/1–9/30', evidence: { page: 0, quoteHash: 'range' } },
+      { id: 'wd-1', nodeId: 'wd-1', row: 1, column: 1, rowSpan: 1, colSpan: 1, text: '월/화/수', evidence: { page: 0, quoteHash: 'wd-1' } },
+      { id: 'p3-1', nodeId: 'p3-1', row: 1, column: 2, rowSpan: 1, colSpan: 1, text: '589,000', evidence: { page: 0, quoteHash: 'p3-1' } },
+      { id: 'p4-1', nodeId: 'p4-1', row: 1, column: 3, rowSpan: 1, colSpan: 1, text: '679,000', evidence: { page: 0, quoteHash: 'p4-1' } },
+      { id: 'wd-2', nodeId: 'wd-2', row: 2, column: 1, rowSpan: 1, colSpan: 1, text: '목', evidence: { page: 0, quoteHash: 'wd-2' } },
+      { id: 'p3-2', nodeId: 'p3-2', row: 2, column: 2, rowSpan: 1, colSpan: 1, text: '609,000', evidence: { page: 0, quoteHash: 'p3-2' } },
+      { id: 'p4-2', nodeId: 'p4-2', row: 2, column: 3, rowSpan: 1, colSpan: 1, text: '789,000', evidence: { page: 0, quoteHash: 'p4-2' } },
+      { id: 'wd-3', nodeId: 'wd-3', row: 3, column: 1, rowSpan: 1, colSpan: 1, text: '금', evidence: { page: 0, quoteHash: 'wd-3' } },
+      { id: 'p3-3', nodeId: 'p3-3', row: 3, column: 2, rowSpan: 1, colSpan: 1, text: '729,000', evidence: { page: 0, quoteHash: 'p3-3' } },
+      { id: 'p4-3', nodeId: 'p4-3', row: 3, column: 3, rowSpan: 1, colSpan: 1, text: '849,000', evidence: { page: 0, quoteHash: 'p4-3' } },
+      { id: 'exact', nodeId: 'exact', row: 4, column: 1, rowSpan: 1, colSpan: 1, text: '9/23 수', evidence: { page: 0, quoteHash: 'exact' } },
+      { id: 'p3-exact', nodeId: 'p3-exact', row: 4, column: 2, rowSpan: 1, colSpan: 1, text: '799,000', evidence: { page: 0, quoteHash: 'p3-exact' } },
+      { id: 'p4-exact', nodeId: 'p4-exact', row: 4, column: 3, rowSpan: 1, colSpan: 1, text: '별도문의', evidence: { page: 0, quoteHash: 'p4-exact' } },
+      { id: 'wd-5', nodeId: 'wd-5', row: 5, column: 1, rowSpan: 1, colSpan: 1, text: '일', evidence: { page: 0, quoteHash: 'wd-5' } },
+      { id: 'p3-5', nodeId: 'p3-5', row: 5, column: 2, rowSpan: 1, colSpan: 1, text: '649,000', evidence: { page: 0, quoteHash: 'p3-5' } },
+      { id: 'p4-5', nodeId: 'p4-5', row: 5, column: 3, rowSpan: 1, colSpan: 1, text: '739,000', evidence: { page: 0, quoteHash: 'p4-5' } },
+    ];
+    const text = `청도 시내골프 2026년 2박3일 3박4일\n${cells.map(cell => cell.text).join('\n')}`;
+    const ir: DocumentIR = {
+      version: 'v4', sourceType: 'hwp', filename: 'qingdao-duration-columns.hwp', text, pages: 1,
+      parser: { engine: 'test', version: '1' }, nodes: [],
+      tables: [{ id: 'duration-columns', page: 0, rows: 6, columns: 4, cells }], assets: [],
+    };
+
+    const result = buildDocumentIrTablePriceCalendars({ documentIr: ir, sectionRawText: text });
+
+    expect(result).toHaveLength(2);
+    expect(result.find(calendar => calendar.durationDays === 3)?.prices).toEqual(expect.arrayContaining([
+      expect.objectContaining({ date: '2026-09-23', amount: 799_000 }),
+    ]));
+    expect(result.find(calendar => calendar.durationDays === 4)?.prices).toEqual(expect.arrayContaining([
+      expect.objectContaining({ date: '2026-09-23', amount: 679_000 }),
+    ]));
+    expect(result.find(calendar => calendar.durationDays === 4)?.prices.some(price => price.date === '2026-09-23' && price.amount === 799_000)).toBe(false);
   });
 
   it('keeps repeated airline and grade matrices as independent product axes', () => {
