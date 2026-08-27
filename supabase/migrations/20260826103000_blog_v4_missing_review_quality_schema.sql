@@ -29,9 +29,6 @@ alter table public.blog_information_review_cases
   add column if not exists approved_by uuid null,
   add column if not exists approved_at timestamptz null;
 
-create unique index if not exists idx_blog_information_review_cases_creative_unique
-  on public.blog_information_review_cases (creative_id);
-
 create table if not exists public.blog_information_review_events (
   id uuid primary key default gen_random_uuid(),
   review_case_id uuid not null references public.blog_information_review_cases(id) on delete cascade,
@@ -59,10 +56,10 @@ create index if not exists idx_blog_quality_evaluations_creative
 create index if not exists idx_blog_quality_evaluations_queue
   on public.blog_quality_evaluations (queue_id, evaluated_at desc)
   where queue_id is not null;
-create index if not exists idx_blog_information_review_cases_status
-  on public.blog_information_review_cases (status, updated_at desc);
 create index if not exists idx_blog_information_review_events_case
   on public.blog_information_review_events (review_case_id, created_at desc);
+create index if not exists idx_blog_information_review_events_creative
+  on public.blog_information_review_events (creative_id);
 
 alter table public.blog_quality_evaluations enable row level security;
 alter table public.blog_information_review_cases enable row level security;

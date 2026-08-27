@@ -202,13 +202,6 @@ create index if not exists idx_blog_content_revisions_operation
   where operation_id is not null;
 create index if not exists idx_blog_quality_decisions_passed
   on public.blog_quality_decisions(passed, evaluated_at desc);
-create index if not exists idx_blog_quality_evaluations_revision
-  on public.blog_quality_evaluations(revision_id, evaluated_at desc)
-  where revision_id is not null;
-create index if not exists idx_blog_content_operations_final_revision
-  on public.blog_content_operations(final_revision_id)
-  where final_revision_id is not null;
-
 create or replace function public.prevent_immutable_blog_content_revision_mutation_v1()
 returns trigger
 language plpgsql
