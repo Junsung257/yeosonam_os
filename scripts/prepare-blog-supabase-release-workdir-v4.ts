@@ -48,6 +48,7 @@ try {
   const summary = prepareBlogSupabaseReleaseWorkdirV4({
     output,
     remoteVersions: readRemoteVersions(),
+    release: argument('release') === 'content_factory' ? 'content_factory' : 'orchestrator',
   });
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
 } catch (error) {

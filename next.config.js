@@ -177,7 +177,9 @@ const nextConfig = {
     // Avoid repeating the same memory-heavy type pass in bundle/performance
     // jobs while keeping local builds strict by default.
     ignoreBuildErrors:
-      process.env.VERCEL === '1' || process.env.NEXT_BUILD_SKIP_TYPECHECK === '1',
+      process.env.VERCEL === '1'
+      || process.env.NEXT_BUILD_SKIP_TYPECHECK === '1'
+      || process.env.NEXT_SKIP_TYPESCRIPT_CHECK === '1',
   },
   // Next 15: instrumentationHook 제거 — instrumentation.ts 가 자동 활성화됨.
   // Next 15: serverComponentsExternalPackages → 최상위 serverExternalPackages 로 이동.

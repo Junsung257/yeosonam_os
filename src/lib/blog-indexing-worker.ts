@@ -264,7 +264,7 @@ export async function processDueBlogIndexingJobs(options: {
         );
       }
 
-      await supabaseAdmin
+      const { error: successUpdateError } = await supabaseAdmin
         .from(TABLE)
         .update({
           status: 'succeeded',
@@ -276,6 +276,17 @@ export async function processDueBlogIndexingJobs(options: {
           updated_at: new Date().toISOString(),
         })
         .eq('id', job.id);
+      if (successUpdateError) {
+        throw new Error(`indexing success persistence failed:${successUpdateError.message}`);
+      }
+
+      const { error: operationIndexedError } = await supabaseAdmin.rpc(
+        'mark_blog_content_operation_indexed_v4',
+        { p_indexing_job_id: job.id },
+      );
+      if (operationIndexedError && operationIndexedError.code !== '42883') {
+        throw new Error(`content operation indexing sync failed:${operationIndexedError.message}`);
+      }
 
       results.push({ id: job.id, slug: job.slug, status: 'succeeded' });
     } catch (err) {

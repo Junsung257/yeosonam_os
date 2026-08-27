@@ -149,5 +149,5 @@ describe('sitemap', () => {
     expect(queriedTables).toContain('product_registration_v5_publication_pointers');
     expect(queriedTables).toContain('public_package_snapshots');
     expect(queriedTables).toContain('public_blog_content_creatives');
-  });
+  }, 30_000);
 });

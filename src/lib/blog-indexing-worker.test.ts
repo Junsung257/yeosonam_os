@@ -40,6 +40,8 @@ describe('blog indexing worker', () => {
     expect(source).toContain('.from(PUBLIC_BLOG_READ_SOURCE)');
     expect(source).toContain("job.type === 'URL_DELETED'");
     expect(source).toContain("status: 'skipped'");
+    expect(source).toContain("'mark_blog_content_operation_indexed_v4'");
+    expect(source).toContain('indexing success persistence failed');
     expect(snapshotRefreshIndex).toBeGreaterThan(0);
     expect(snapshotRefreshIndex).toBeLessThan(eligibilityIndex);
     expect(eligibilityIndex).toBeGreaterThan(0);

@@ -1,0 +1,321 @@
+name: Blog V4 Production Activation
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: Exact reviewed main commit SHA already deployed as the candidate.
+        required: true
+        type: string
+      activation_stage:
+        description: Explicit activation stage; no implicit draft-to-max promotion exists.
+        required: true
+        default: draft_generation_canary
+        type: choice
+        options:
+          - draft_generation_canary
+          - reviewed_canary
+          - pilot_1
+          - pilot_3
+          - ramp_10
+          - max_30
+      confirm_activation:
+        description: Confirm that the selected stage has been reviewed and is allowed to run.
+        required: true
+        default: false
+        type: boolean
+      approval_reference:
+        description: Required for max_30; incident/readiness approval ticket or decision reference.
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blog-v4-production-control
+  cancel-in-progress: false
+
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: blog-production
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      NEXT_PUBLIC_BASE_URL: https://www.yeosonam.com
+
+    steps:
+      - name: Validate immutable activation request
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "${{ inputs.release_commit }}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "release_commit must be a full immutable SHA" >&2
+            exit 1
+          fi
+          if [ "${{ inputs.confirm_activation }}" != "true" ]; then
+            echo "confirm_activation must be true" >&2
+            exit 1
+          fi
+          if [[ "${{ inputs.activation_stage }}" = "ramp_10" || "${{ inputs.activation_stage }}" = "max_30" ]] && [ -z "${{ inputs.approval_reference }}" ]; then
+            echo "ramp_10/max_30 require an approval_reference" >&2
+            exit 1
+          fi
+          for key in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID VERCEL_AUTOMATION_BYPASS_SECRET CRON_SECRET NEXT_PUBLIC_SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY; do
+            if [ -z "${!key:-}" ]; then
+              echo "Missing protected environment secret: ${key}" >&2
+              exit 1
+            fi
+          done
+
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Prove exact release checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          test "$(git rev-parse HEAD)" = "${{ inputs.release_commit }}"
+          test "$(git rev-parse origin/main)" = "${{ inputs.release_commit }}"
+          npm ci --no-audit --no-fund
+          npm run verify:blog-release-bundle-v4
+          npm run verify:blog-content-factory-release-bundle-v4
+          npm run verify:ai-control-plane-migration
+          npm run verify:ai-direct-call-guard
+
+      - name: Resolve explicit activation contract
+        id: contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ inputs.activation_stage }}" in
+            draft_generation_canary)
+              mode=draft_only; generation=true; factory=true; control_plane=1; cap=1; ramp=pilot_3; workflow_start_limit=1;;
+            reviewed_canary)
+              mode=reviewed_only; generation=false; factory=true; control_plane=1; cap=1; ramp=pilot_3; workflow_start_limit=1;;
+            pilot_1)
+              mode=live; generation=true; factory=true; control_plane=1; cap=1; ramp=pilot_3; workflow_start_limit=1;;
+            pilot_3)
+              mode=live; generation=true; factory=true; control_plane=1; cap=3; ramp=pilot_3; workflow_start_limit=3;;
+            ramp_10)
+              mode=live; generation=true; factory=true; control_plane=1; cap=10; ramp=ramp_10; workflow_start_limit=6;;
+            max_30)
+              mode=live; generation=true; factory=true; control_plane=1; cap=30; ramp=max_30; workflow_start_limit=12;;
+            *) echo "unsupported activation_stage" >&2; exit 1;;
+          esac
+          if [ "$generation" = "true" ]; then
+            test "$factory" = "true"
+            test "$control_plane" = "1"
+          fi
+          {
+            echo "mode=$mode"
+            echo "generation=$generation"
+            echo "factory=$factory"
+            echo "control_plane=$control_plane"
+            echo "cap=$cap"
+            echo "ramp=$ramp"
+            echo "workflow_start_limit=$workflow_start_limit"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set only the selected activation stage
+        id: activation_mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp/blog-v4-activation
+          echo "started=true" >> "$GITHUB_OUTPUT"
+          update_env() {
+            local name="$1" value="$2"
+            npx vercel env update "$name" production --value "$value" --yes --token "$VERCEL_TOKEN" >/dev/null 2>&1 \
+              || npx vercel env add "$name" production --value "$value" --yes --token "$VERCEL_TOKEN" >/dev/null
+          }
+          update_env BLOG_AUTOPUBLISH_MODE "${{ steps.contract.outputs.mode }}"
+          update_env BLOG_GENERATION_CRON_ENABLED "${{ steps.contract.outputs.generation }}"
+          update_env BLOG_CONTENT_FACTORY_ENABLED "${{ steps.contract.outputs.factory }}"
+          update_env BLOG_AI_CONTROL_PLANE_ENABLED "${{ steps.contract.outputs.control_plane }}"
+          update_env BLOG_CONTENT_FACTORY_WORKFLOW_START_LIMIT "${{ steps.contract.outputs.workflow_start_limit }}"
+          update_env BLOG_DAILY_PUBLISH_CAP "${{ steps.contract.outputs.cap }}"
+          update_env BLOG_PUBLICATION_RAMP_STAGE "${{ steps.contract.outputs.ramp }}"
+          update_env BLOG_AUTO_RAMP_ENABLED false
+          update_env BLOG_AUTO_ROLLBACK_ENABLED true
+          update_env BLOG_PRODUCTION_ALLOWED_GIT_REF main
+          update_env BLOG_PRODUCTION_ALLOWED_COMMIT_SHA "${{ inputs.release_commit }}"
+
+      - name: Deploy exact SHA as unaliased activation candidate
+        id: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate_url="$(npx vercel deploy --prod --skip-domain --yes --token "$VERCEL_TOKEN")"
+          echo "url=${candidate_url}" >> "$GITHUB_OUTPUT"
+          curl --fail --silent --show-error --location \
+            --header "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
+            "${candidate_url}/blog" >/dev/null
+
+      - name: Verify activation readiness and selected publication path
+        shell: bash
+        env:
+          CANDIDATE_URL: ${{ steps.candidate.outputs.url }}
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location \
+            --header "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            "${CANDIDATE_URL}/api/cron/blog-data-readiness" \
+            | tee .activation-readiness.json
+          if [ "${{ steps.contract.outputs.mode }}" = "live" ] || [ "${{ steps.contract.outputs.mode }}" = "reviewed_only" ]; then
+            node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(".activation-readiness.json","utf8")); if(x.publicationReady!==true) { console.error("publicationReady=false", x.publicationBlockers||[]); process.exit(1); }'
+          else
+            node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(".activation-readiness.json","utf8")); if(x.generationReady!==true) { console.error("generationReady=false", x.publicationBlockers||[]); process.exit(1); }'
+          fi
+          if [ "${{ inputs.activation_stage }}" = "max_30" ]; then
+            # max_30 is never a capacity setting by itself.  It requires a
+            # reviewed approval plus at least two days of approved inventory.
+            # The readiness endpoint is the authoritative, authenticated
+            # snapshot; missing inventory evidence fails closed.
+            node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(".activation-readiness.json","utf8")); const n=Number(x.approvedForSlotCount ?? x.approved_for_slot_count ?? NaN); if(!Number.isFinite(n) || n < 60) { console.error("max_30 requires approvedForSlotCount >= 60", {approvedForSlotCount:n}); process.exit(1); }'
+          fi
+          if [ "${{ steps.contract.outputs.mode }}" = "reviewed_only" ] || [ "${{ steps.contract.outputs.mode }}" = "live" ]; then
+            curl --fail --silent --show-error --location \
+              --header "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
+              --header "Authorization: Bearer ${CRON_SECRET}" \
+              "${CANDIDATE_URL}/api/cron/blog-publication-controller" \
+              | tee .activation-publication.json
+          fi
+
+      - name: Promote verified activation candidate
+        shell: bash
+        env:
+          CANDIDATE_URL: ${{ steps.candidate.outputs.url }}
+        run: |
+          set -euo pipefail
+          npx vercel promote "$CANDIDATE_URL" --yes --token "$VERCEL_TOKEN"
+          set +e
+          npx vercel logs --environment production --no-branch --no-follow --since 10m --json --token "$VERCEL_TOKEN" \
+            > .activation-production-logs.jsonl
+          logs_exit=$?
+          set -e
+          if [ "$logs_exit" -ne 0 ]; then
+            echo "Vercel runtime log evidence unavailable after activation" >&2
+            printf '{"available":false,"error":"vercel_logs_exit_%s","errorCount":null}\n' "$logs_exit" \
+              > .activation-log-evidence.json
+            exit 1
+          fi
+          if [ ! -s .activation-production-logs.jsonl ]; then
+            echo "Vercel runtime log evidence is empty after activation" >&2
+            printf '{"available":false,"error":"vercel_logs_empty","errorCount":null}\n' \
+              > .activation-log-evidence.json
+            exit 1
+          fi
+          db_errors="$(grep -c 'BLOG_DATABASE_UNAVAILABLE' .activation-production-logs.jsonl || true)"
+          printf '{"available":true,"errorCount":%s}\n' "$db_errors" > .activation-log-evidence.json
+          test "$db_errors" = "0"
+
+      - name: Transition durable DB rollout stage after verified promotion
+        if: success() && (inputs.activation_stage == 'ramp_10' || inputs.activation_stage == 'max_30')
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_from=pilot_3
+          if [ "${{ inputs.activation_stage }}" = "max_30" ]; then expected_from=ramp_10; fi
+          evidence_sha256="$(sha256sum .activation-readiness.json | awk '{print $1}')"
+          npm run transition:blog-publication-rollout-v4 -- \
+            --apply \
+            --expected-from="$expected_from" \
+            --next-stage="${{ steps.contract.outputs.ramp }}" \
+            --approval-reference="${{ inputs.approval_reference }}" \
+            --github-run-id="${{ github.run_id }}" \
+            --release-commit="${{ inputs.release_commit }}" \
+            --evidence-sha256="$evidence_sha256" \
+            --operator="${{ github.actor }}" \
+            --output=.tmp/blog-v4-activation/rollout-transition.json
+
+          curl --fail --silent --show-error --location \
+            --header "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            "https://www.yeosonam.com/api/cron/blog-data-readiness" \
+            > .tmp/blog-v4-activation/post-transition-readiness.json
+          node - <<'NODE'
+          const fs = require('fs');
+          const x = JSON.parse(fs.readFileSync('.tmp/blog-v4-activation/post-transition-readiness.json', 'utf8'));
+          const expectedStage = process.env.EXPECTED_STAGE;
+          const expectedCap = Number(process.env.EXPECTED_CAP);
+          if (x.publicationReady !== true
+            || x.autopublish?.deploymentProvenance?.passed !== true
+            || x.rollout?.dbStage !== expectedStage
+            || x.rollout?.effectiveStage !== expectedStage
+            || Number(x.rollout?.effectiveDailyCap) !== expectedCap) {
+            console.error('post-transition effective rollout contract failed', { expectedStage, expectedCap, readiness: x });
+            process.exit(1);
+          }
+          NODE
+        env:
+          EXPECTED_STAGE: ${{ steps.contract.outputs.ramp }}
+          EXPECTED_CAP: ${{ steps.contract.outputs.cap }}
+
+      - name: Redeploy and promote verified inert runtime after activation failure
+        if: failure() && steps.activation_mutation.outputs.started == 'true'
+        id: inert_rollback
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p .tmp/blog-v4-activation
+          rollback_status=ACTIVATION_FAILED_ROLLBACK_FAILED
+          trap 'printf "{\"status\":\"%s\",\"releaseCommit\":\"%s\"}\n" "$rollback_status" "${{ inputs.release_commit }}" > .tmp/blog-v4-activation/rollback-status.json' EXIT
+          update_env() {
+            local name="$1" value="$2"
+            npx vercel env update "$name" production --value "$value" --yes --token "$VERCEL_TOKEN" >/dev/null 2>&1 \
+              || npx vercel env add "$name" production --value "$value" --yes --token "$VERCEL_TOKEN" >/dev/null
+          }
+          update_env BLOG_AUTOPUBLISH_MODE draft_only || exit 1
+          update_env BLOG_GENERATION_CRON_ENABLED false || exit 1
+          update_env BLOG_CONTENT_FACTORY_ENABLED false || exit 1
+          update_env BLOG_AI_CONTROL_PLANE_ENABLED 0 || exit 1
+          update_env BLOG_CONTENT_FACTORY_WORKFLOW_START_LIMIT 1 || exit 1
+          update_env BLOG_DAILY_PUBLISH_CAP 1 || exit 1
+          update_env BLOG_PUBLICATION_RAMP_STAGE pilot_3 || exit 1
+          update_env BLOG_AUTO_RAMP_ENABLED false || exit 1
+          update_env BLOG_AUTO_ROLLBACK_ENABLED true || exit 1
+          safe_url="$(npx vercel deploy --prod --skip-domain --yes --token "$VERCEL_TOKEN")" || exit 1
+          echo "safe_url=$safe_url" > .tmp/blog-v4-activation/inert-candidate-url.txt
+          curl --fail --silent --show-error --location \
+            --header "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            "${safe_url}/api/cron/blog-generate" > .tmp/blog-v4-activation/inert-candidate.json || exit 1
+          node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(".tmp/blog-v4-activation/inert-candidate.json","utf8")); if(x.skipped!==true || x.reason!=="blog_generation_cron_paused" || x.generationCronEnabled!==false || x.autopublishMode!=="draft_only") { console.error("inert candidate contract failed", x); process.exit(1); }' || exit 1
+          npx vercel promote "$safe_url" --yes --token "$VERCEL_TOKEN" || exit 1
+          curl --fail --silent --show-error --location \
+            --header "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            "https://www.yeosonam.com/api/cron/blog-generate" > .tmp/blog-v4-activation/inert-production.json || exit 1
+          node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(".tmp/blog-v4-activation/inert-production.json","utf8")); if(x.skipped!==true || x.reason!=="blog_generation_cron_paused" || x.generationCronEnabled!==false || x.autopublishMode!=="draft_only") { console.error("inert production contract failed", x); process.exit(1); }' || exit 1
+          rollback_status=ACTIVATION_FAILED_ROLLBACK_SUCCEEDED
+          exit 0
+
+      - name: Upload activation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blog-v4-production-activation-evidence
+          path: |
+            .activation-*.json
+            .activation-*.jsonl
+            .tmp/blog-v4-activation/
+          if-no-files-found: ignore
+          retention-days: 90

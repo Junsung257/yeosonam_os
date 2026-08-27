@@ -56,6 +56,7 @@ vi.mock('@/lib/ai-provider-policy', () => ({
 describe('blog-ai-caller — 공개 API', () => {
   beforeEach(async () => {
     delete process.env.DEEPSEEK_API_KEY;
+    delete process.env.DEEPSEEK_BLOG_PROD_API_KEY;
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.GEMINI_API_KEY;
     mocks.OpenAICtor.mockClear();
@@ -124,6 +125,22 @@ describe('blog-ai-caller — 공개 API', () => {
       temperature: 0.3,
       thinking: { type: 'disabled' },
     }), undefined);
+  });
+
+  it('블로그 전용 DeepSeek 키가 generic 키보다 우선한다', async () => {
+    process.env.DEEPSEEK_API_KEY = 'generic-key';
+    process.env.DEEPSEEK_BLOG_PROD_API_KEY = 'blog-production-key';
+    mocks.dsCreate.mockResolvedValue({
+      choices: [{ finish_reason: 'stop', message: { content: 'blog response long enough' } }],
+    });
+
+    const { generateBlogTextWithReceipt } = await import('./blog-ai-caller');
+    await generateBlogTextWithReceipt('prompt', { model: 'deepseek-v4-flash' });
+
+    expect(mocks.OpenAICtor).toHaveBeenCalledWith(expect.objectContaining({
+      apiKey: 'blog-production-key',
+      baseURL: 'https://api.deepseek.com',
+    }));
   });
 
   it('DeepSeek Pro rewrite enables thinking without a misleading temperature', async () => {

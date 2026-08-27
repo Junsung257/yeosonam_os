@@ -18,6 +18,16 @@ describe('blog publication controller source contract', () => {
     expect(source).toContain('modelCalls: 0');
   });
 
+  it('uses the fenced atomic commercial path when the content factory is enabled', () => {
+    expect(source).toContain('publishBlogCommercialOperationV4');
+    expect(source).toContain("if (factoryEnabled)");
+    expect(source).toContain('operationFinalizedAtomically = true');
+    expect(source).toContain('if (!factoryEnabled)');
+    expect(source).toContain("reason: 'content_factory_publication_window_closed'");
+    expect(source).toContain("publicationMode: policy.mode === 'reviewed_only' ? 'reviewed_only' : 'live'");
+    expect(source).toContain("source: 'blog_publication_controller_legacy'");
+  });
+
   it('publishes an automated refresh only through its canonical target contract', () => {
     expect(source).toContain('automatedReplacement.queueId !== String(run.queue_id)');
     expect(source).toContain('targetCreativeId: automatedReplacement.targetCreativeId');

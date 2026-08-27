@@ -3,7 +3,7 @@ export function verifyBlogReleaseCandidateResponsesV4(input: {
   analyticsCanary: Record<string, unknown>;
   rankTracking: Record<string, unknown>;
   dataReadiness: Record<string, unknown>;
-}): { passed: true; checks: string[] } {
+}, options: { requirePublicationReady?: boolean } = {}): { passed: true; checks: string[] } {
   const failures: string[] = [];
   const modelResults = input.aiModelCanary.results;
   if (input.aiModelCanary.ok !== true
@@ -33,14 +33,22 @@ export function verifyBlogReleaseCandidateResponsesV4(input: {
   const parity = input.dataReadiness.snapshotParity as Record<string, unknown> | undefined;
   const remote = input.dataReadiness.remoteSnapshots as Record<string, unknown> | undefined;
   const autopublish = input.dataReadiness.autopublish as Record<string, unknown> | undefined;
-  if (input.dataReadiness.ok !== true
+  const requirePublicationReady = options.requirePublicationReady === true;
+  if (input.dataReadiness.generationReady !== true
     || schema?.fullyReady !== true
+    || autopublish?.effectiveMode !== 'draft_only') {
+    failures.push('data_readiness_contract_failed');
+  }
+  if (requirePublicationReady && (
+    input.dataReadiness.ok !== true
+    || input.dataReadiness.publicationReady !== true
     || parity?.parity !== true
     || remote?.catalog !== true
     || remote?.detail !== true
     || Number(input.dataReadiness.analyticsCanary24h) < 1
-    || autopublish?.effectiveMode !== 'draft_only') {
-    failures.push('data_readiness_contract_failed');
+    || Number(input.dataReadiness.approvedForSlotCount) < 1
+  )) {
+    failures.push('publication_readiness_contract_failed');
   }
   if (failures.length > 0) throw new Error(failures.join(','));
   return {

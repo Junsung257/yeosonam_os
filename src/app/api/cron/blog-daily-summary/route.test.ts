@@ -90,8 +90,8 @@ describe('blog daily summary report day', () => {
     expect((triggerStep.match(/^NODE$/gm) ?? []).length).toBe(3);
     expect(selectStep).toContain('"27 0,3,6,9,12 * * *"|"40 13 * * *")');
     expect(selectStep).toContain('endpoint="trend-topic-miner"');
-    expect(generator?.schedule).toBe('5 16,17,18,19,20,21 * * *');
-    expect(publisher?.schedule).toBe('5 0,3,6,9,12 * * *');
+    expect(generator?.schedule).toBe('5,15,25,35,45,55 16-21 * * *');
+    expect(publisher?.schedule).toBe('0,30 0-13 * * *');
     expect(summary?.schedule).toBe('45 13 * * *');
     expect(workflow).toContain("cron: '7 16,17,18,19,20,21 * * *'");
     expect(workflow).toContain("cron: '7 0,3,6,9,12 * * *'");

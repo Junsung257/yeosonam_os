@@ -52,6 +52,13 @@ const REQUIRED_OBSERVATIONS = [
   'maxSnapshotLagMinutes',
   'searchCollectorFresh',
   'analyticsCollectorFresh',
+  'candidateApprovalRateRecent100',
+  'candidateSampleSizeRecent',
+  'approvedInventoryCount',
+  'verifiedBriefCount',
+  'indexingDeadJobCount',
+  'provenanceMismatchCount',
+  'cannibalizationBlockerRate',
 ] as const;
 
 export interface BlogPublicationRolloutState {
@@ -81,6 +88,13 @@ export interface BlogPublicationRolloutSignals {
   maxSnapshotLagMinutes: number | null;
   searchCollectorFresh: boolean | null;
   analyticsCollectorFresh: boolean | null;
+  candidateApprovalRateRecent100: number | null;
+  candidateSampleSizeRecent: number | null;
+  approvedInventoryCount: number | null;
+  verifiedBriefCount: number | null;
+  indexingDeadJobCount: number | null;
+  provenanceMismatchCount: number | null;
+  cannibalizationBlockerRate: number | null;
 }
 
 export interface BlogPublicationRolloutEvaluation {
@@ -202,6 +216,8 @@ export function evaluateBlogPublicationRolloutWindow(input: {
   }
   if ((signals.blog5xxLast15m ?? 0) >= 2) severeReasons.push('blog_5xx_threshold_exceeded');
   if (signals.aiCostCapExceeded === true) severeReasons.push('daily_ai_cost_cap_exceeded');
+  if ((signals.indexingDeadJobCount ?? 0) > 0) severeReasons.push('indexing_dead_job_present');
+  if ((signals.provenanceMismatchCount ?? 0) > 0) severeReasons.push('production_provenance_mismatch');
 
   if (severeReasons.length > 0) {
     return {
@@ -247,6 +263,13 @@ export function evaluateBlogPublicationRolloutWindow(input: {
   }
   if (signals.searchCollectorFresh === false) unhealthyReasons.push('search_collector_not_fresh');
   if (signals.analyticsCollectorFresh === false) unhealthyReasons.push('analytics_collector_not_fresh');
+  if ((signals.candidateSampleSizeRecent ?? 0) >= 100
+    && (signals.candidateApprovalRateRecent100 ?? 0) < 0.7) {
+    unhealthyReasons.push('candidate_approval_rate_below_70pct');
+  }
+  if ((signals.cannibalizationBlockerRate ?? 0) >= 0.05) {
+    unhealthyReasons.push('cannibalization_blocker_rate_not_below_5pct');
+  }
 
   if (unhealthyReasons.length > 0) {
     const unhealthyWindowStreakAfter = state.unhealthyWindowStreak + 1;
@@ -272,11 +295,21 @@ export function evaluateBlogPublicationRolloutWindow(input: {
 
   const healthyWindowStreakAfter = state.healthyWindowStreak + 1;
   const definition = getBlogPublicationRampDefinition(stageBefore);
+  const max30ReadinessReasons = stageBefore === 'ramp_10'
+    ? [
+        ...((signals.candidateSampleSizeRecent ?? 0) < 100 ? ['recent_candidate_sample_below_100'] : []),
+        ...((signals.candidateApprovalRateRecent100 ?? 0) < 0.7 ? ['candidate_approval_rate_below_70pct'] : []),
+        ...((signals.approvedInventoryCount ?? 0) < 60 ? ['approved_inventory_below_60'] : []),
+        ...((signals.verifiedBriefCount ?? 0) < 90 ? ['verified_brief_inventory_below_90'] : []),
+        ...((signals.cannibalizationBlockerRate ?? 1) >= 0.05 ? ['cannibalization_blocker_rate_not_below_5pct'] : []),
+      ]
+    : [];
   const mayPromote = input.autoRampEnabled
     && definition.promotionHealthyWindows !== null
     && healthyWindowStreakAfter >= definition.promotionHealthyWindows
     && definition.promotionPublicationMinimum !== null
-    && accumulatedPublications >= definition.promotionPublicationMinimum;
+    && accumulatedPublications >= definition.promotionPublicationMinimum
+    && max30ReadinessReasons.length === 0;
 
   return {
     decision: mayPromote ? 'promote' : 'hold',
@@ -291,6 +324,8 @@ export function evaluateBlogPublicationRolloutWindow(input: {
     severeIncident: false,
     reasons: mayPromote
       ? ['promotion_health_window_and_volume_satisfied']
-      : [input.autoRampEnabled ? 'promotion_threshold_not_yet_satisfied' : 'automatic_ramp_disabled'],
+      : input.autoRampEnabled
+        ? ['promotion_threshold_not_yet_satisfied', ...max30ReadinessReasons]
+        : ['automatic_ramp_disabled'],
   };
 }

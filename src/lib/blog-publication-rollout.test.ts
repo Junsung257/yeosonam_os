@@ -21,6 +21,13 @@ const healthySignals: BlogPublicationRolloutSignals = {
   maxSnapshotLagMinutes: 2,
   searchCollectorFresh: true,
   analyticsCollectorFresh: true,
+  candidateApprovalRateRecent100: 0.8,
+  candidateSampleSizeRecent: 100,
+  approvedInventoryCount: 60,
+  verifiedBriefCount: 90,
+  indexingDeadJobCount: 0,
+  provenanceMismatchCount: 0,
+  cannibalizationBlockerRate: 0.04,
 };
 
 function state(overrides: Partial<BlogPublicationRolloutState> = {}): BlogPublicationRolloutState {
@@ -124,6 +131,30 @@ describe('blog publication rollout', () => {
     });
 
     expect(result).toMatchObject({ decision: 'promote', stageAfter: 'max_30' });
+  });
+
+  it('holds ramp_10 when max_30 inventory evidence is insufficient', () => {
+    const result = evaluateBlogPublicationRolloutWindow({
+      state: state({ stage: 'ramp_10', healthyWindowStreak: 6, publicationsSinceStageStarted: 50 }),
+      signals: { ...healthySignals, approvedInventoryCount: 59 },
+      publicationsObserved: 10,
+      autoRampEnabled: true,
+      autoRollbackEnabled: true,
+    });
+    expect(result).toMatchObject({ decision: 'hold', stageAfter: 'ramp_10' });
+    expect(result.reasons).toContain('approved_inventory_below_60');
+  });
+
+  it('freezes immediately on provenance mismatch or an indexing dead job', () => {
+    for (const signals of [
+      { ...healthySignals, provenanceMismatchCount: 1 },
+      { ...healthySignals, indexingDeadJobCount: 1 },
+    ]) {
+      expect(evaluateBlogPublicationRolloutWindow({
+        state: state({ stage: 'ramp_10' }), signals, publicationsObserved: 0,
+        autoRampEnabled: true, autoRollbackEnabled: true,
+      })).toMatchObject({ decision: 'freeze', stageAfter: 'pilot_3' });
+    }
   });
 
   it('demotes one stage only after two consecutive unhealthy windows', () => {

@@ -5,6 +5,13 @@
 - 운영 `/login`은 실제 계정·비밀번호 문제가 아니라 Vercel Production의 `NEXT_PUBLIC_SUPABASE_URL` 누락과 공개키 계약 불일치 때문에 Supabase 요청 전 브라우저에서 실패했다. 새 표준인 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`를 클라이언트 번들에서 정적으로 참조하고, legacy anon 키는 전환기 fallback으로만 유지한다.
 - 로그인 전용 Supabase 클라이언트는 세션 영속화·자동 갱신을 끈다. 앱의 기준 세션인 HttpOnly 서버 쿠키와 브라우저 localStorage가 같은 회전형 refresh token을 경쟁하는 경로를 제거했다.
 - Vercel Production 빌드는 `NEXT_PUBLIC_SUPABASE_URL`, 공개키, `ADMIN_EMAILS`를 선검증한다. 누락·비 HTTPS URL이면 `prebuild`에서 실패하며 `npm run verify:admin-auth-env`로 로컬에서도 같은 계약을 강제할 수 있다.
+## 2026-08-19 블로그 V4 Durable Content Factory 릴리스 후보
+
+- 관측된 GSC/Naver/고객/상품/editor 신호를 query-intent cluster로 묶고 신규·대표문서 refresh·상업성·research backlog를 판정하는 private demand/operation/stage ledger와 원자적 RPC migration을 작성했다. 운영 DB에는 아직 적용하지 않았다.
+- operation 하나당 하나의 durable workflow가 수요·불변 상품 snapshot·연구·V3 brief·DeepSeek 최대 5회·승인 재고를 처리한다. generation cron은 workflow만 시작하고 publication controller만 공개한다.
+- `pilot_3/ramp_10/max_30`에서 총 작업 3/10/30, 신규 URL 2/6/18을 동시에 제한한다. 상업성 글은 creative 공개와 indexing outbox를 한 transaction으로 처리하고 성공한 outbox는 operation을 `indexed`로 연결한다.
+- 관리자 화면에 Demand→Indexed 퍼널, provenance, migration, effective mode, rollout, 승인 재고 일수, skip reason을 추가했다. 기능 플래그 기본값은 OFF이며 코드·migration·테스트·문서만 준비한 상태다. push, PR, 운영 배포, 운영 migration, 환경변수 변경은 수행하지 않았다.
+- AI Control Plane P0를 추가했다. durable Blog V4는 `invokeAi`를 통해 호출 전 global/workload/candidate 예산 예약, idempotency, DeepSeek-only, candidate당 Flash 1회·Pro 1회, 성공·실패 receipt 정산을 적용한다. 공용 gateway 자동 escalation은 opt-in이며 advisor 상한을 실제 적용한다. `BLOG_AI_CONTROL_PLANE_ENABLED=0`이 기본이며 migration·키 분리·운영 활성화는 남은 승인 작업이다.
 
 ## 2026-08-17 상품등록 DeepSeek 실제 샘플 재검증 보강
 

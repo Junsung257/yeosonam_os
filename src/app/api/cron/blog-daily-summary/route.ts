@@ -658,6 +658,11 @@ async function runDailySummary(request: NextRequest) {
       { count: null, error: { message: 'timeout' } },
       { data: null, error: { message: 'timeout' } },
       { data: null, error: { message: 'timeout' } },
+      { data: null, error: { message: 'timeout' } },
+      { count: null, error: { message: 'timeout' } },
+      { count: null, error: { message: 'timeout' } },
+      { count: null, error: { message: 'timeout' } },
+      { data: null, error: { message: 'timeout' } },
       { count: null, error: { message: 'timeout' } },
       { count: null, error: { message: 'timeout' } },
       { data: null, error: { message: 'timeout' } },
@@ -700,8 +705,28 @@ async function runDailySummary(request: NextRequest) {
         .eq('channel', 'naver_blog')
         .eq('status', 'published')
         .limit(1000),
+      supabaseAdmin.from('blog_generation_runs')
+        .select('status')
+        .in('status', ['approved_for_slot', 'human_review', 'quarantine', 'published', 'failed'])
+        .order('created_at', { ascending: false })
+        .limit(100),
+      supabaseAdmin.from('blog_content_operations').select('id', { count: 'exact', head: true })
+        .eq('status', 'approved_for_slot'),
+      supabaseAdmin.from('blog_content_stage_events').select('operation_id', { count: 'exact', head: true })
+        .eq('stage', 'brief_verified').eq('status', 'succeeded'),
+      supabaseAdmin.from('blog_indexing_jobs').select('id', { count: 'exact', head: true })
+        .eq('status', 'failed'),
+      supabaseAdmin.from('blog_content_operations')
+        .select('failure_code,skip_reason')
+        .order('created_at', { ascending: false })
+        .limit(100),
     ]), 8_000, rolloutFallback);
-    const [unsafePublishedToday, badPublishedRuns, budgetRows, latestSnapshot, recentSearch, recentAnalytics, publicSurfaceRows, allPublishedTitles] = rolloutObservations;
+    const [
+      unsafePublishedToday, badPublishedRuns, budgetRows, latestSnapshot,
+      recentSearch, recentAnalytics, publicSurfaceRows, allPublishedTitles,
+      recentCandidates, approvedInventory, verifiedBriefs, deadIndexingJobs,
+      recentContentOperations,
+    ] = rolloutObservations;
     const budgetTotals = budgetRows.error || !Array.isArray(budgetRows.data)
       ? null
       : budgetRows.data.reduce((acc: { used: number; cap: number }, row: any) => ({
@@ -772,6 +797,18 @@ async function runDailySummary(request: NextRequest) {
         })();
     const controllerObservationAvailable = publisherRanToday
       && typeof publisherCron?.last_status === 'string';
+    const recentCandidateRows = !recentCandidates.error && Array.isArray(recentCandidates.data)
+      ? recentCandidates.data
+      : null;
+    const approvedCandidateCount = recentCandidateRows?.filter((row: any) => (
+      ['approved_for_slot', 'published'].includes(String(row.status || ''))
+    )).length ?? 0;
+    const recentOperationRows = !recentContentOperations.error && Array.isArray(recentContentOperations.data)
+      ? recentContentOperations.data
+      : null;
+    const cannibalizationBlockerCount = recentOperationRows?.filter((row: any) => (
+      /cannibal|duplicate|representative|canonical/i.test(`${row.failure_code || ''} ${row.skip_reason || ''}`)
+    )).length ?? 0;
     const signals: BlogPublicationRolloutSignals = {
       reviewBlockedOrHighRiskPublicCount: unsafePublishedToday.error || unsafeDailyPolicyCount == null
         ? null
@@ -802,6 +839,17 @@ async function runDailySummary(request: NextRequest) {
       maxSnapshotLagMinutes,
       searchCollectorFresh: recentSearch.error ? null : Number(recentSearch.count || 0) > 0,
       analyticsCollectorFresh: recentAnalytics.error ? null : Number(recentAnalytics.count || 0) > 0,
+      candidateApprovalRateRecent100: recentCandidateRows == null || recentCandidateRows.length === 0
+        ? null
+        : approvedCandidateCount / recentCandidateRows.length,
+      candidateSampleSizeRecent: recentCandidateRows == null ? null : recentCandidateRows.length,
+      approvedInventoryCount: approvedInventory.error ? null : Number(approvedInventory.count || 0),
+      verifiedBriefCount: verifiedBriefs.error ? null : Number(verifiedBriefs.count || 0),
+      indexingDeadJobCount: deadIndexingJobs.error ? null : Number(deadIndexingJobs.count || 0),
+      provenanceMismatchCount: autopublishPolicy.deploymentProvenance.passed ? 0 : 1,
+      cannibalizationBlockerRate: recentOperationRows == null || recentOperationRows.length === 0
+        ? null
+        : cannibalizationBlockerCount / recentOperationRows.length,
     };
     const evaluation = evaluateBlogPublicationRolloutWindow({
       state: rolloutStateResult.state,

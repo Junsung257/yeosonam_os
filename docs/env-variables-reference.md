@@ -6,17 +6,22 @@
 |---|---:|---|
 | `BLOG_AUTOPUBLISH_MODE` | `draft_only` | `draft_only`, `reviewed_only`, `live`; 누락/오타는 fail-closed |
 | `BLOG_PRODUCTION_ALLOWED_GIT_REF` | `main` | Vercel production 자동발행을 허용할 유일한 Git ref. production에서 ref/SHA 증거가 없거나 다르면 자동으로 `draft_only` |
+| `BLOG_PRODUCTION_ALLOWED_COMMIT_SHA` | 없음 | 승인된 production `main`의 정확한 40자리 SHA. 누락·형식 오류·실제 build provenance 불일치 시 `draft_only` |
 | `BLOG_DAILY_PUBLISH_CAP` | `1` | Asia/Seoul 일일 공개 상한 |
 | `BLOG_PUBLICATION_RAMP_STAGE` | `pilot_3` | 환경 상한: `pilot_3`, `ramp_10`, `max_30`. 실효 단계는 환경 상한과 DB rollout 상태 중 더 낮은 단계 |
 | `BLOG_AUTO_RAMP_ENABLED` | `false` | `true`일 때만 완전한 일일 관측 7회와 단계별 누적 발행량을 만족하면 `pilot_3→ramp_10→max_30` 자동 승격 |
 | `BLOG_AUTO_ROLLBACK_ENABLED` | `true` | 심각 사고는 즉시 동결·pilot 복귀, 일반 불건전 관측 2회 연속은 한 단계 강등 |
 | `BLOG_DAILY_CANDIDATE_CAP` | `30` | KST 야간에 생성·검증할 후보 상한. 공개 상한이 아니며 최대 30 |
 | `BLOG_DAILY_AI_COST_CAP_USD` | `2` | KST 일일 AI 비용 상한. 공급자 호출 전에 DB 원자 예약이 실패하거나 상한을 넘으면 호출 금지 |
+| `BLOG_AI_CONTROL_PLANE_ENABLED` | `0` | `1`일 때 durable Blog V4 DeepSeek 호출이 전역/workload/candidate 예산 방화벽과 영수증 RPC를 통과해야 함. migration·dry-run 검증 전에는 켜지 않음 |
+| `AI_LEGACY_INTERNAL_RETRIES_ENABLED` | `0` | 레거시 공용 LLM gateway의 내부 재시도 opt-in. 기본 0이며 durable blog에는 적용되지 않음 |
 | `BLOG_MAX_WEATHER_SHARE_30D` | `0.20` | 최근 30일 날씨 archetype 비중 상한 |
 | `BLOG_MAX_SAME_ARCHETYPE_IN_LAST_10` | `2` | 최근 10개 same-archetype 상한 |
 | `BLOG_REQUIRE_DEMAND_SIGNAL` | `true` | 관측·검증 demand signal 필수 |
 | `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS` | 없음 | `1`일 때만 DB 절전 모드에서도 블로그 핵심 체인(`rank-tracking`, `blog-data-readiness`, `blog-generate`, `blog-publication-controller`, `blog-indexing-worker`, `blog-ai-model-canary`, `blog-analytics-canary`, `analytics-delivery`) 실행. 누락 시 전체 체인은 fail-closed |
 | `BLOG_GENERATION_CRON_ENABLED` | 없음 (`false`) | `true`/`1`일 때만 야간 `blog-generate` cron이 모델 호출을 수행. 누락·오타는 pause이며, 승인된 수동 `force=true` 검증만 예외 |
+| `BLOG_CONTENT_FACTORY_ENABLED` | 없음 (`false`) | `true`/`1`일 때만 demand materializer와 Durable Content Factory workflow를 사용. 누락 시 기존 V4 경로 유지 |
+| `BLOG_CONTENT_FACTORY_WORKFLOW_START_LIMIT` | `6` | 한 번의 10분 cron에서 시작할 workflow 상한. activation은 draft/reviewed/pilot1=`1`, pilot3=`3`, ramp10=`6`, max30=`12`로 고정하며 실패 복구는 `1`; 공개 상한과는 별개 |
 | `BLOG_CORPUS_APPLY_CONFIRM` | 없음 | corpus quarantine apply 이중 확인; 평소 설정 금지 |
 | `BLOG_SEARCH_IMPORT_APPLY_CONFIRM` | 없음 | 관측 검색성과 import apply 이중 확인; 평소 설정 금지 |
 | `BLOG_SNAPSHOT_APPLY_CONFIRM` | 없음 | public snapshot DB refresh 이중 확인; 평소 설정 금지 |
@@ -30,10 +35,17 @@
 | `NAVER_ADS_API_KEY` / `NAVER_ADS_SECRET_KEY` / `NAVER_ADS_CUSTOMER_ID` | 없음 | Naver Search Ads Keyword Tool 월간검색량; 하나라도 없으면 volume은 `null` |
 | `SERPAPI_KEY` | 없음 | 기존 선택형 rank tracking 전용; Blog SERP V3 생성에는 필요하지 않음 |
 | `DEEPSEEK_API_KEY` | 없음 | Blog V4 Flash 초안과 Pro 재작성용 server-only key |
+| `DEEPSEEK_BLOG_PROD_API_KEY` | 없음 | Control Plane 전환 후 blog-production 전용 DeepSeek key. 기존 key와 동시 설정 시 workload policy가 지정한 키만 사용 |
+| `DEEPSEEK_PRODUCT_PROD_API_KEY` | 없음 | 상품등록 workload 전용 key; Control Plane migration 이후 상품 lane에서만 사용 |
+| `DEEPSEEK_JARVIS_PROD_API_KEY` | 없음 | Jarvis workload 전용 key; Blog route에서 읽지 않음 |
+| `DEEPSEEK_STAGING_API_KEY` | 없음 | staging·rehearsal 전용 key; production route에서 읽지 않음 |
 | `GOOGLE_AI_API_KEY` | 없음 | 다른 플랫폼 AI 기능 전용. Blog V4 발행 경로는 이 키를 읽지 않음 |
 | `BLOG_GSC_CATCHUP_DAYS` | `7` | 매일 재수집하는 최근 GSC 날짜 수(최대 7) |
 | `BLOG_GSC_BACKFILL_DAYS` | `90` | 보강할 GSC 전체 관측 기간(최대 90일) |
 | `BLOG_GSC_BACKFILL_CHUNK_DAYS` | `7` | 한 번의 rank-tracking에서 추가로 보강할 과거 날짜 수(최대 7). 실패 시 cursor 전진 금지 |
+
+Readiness 응답의 `generationReady`와 `publicationReady`는 분리된다. `approved_for_slot=0`은
+`publicationReady=false` 사유지만 draft-only 생성 자체를 막지 않는다.
 
 운영 최초 반영은 반드시 `BLOG_AUTOPUBLISH_MODE=draft_only`로 시작합니다. DB 절전 모드가 운영 기본값인 동안에는 검증된 배포에서만 `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS=1`을 함께 설정하고, draft canary 전후의 발행·공개·색인 건수를 비교한 뒤 `live`를 승인합니다. apply confirmation 값은 상시 환경 변수로 두지 않고 승인된 일회성 change window에서만 사용합니다.
 
@@ -124,6 +136,8 @@ LLM trace는 원문 prompt/response를 속성에 저장하지 않고 `gen_ai.ope
 | `NEXT_PUBLIC_BASE_URL` | 사이트 루트 URL | `https://yeosonam.com` |
 | `NEXT_PUBLIC_CONSULT_PHONE` | 고객 QA 채팅 **전화 상담** 버튼용 (`tel:`). 미설정 시 전화 버튼 숨김 | `0511234567` 또는 `+82511234567` |
 | `CRON_SECRET` | 크론 작업 인증 Bearer 토큰 (Vercel Cron Jobs가 `Authorization: Bearer <CRON_SECRET>` 전송) | `랜덤 문자열` |
+| `BLOG_OPS_READ_TOKEN` | 블로그 운영 대시보드·readiness 점검 전용 읽기 토큰. `CRON_SECRET`과 분리하고 값 자체는 로그·응답에 노출하지 않습니다. | `랜덤 문자열` |
+| `BLOG_OPS_ALLOW_CRON_FALLBACK` | 블로그 운영 조회에서 legacy `CRON_SECRET` fallback 허용 여부. Production strict 전환 후 `0`으로 고정합니다. | `0` 또는 `1` |
 | `DB_RESOURCE_SAVER_MODE` | Supabase 압박 시 비필수 블로그/마케팅/광고/에이전트 크론을 스킵하고 cron DB 로깅을 중지합니다. Production 기본값은 보호 모드이며, DB 회복 후 `0`으로 꺼서 재개합니다. | `1` 또는 `0` |
 | `DB_RESOURCE_SAVER_PUBLIC_READS` | Supabase 압박 중 공개 고객/탐색 페이지의 DB 읽기 허용 여부입니다. 장애 중에는 미설정/`0`으로 두어 홈, 상품상세, 여행지, 블로그 목적지, 명소 페이지의 비필수 DB 읽기를 막고, `/rest/v1` 및 SQL 헬스체크가 통과한 뒤에만 `1`로 엽니다. | `0` 또는 `1` |
 | `DB_RESOURCE_SAVER_ALLOW_PRODUCT_CRONS` | Supabase 압박 중 상품등록 유지보수 크론 허용 여부입니다. 장애 중에는 미설정/`0`으로 두고, DB 회복 후 통제된 catch-up 실행이 필요할 때만 `1`로 엽니다. | `0` 또는 `1` |
@@ -613,7 +627,7 @@ The audit covers:
 |---|---|
 | Public data probes | `OPEN_CHECK_PACKAGE_ID`, `OPEN_CHECK_REF_CODE`, `OPEN_CHECK_BLOG_SLUG` |
 | Marketing dynamic page probes | `MARKETING_CHECK_CARD_NEWS_ID`, `MARKETING_CHECK_VARIANT_GROUP_ID` |
-| Protected ops probes | `CRON_SECRET`, or `OPEN_CHECK_AUTH_COOKIE` for cookie-authenticated staging checks |
+| Protected ops probes | `BLOG_OPS_READ_TOKEN` (preferred), `CRON_SECRET` fallback, or `OPEN_CHECK_AUTH_COOKIE` for cookie-authenticated staging checks |
 | External management APIs | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF`, `VERCEL_TOKEN` |
 | Runtime integrations | The critical keys listed in `src/config/runtime-env-readiness.json` |
 | Optional runtime integrations | The optional integration keys listed in `src/config/runtime-env-readiness.json` |

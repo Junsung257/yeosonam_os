@@ -38,6 +38,10 @@ describe('blog publication rollout repository', () => {
         blog5xxLast15m: 0, aiCostCapExceeded: false, controllerSuccessRate: 1,
         indexingEnqueueParity: 1, dbFallbackRate: 0, maxSnapshotLagMinutes: 1,
         searchCollectorFresh: true, analyticsCollectorFresh: true,
+        candidateApprovalRateRecent100: 0.8, candidateSampleSizeRecent: 100,
+        approvedInventoryCount: 60, verifiedBriefCount: 90,
+        indexingDeadJobCount: 0, provenanceMismatchCount: 0,
+        cannibalizationBlockerRate: 0.04,
       },
     });
     expect(result).toEqual({ persisted: true, error: null });
