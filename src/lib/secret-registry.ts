@@ -25,6 +25,7 @@ export type SecretKey =
   | 'AD_OS_META_CAPI_UPLOAD_ENABLED'
   | 'AD_OS_NAVER_LIMITED_WRITE_ENABLED'
   | 'ADMIN_API_TOKEN'
+  | 'PRODUCT_REGISTRATION_UPLOAD_TOKEN'
   | 'PRODUCT_REGISTRATION_PROOF_SECRET'
   | 'PRODUCT_REGISTRATION_BROWSER_WS_ENDPOINT'
   | 'PRODUCT_REGISTRATION_CHROMIUM_PACK_URL'
@@ -196,12 +197,33 @@ export type SecretKey =
   | 'UPSTASH_REDIS_REST_TOKEN'
   | 'AI_IMAGE_GEN_ENABLED';
 
-export function getSecret(key: SecretKey): string | null {
-  const value = process.env[key];
+type StaticSecretKey = 'PRODUCT_REGISTRATION_UPLOAD_TOKEN' | 'DEEPSEEK_API_KEY';
+
+function normalizeSecretValue(value: string | undefined): string | null {
   if (!value) return null;
   const trimmed = value.trim();
   if (!trimmed || trimmed === '""' || trimmed === "''") return null;
   return trimmed;
+}
+
+export function getSecret(key: SecretKey): string | null {
+  return normalizeSecretValue(process.env[key]);
+}
+
+/**
+ * Static env reads for code that is also bundled into Edge middleware.
+ *
+ * Do not replace these branches with process.env[key]. Next.js can inline
+ * these explicit references in the Edge bundle, while dynamic indexing is
+ * not reliable there.
+ */
+export function getStaticSecret(key: StaticSecretKey): string | null {
+  switch (key) {
+    case 'PRODUCT_REGISTRATION_UPLOAD_TOKEN':
+      return normalizeSecretValue(process.env.PRODUCT_REGISTRATION_UPLOAD_TOKEN);
+    case 'DEEPSEEK_API_KEY':
+      return normalizeSecretValue(process.env.DEEPSEEK_API_KEY);
+  }
 }
 
 export function hasSecrets(keys: SecretKey[]): boolean {

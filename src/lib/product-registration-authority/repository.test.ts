@@ -63,7 +63,7 @@ describe('product registration authority repository', () => {
 
     expect(result.catalogProductId).toBe('catalog-1');
     expect(result.revisionId).toBe('revision-1');
-    expect(rpc).toHaveBeenCalledWith('commit_product_registration_revision_atomic', expect.objectContaining({
+    expect(rpc).toHaveBeenCalledWith('commit_product_registration_revision_v61_atomic', expect.objectContaining({
       p_payload: expect.objectContaining({
         tenant_id: '00000000-0000-0000-0000-000000000001',
         product_key: 'source:source-1:section:section-1',
@@ -99,7 +99,13 @@ describe('product registration authority repository', () => {
 
   it('projects legacy compatibility rows only from an immutable revision payload', async () => {
     const rpc = vi.fn().mockResolvedValue({
-      data: { package_id: 'package-1', internal_code: 'KRN-ABC' },
+      data: {
+        package_id: 'package-1',
+        internal_code: 'KRN-ABC',
+        projection_hash: HASH,
+        product_price_count: 1,
+        representative_price: 999000,
+      },
       error: null,
     });
 
@@ -121,7 +127,13 @@ describe('product registration authority repository', () => {
       },
     });
 
-    expect(result).toEqual({ packageId: 'package-1', internalCode: 'KRN-ABC' });
+    expect(result).toEqual({
+      packageId: 'package-1',
+      internalCode: 'KRN-ABC',
+      projectionHash: HASH,
+      productPriceCount: 1,
+      representativePrice: 999000,
+    });
     expect(rpc).toHaveBeenCalledWith('project_product_registration_compatibility_atomic', {
       p_payload: expect.objectContaining({
         catalog_product_id: 'catalog-1',

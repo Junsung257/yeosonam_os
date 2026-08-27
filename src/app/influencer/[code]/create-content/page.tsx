@@ -70,7 +70,7 @@ export default function CreateContentPage() {
     try {
       const res = await fetch('/api/packages');
       const json = await res.json();
-      setPackages((json.packages || []).filter((p: Package) => p.status === 'approved'));
+      setPackages(json.packages || []);
     } catch {
       /* */
     } finally {

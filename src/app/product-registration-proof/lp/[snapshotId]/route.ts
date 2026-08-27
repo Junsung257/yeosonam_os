@@ -20,7 +20,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ sna
       headers: { 'x-product-registration-proof-route': PROOF_ROUTE_VERSION },
     });
   }
-  const snapshot = await fetchPublicPackageSnapshotById(supabase, snapshotId);
+  const snapshot = await fetchPublicPackageSnapshotById(supabase, snapshotId, { allowProofCopyIssues: true });
   if (!snapshot || !verifyProductRegistrationV6ProofToken(token, {
     snapshotId,
     snapshotHash: snapshot.row.snapshot_hash,

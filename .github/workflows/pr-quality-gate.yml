@@ -88,6 +88,10 @@ jobs:
       - name: Build (no analyze)
         run: npm run build
         env:
+          # Keep both PR build gates on the same heap/recovery contract so a
+          # runner cannot fail nondeterministically during Next type validation.
+          NODE_OPTIONS: '--max-old-space-size=8192'
+          NEXT_BUILD_RECOVERY_WAIT_MS: '30000'
           NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co'
           NEXT_PUBLIC_SUPABASE_ANON_KEY: 'dummy-anon-key-for-ci'
           SUPABASE_SERVICE_ROLE_KEY: 'dummy-service-role-key-for-ci'

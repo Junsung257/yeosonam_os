@@ -70,6 +70,13 @@ export type ProductRegistrationV6ReadinessReport = {
   generatedAt: string;
   readyForCanary: boolean;
   readyForPublication: boolean;
+  /**
+   * Indicates that individually source-proven uploads can publish even when
+   * the broad statistical cohort remains frozen. This is intentionally
+   * separate from readyForPublication, which still describes full-cohort
+   * publication readiness.
+   */
+  readyForSourceProof: boolean;
   readyForFullCohort: boolean;
   checks: ProductRegistrationV6ReadinessCheck[];
   recommendations: string[];
@@ -169,6 +176,16 @@ export function buildProductRegistrationV6ReadinessReport(
     publicationUnlocked ? 'V6_PUBLICATION_UNLOCKED' : 'V6_PUBLICATION_LOCKED',
     publicationUnlocked ? 'pass' : 'blocked',
     publicationUnlocked ? 'CAS 고객 공개가 허용된 상태입니다.' : '고객 공개는 안전하게 동결돼 있습니다.',
+  );
+
+  // The retired source-proof environment bypass is intentionally ignored.
+  // Frozen publication can only be opened by an exact, one-time release
+  // authorization bound to revision + snapshot + browser proof.
+  const sourceProofPathEnabled = false;
+  add(
+    'V6_RELEASE_AUTHORIZATION_REQUIRED',
+    'warning',
+    '동결 상태의 공개는 revision·snapshot·browser proof에 묶인 일회성 승인권으로만 허용됩니다. 환경변수 우회는 사용하지 않습니다.',
   );
 
   add(
@@ -348,12 +365,14 @@ export function buildProductRegistrationV6ReadinessReport(
   ]);
   const readyForCanary = !checks.some(check => check.status === 'blocked' && canaryBlockerCodes.has(check.code));
   const readyForPublication = !checks.some(check => check.status === 'blocked' && publicationBlockerCodes.has(check.code));
+  const readyForSourceProof = false;
   const readyForFullCohort = readyForPublication && transportReady && backfillComplete && cohortReady;
 
   return {
     generatedAt: input.generatedAt ?? new Date().toISOString(),
     readyForCanary,
     readyForPublication,
+    readyForSourceProof,
     readyForFullCohort,
     checks,
     recommendations: [...new Set(recommendations)],

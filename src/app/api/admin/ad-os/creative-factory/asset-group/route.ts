@@ -41,7 +41,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   let packageQuery = supabaseAdmin
     .from('travel_packages')
     .select('id,tenant_id')
-    .in('publication_state', ['approved', 'published'])
+    .eq('publication_state', 'published')
     .order('created_at', { ascending: false })
     .limit(1);
   if (productId) packageQuery = packageQuery.eq('id', productId);

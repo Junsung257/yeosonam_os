@@ -252,7 +252,7 @@ export function scheduleUploadPostRegistrationTasks(input: {
         const canonicalBackfillRequired = !canonicalReady
           && ['normalized', 'verified', 'proofed'].includes(String(registrationJob?.v4_stage ?? ''));
         const published = canonicalReady && verified && proofed
-          && (packageRow?.publication_state === 'approved' || packageRow?.publication_state === 'published');
+          && packageRow?.publication_state === 'published';
         const nextStage = published
           ? 'published'
           : canonicalBackfillRequired

@@ -6,6 +6,13 @@ const ON_VALUES = new Set(['1', 'true', 'on', 'enabled', 'yes']);
 const PRODUCT_CRON_ALLOW_VALUES = new Set(['product', 'product-crons', 'product_crons']);
 const ESSENTIAL_CRONS = new Set([
   'clobe-bank-sync',
+  // Product publication is already committed atomically before these workers
+  // run. They are the repair path for customer-visible cache convergence and
+  // stale workflow recovery, so skipping them would strand a valid pointer.
+  'product-registration-v5-outbox',
+  'product-registration-v5-convergence',
+  'product-registration-v6-watchdog',
+  'product-registration-schedule-revalidation',
 ]);
 const CRITICAL_CRONS = new Set([
   'blog-publisher',

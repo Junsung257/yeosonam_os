@@ -34,6 +34,7 @@ export type ProductRegistrationV6BrowserProofSurfaceResult = {
 export type ProductRegistrationV6BrowserProofResult = {
   status: 'passed' | 'failed';
   browserMode: 'remote-cdp' | 'local-chrome' | 'serverless-chromium';
+  browserVersion: string;
   viewport: { width: number; height: number; deviceScaleFactor: number };
   surfaces: ProductRegistrationV6BrowserProofSurfaceResult[];
   checkedAt: string;
@@ -326,6 +327,7 @@ export async function runProductRegistrationV6ChromeProof(input: {
 }): Promise<ProductRegistrationV6BrowserProofResult> {
   const { browser, mode } = await openBrowser();
   try {
+    const browserVersion = await browser.version();
     const surfaces: ProductRegistrationV6BrowserProofSurfaceResult[] = [];
     for (const surface of ['packages', 'lp'] as const) {
       surfaces.push(await proveSurface({
@@ -342,6 +344,7 @@ export async function runProductRegistrationV6ChromeProof(input: {
     return {
       status: surfaces.every(surface => surface.status === 'passed') ? 'passed' : 'failed',
       browserMode: mode,
+      browserVersion,
       viewport: VIEWPORT,
       surfaces,
       checkedAt: new Date().toISOString(),

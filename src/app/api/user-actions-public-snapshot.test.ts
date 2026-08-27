@@ -7,19 +7,14 @@ function routeSource(): string {
 }
 
 describe('user action package recommendations publication boundary', () => {
-  it('serves recent and similar package cards only after public snapshot merge', () => {
+  it('serves recent and similar package cards only through the public catalog', () => {
     const source = routeSource();
-    const queryIndex = source.indexOf(".from('travel_packages')");
-    const helperIndex = source.indexOf('async function toPublicPackageCards');
-    const responseIndex = source.indexOf('return NextResponse.json({ packages: await toPublicPackageCards');
 
-    expect(source).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
-    expect(source).toContain('function isUserActionPublicSnapshotCandidate');
-    expect(source).toContain('isCustomerPubliclyOpenable');
-    expect(source).toContain('isPublicPublicationState');
-    expect(source).toContain(".in('publication_state', ['approved', 'published'])");
-    expect(helperIndex).toBeGreaterThan(0);
-    expect(responseIndex).toBeGreaterThan(queryIndex);
+    expect(source).toContain('listPublicCatalog');
+    expect(source).toContain('getSimilarPackages');
+    expect(source).not.toContain(".from('travel_packages')");
+    expect(source).not.toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
+    expect(source).not.toContain('NextResponse.json');
   });
 
   it('does not return raw travel_packages rows from recent or similar modes', () => {
@@ -27,9 +22,8 @@ describe('user action package recommendations publication boundary', () => {
     const getIndex = source.indexOf('export async function GET');
     const getSource = source.slice(getIndex);
 
-    expect(getSource).not.toContain('normalizePackageCards(data)');
-    expect(getSource).not.toContain('normalizePackageCards(packages)');
-    expect(getSource).toContain('await toPublicPackageCards(data)');
-    expect(getSource).toContain('await toPublicPackageCards(data, order)');
+    expect(getSource).not.toContain(".from('travel_packages')");
+    expect(getSource).toContain('toPublicPackageCards(data, order)');
+    expect(getSource).toContain('apiResponse({ packages: similar })');
   });
 });

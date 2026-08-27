@@ -8,7 +8,7 @@
 
 import { type NextRequest, NextResponse } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
-import { isValidAdminApiToken } from '@/lib/api-auth';
+import { isValidAdminApiToken, isValidProductRegistrationUploadToken } from '@/lib/api-auth';
 import { verifySupabaseAccessToken, legacyJwtExpValid } from '@/lib/supabase-jwt-verify';
 
 type AdminAuthorization = {
@@ -18,7 +18,12 @@ type AdminAuthorization = {
 };
 
 async function resolveAdminAuthorization(req: NextRequest): Promise<AdminAuthorization> {
-  if (isValidAdminApiToken(req)) {
+  // A real NextRequest always exposes nextUrl, but lightweight route tests and
+  // internal adapters may provide only the standard Request URL. Keep the
+  // authorization decision identical for both shapes instead of throwing
+  // before the guard can return 401/403.
+  const pathname = req.nextUrl?.pathname ?? new URL(req.url).pathname;
+  if (isValidAdminApiToken(req) || (pathname === '/api/upload' && await isValidProductRegistrationUploadToken(req))) {
     return { authorized: true, authenticated: true, expired: false };
   }
 

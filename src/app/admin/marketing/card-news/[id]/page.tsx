@@ -513,7 +513,7 @@ export default function CardNewsEditorPage() {
                 </div>
                 {/* 하단 */}
                 <div className="flex justify-between items-end">
-                  <span className="text-white/30 text-[9px]">yeosonam.co.kr</span>
+                  <span className="text-white/30 text-[9px]">yeosonam.com</span>
                   <span className="bg-black/30 text-white text-[10px] px-2 py-0.5 rounded-full">{activeIdx + 1}/{slides.length}</span>
                 </div>
               </div>

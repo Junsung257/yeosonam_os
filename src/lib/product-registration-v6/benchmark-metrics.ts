@@ -1,5 +1,11 @@
 import type { ProductRegistrationV6TerminalOutcome } from './types';
 
+export type ProductRegistrationBenchmarkExpectedOutcome =
+  | 'EXPECTED_PUBLISHABLE'
+  | 'EXPECTED_REVIEW_REQUIRED'
+  | 'EXPECTED_SOURCE_INCOMPLETE'
+  | 'EXPECTED_NON_PRODUCT';
+
 export type ProductRegistrationBenchmarkCase = {
   caseId?: string;
   inputKind: 'hwp' | 'text';
@@ -8,6 +14,9 @@ export type ProductRegistrationBenchmarkCase = {
   predictedOutcome: 'verified' | 'degraded' | 'blocked';
   predictedTerminalOutcome?: ProductRegistrationV6TerminalOutcome;
   expectedTerminalOutcome?: ProductRegistrationV6TerminalOutcome;
+  expectedOutcome: ProductRegistrationBenchmarkExpectedOutcome;
+  predictedExpectedOutcome: ProductRegistrationBenchmarkExpectedOutcome;
+  criticalSourceSpanExact: boolean;
   publicationEligible?: boolean;
   expectedSourceIncompleteDiscard?: boolean;
   criticalFalsePublish: boolean;
@@ -45,6 +54,14 @@ export type ProductRegistrationBenchmarkSummary = {
   extractionSuccessRate: number;
   parserFallbackRate: number;
   parserDisagreementRate: number;
+  outcomeExactCount: number;
+  outcomeExactRate: number;
+  expectedPublishableCount: number;
+  publishableAcceptedCount: number;
+  publishableRecall: number;
+  unsafeReviewPublishedCount: number;
+  nonProductGeneratedCount: number;
+  criticalSourceSpanExactRate: number;
 };
 
 function rate(numerator: number, denominator: number): number {
@@ -115,6 +132,16 @@ export function summarizeProductRegistrationBenchmark(
   )).length;
   const criticalFieldCount = cases.reduce((sum, item) => sum + item.criticalFieldCount, 0);
   const criticalExactCount = cases.reduce((sum, item) => sum + item.criticalExactCount, 0);
+  const outcomeExactCount = cases.filter(item => item.expectedOutcome === item.predictedExpectedOutcome).length;
+  const expectedPublishable = cases.filter(item => item.expectedOutcome === 'EXPECTED_PUBLISHABLE');
+  const publishableAcceptedCount = expectedPublishable.filter(item =>
+    item.predictedExpectedOutcome === 'EXPECTED_PUBLISHABLE').length;
+  const unsafeReviewPublishedCount = cases.filter(item =>
+    item.expectedOutcome === 'EXPECTED_REVIEW_REQUIRED'
+    && item.predictedExpectedOutcome === 'EXPECTED_PUBLISHABLE').length;
+  const nonProductGeneratedCount = cases.filter(item =>
+    item.expectedOutcome === 'EXPECTED_NON_PRODUCT'
+    && item.predictedExpectedOutcome !== 'EXPECTED_NON_PRODUCT').length;
   return {
     sampleCount,
     publicationEligibleCount: publicationEligibleCases.length,
@@ -139,6 +166,14 @@ export function summarizeProductRegistrationBenchmark(
     extractionSuccessRate: rate(cases.filter(item => item.extractionSucceeded).length, sampleCount),
     parserFallbackRate: rate(cases.filter(item => item.parserFallbackUsed).length, sampleCount),
     parserDisagreementRate: rate(cases.filter(item => item.parserDisagreement).length, sampleCount),
+    outcomeExactCount,
+    outcomeExactRate: rate(outcomeExactCount, sampleCount),
+    expectedPublishableCount: expectedPublishable.length,
+    publishableAcceptedCount,
+    publishableRecall: rate(publishableAcceptedCount, expectedPublishable.length),
+    unsafeReviewPublishedCount,
+    nonProductGeneratedCount,
+    criticalSourceSpanExactRate: rate(cases.filter(item => item.criticalSourceSpanExact).length, sampleCount),
   };
 }
 
@@ -186,6 +221,11 @@ export function benchmarkMeetsCustomerOpenGate(input: {
     && input.summary.safeOpenWilsonLowerBound >= 0.95
     && input.summary.criticalExactMatchRate >= 0.995
     && input.summary.criticalFalsePublishCount === 0
+    && input.summary.criticalSourceSpanExactRate === 1
+    && input.summary.outcomeExactRate === 1
+    && input.summary.publishableRecall >= 0.97
+    && input.summary.unsafeReviewPublishedCount === 0
+    && input.summary.nonProductGeneratedCount === 0
     && input.summary.falseSourceIncompleteDiscardCount === 0
     && input.summary.invalidSourcePublishedCount === 0
     && input.summary.sourceIncompleteDiscardExactRate === 1

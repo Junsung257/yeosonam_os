@@ -8,13 +8,12 @@ import { DestinationImageFallback, SafeCoverImg } from '@/components/customer/Sa
 import { pickAttractionPhotoUrl } from '@/lib/image-url';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { getPublicDestinationQueryNames } from '@/lib/public-destinations';
-import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { listPublicCatalog } from '@/lib/public-catalog';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 export const revalidate = 600;
-export const dynamic = 'force-dynamic';
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
@@ -22,11 +21,11 @@ const SOCIAL_IMAGE_URL = `${BASE_URL}/og-image.png`;
 
 export const metadata: Metadata = {
   title: '여행지 완벽 가이드 | 목적지별 총정리',
-  description: '여소남이 운영팀 검증으로 엄선한 여행지별 완벽 가이드 — 관광지·일정·준비물·계절·비자까지 한 곳에서.',
+  description: '공개된 여행상품이 있는 목적지와 예약 전에 확인할 여행 정보를 한 곳에서 살펴보세요.',
   alternates: { canonical: `${BASE_URL}/destinations` },
   openGraph: {
     title: '여행지 완벽 가이드',
-    description: '여소남이 엄선한 여행지별 완벽 가이드. 목적지 Pillar Page.',
+    description: '공개된 여행상품이 있는 목적지와 예약 전 여행 정보를 확인하세요.',
     url: `${BASE_URL}/destinations`,
     type: 'website',
     images: [{ url: SOCIAL_IMAGE_URL, width: 1200, height: 630 }],
@@ -34,7 +33,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: '여행지 완벽 가이드',
-    description: '여소남이 엄선한 여행지별 완벽 가이드. 목적지 Pillar Page.',
+    description: '공개된 여행상품이 있는 목적지와 예약 전 여행 정보를 확인하세요.',
     images: [SOCIAL_IMAGE_URL],
   },
 };
@@ -71,7 +70,7 @@ async function getDestinations() {
   if (shouldSkipPublicDbReadsForResourceSaver()) return { stats: [], imagesByDest: {} };
 
   try {
-    const publicStats = await listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: 2_000 });
+    const publicStats = await listPublicCatalog(supabaseAdmin, { limit: 2_000 });
 
     const statsByDestination = new Map<string, {
       destination: string;
@@ -80,7 +79,7 @@ async function getDestinations() {
       avg_rating: number | null;
       total_reviews: number | null;
     }>();
-    (publicStats as unknown as Array<{ destination: string | null; price?: number | null }>)
+    publicStats
       .forEach((pkg) => {
         const destination = pkg.destination?.trim();
         if (!destination) return;
@@ -171,7 +170,7 @@ export default async function DestinationsIndexPage() {
             '@context': 'https://schema.org',
             '@type': 'CollectionPage',
             name: '여행지 완벽 가이드',
-            description: '여소남이 엄선한 목적지별 완벽 가이드 허브',
+            description: '공개된 여행상품이 있는 목적지와 예약 전 여행 정보 허브',
             url: `${BASE_URL}/destinations`,
             inLanguage: 'ko-KR',
             mainEntity: {
@@ -199,12 +198,12 @@ export default async function DestinationsIndexPage() {
               여행지 완벽 가이드
             </h1>
             <p className="mt-4 text-base md:text-lg text-slate-300 max-w-2xl leading-relaxed">
-              여소남 운영팀이 직접 답사·검증한 목적지별 정보 허브 — 관광지, 일정, 준비물, 비용까지 한곳에서 확인하세요.
+              공개된 상품이 있는 목적지와 일정, 준비물, 비용을 확인하는 여행 정보 허브입니다.
             </p>
             <div className="mt-6 md:mt-8 flex gap-3 text-[13px] md:text-sm text-slate-200">
               <span>🌏 {stats.length}개 여행지</span>
               <span>·</span>
-              <span>🧳 {stats.reduce((s, d) => s + d.package_count, 0)}개 엄선 패키지</span>
+              <span>🧳 공개 상품 {stats.reduce((s, d) => s + d.package_count, 0)}개</span>
             </div>
           </div>
         </header>

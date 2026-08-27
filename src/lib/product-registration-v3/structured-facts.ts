@@ -150,11 +150,20 @@ function parseKrw(text: string): number | null {
   return won ? Number(won[1].replace(/,/g, '')) : null;
 }
 
+// Keep the guide/driver term adjacent to the tip/expense term.  This avoids
+// treating an unrelated massage tip in a long inclusion line as a guide tip.
+const GUIDE_TIP_DIRECT_RE = /(?:기사|가이드)\s*(?:(?:[\/&·]\s*)?(?:기사|가이드)\s*)?(?:팁|경비)|(?:팁|경비)\s*(?:(?:[\/&·]\s*)?(?:기사|가이드)\s*)?(?:기사|가이드)/u;
+const GUIDE_FEE_RE = /(?:기사|가이드)\s*(?:(?:[\/&·]\s*)?(?:기사|가이드)\s*)?(?:비|경비)/u;
+
+function isGuideFeeClause(text: string): boolean {
+  return GUIDE_FEE_RE.test(text) && !/(?:기사|가이드)\s*팁/u.test(text);
+}
+
 function guideTipClauses(text: string): string[] {
   return text
     .split(/[,，](?!\d{3}(?:[,，]|\D|$))|[;；▶►]/u)
     .map(value => value.trim())
-    .filter(value => /(?:기사|가이드).*(?:팁|경비)|(?:팁|경비).*(?:기사|가이드)/u.test(value));
+    .filter(value => GUIDE_TIP_DIRECT_RE.test(value));
 }
 
 function guideTipAmountScope(text: string): string {
@@ -186,7 +195,7 @@ function isCleanIncludedGuideTipLine(source: string): boolean {
 function isCleanExcludedGuideTipLine(source: string, explicitExclusionContext = false): boolean {
   const clauses = guideTipClauses(source);
   if (clauses.length === 0) return false;
-  const lineStartsWithExclusion = /^(?:\s*[-•·▪▶※★]?\s*)?(?:불\s*포\s*함(?:\s*내\s*역|\s*사\s*항)?|불포함사항|불포함\s*내역)\s*[:：-]?/u.test(source);
+  const lineStartsWithExclusion = /^(?:\s*[-•·▪▶※★*]?\s*)?(?:불\s*포\s*함(?:\s*내\s*역|\s*사\s*항)?|불포함사항|불포함\s*내역)\s*[:：-]?/u.test(source);
   return explicitExclusionContext
     || lineStartsWithExclusion
     || clauses.some(clause => /(?:불포함|현지\s*지불|현지지불|별도|개인경비|매너팁)/u.test(clause));
@@ -202,6 +211,12 @@ function isSourceBackedIncludedGuideTipLine(source: string): boolean {
 
 function hasHardExcludedGuidePaymentMarker(source: string): boolean {
   return /(?:\uBD88\uD3EC\uD568|\uBCC4\uB3C4|\uD604\uC9C0\s*\uC9C0\uBD88|\uD604\uC9C0\uC9C0\uBD88)/u.test(source);
+}
+
+function hasGuideFeeExclusionMarker(source: string): boolean {
+  const guideClauses = guideTipClauses(source);
+  return /^(?:\s*[-•·▪▶※★*]?\s*)?(?:\uBD88\s*\uD3EC\uD568(?:\s*\uB0B4\uC5ED|\s*\uC0AC\uD56D)?|\uBD88\uD3EC\uD568\uC0AC\uD56D|\uBD88\uD3EC\uD568\s*\uB0B4\uC5ED)\s*[:：-]?/u.test(source)
+    || guideClauses.some(clause => /(?:\uBD88\uD3EC\uD568|\uD604\uC9C0\s*\uC9C0\uBD88|\uD604\uC9C0\uC9C0\uBD88|\uBCC4\uB3C4)/u.test(clause));
 }
 
 function guideEvidenceKey(evidence: Pick<V3Evidence, 'line_start' | 'quote'>): string {
@@ -334,6 +349,8 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
   const notices: StandardNoticeDraft[] = [];
   const patch: StructuredFactCustomerFieldPatch = {};
   const lines = sourceLines(input);
+  const fullSource = lines.map(line => line.quote).join(' ');
+  const hasExplicitNoTip = /(?:노\s*팁|NO\s*TIP)/iu.test(fullSource);
   const explicitExcludedGuideEvidence = new Set<string>();
   let currentCostSection: 'include' | 'exclude' | null = null;
   let currentDisclosureSection: 'option' | 'shopping' | null = null;
@@ -348,7 +365,7 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
     // exclusion row even if an older include heading is still active.
     const followedByExcludeHeading = lines
       .slice(lineIndex + 1, lineIndex + 3)
-      .some(next => /^(?:불\s*포\s*함(?:\s*내\s*역|\s*사\s*항)?|불포함사항|불포함\s*내역)\s*[:：]?$/i.test(next.quote.trim()));
+      .some(next => /^(?:[-•·▪▶※★*]?\s*)?(?:불\s*포\s*함(?:\s*내\s*역|\s*사\s*항)?|불포함사항|불포함\s*내역)\s*[:：]?$/i.test(next.quote.trim()));
     const sourceBackedIncludedGuideTip = isSourceBackedIncludedGuideTipLine(source);
     const guideAmountScope = guideTipAmountScope(source);
     const hasExplicitGuideAmount = parseUsd(guideAmountScope) != null
@@ -357,6 +374,58 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
       || (followedByExcludeHeading && (
         currentCostSection !== 'include' || hasExplicitGuideAmount
       ));
+    if (isGuideFeeClause(source)) {
+      const amountScope = guideTipAmountScope(source);
+      const usdAmount = parseUsd(amountScope);
+      const krwAmount = usdAmount == null ? parseKrw(amountScope) : null;
+      const amount = usdAmount ?? krwAmount;
+      const currency = usdAmount != null ? 'USD' : krwAmount != null ? '원' : null;
+      const excluded = explicitGuideExclusionContext || hasGuideFeeExclusionMarker(source) || amount != null;
+      const values = excluded
+        ? { included: false, amount, currency, payment: 'local' }
+        : { included: true, amount: null, currency: null, payment: null };
+      addFact(facts, makeFact({
+        category: 'guide_tip',
+        values,
+        evidence,
+        risk_level: 'high',
+        review_status: excluded && amount == null ? 'review_needed' : 'auto_clean',
+        standard_text: formatGuideTip(values),
+      }));
+      patch.guide_tip = excluded ? (amount ? `${currency === 'USD' ? '$' : ''}${amount}/인` : null) : '포함';
+      addNotice(notices, buildStandardNoticeDraft({
+        source_text: source,
+        category: 'surcharge_notice',
+        template_key: excluded ? 'guide.fee_local_payment' : 'guide.fee_included',
+        values: excluded ? { amount, currency, per: '1인' } : { included: true },
+        evidence: [evidence],
+        review_status: excluded && amount == null ? 'review_needed' : undefined,
+      }));
+      // Keep the historical guide-tip projection for existing readers and
+      // fixtures, but never emit a payable-tip claim when the same document
+      // explicitly says no-tip. The fee notice above is the authoritative
+      // customer wording for guide/driver expenses.
+      if (excluded && !hasExplicitNoTip) {
+        addNotice(notices, buildStandardNoticeDraft({
+          source_text: source,
+          category: 'tip_guideline',
+          template_key: 'guide.tip_amount_local_payment',
+          values: { amount, currency, per: '1인' },
+          evidence: [evidence],
+          review_status: amount == null ? 'review_needed' : undefined,
+        }));
+      } else if (!excluded) {
+        addNotice(notices, buildStandardNoticeDraft({
+          source_text: source,
+          category: 'tip_guideline',
+          template_key: 'guide.tip_included',
+          values: { included: true },
+          evidence: [evidence],
+        }));
+      }
+      // Do not let a guide fee be reinterpreted by the generic tip parser.
+      continue;
+    }
     if (isCleanExcludedGuideTipLine(source, explicitGuideExclusionContext)) {
       if (currentCostSection === 'exclude' || followedByExcludeHeading || hasHardExcludedGuidePaymentMarker(source)) {
         explicitExcludedGuideEvidence.add(guideEvidenceKey(evidence));
@@ -480,7 +549,7 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
       currentDisclosureSection = null;
       continue;
     }
-    if (/^(?:불\s*포\s*함(?:\s*내\s*역|\s*사\s*항)?|불포함사항|불포함\s*내역)\s*[:：]?$/i.test(source)) {
+    if (/^(?:[-•·▪▶※★*]?\s*)?(?:불\s*포\s*함(?:\s*내\s*역|\s*사\s*항)?|불포함사항|불포함\s*내역)\s*[:：]?$/i.test(source)) {
       currentCostSection = 'exclude';
       currentDisclosureSection = null;
       continue;
@@ -507,7 +576,7 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
       }));
     }
 
-    if ((/가이드|기사/.test(source) && /(팁|경비|매너팁|TIP)/i.test(source)) || /노\s*팁|NO\s*TIP/i.test(source)) {
+    if (guideTipClauses(source).length > 0 || /노\s*팁|NO\s*TIP/i.test(source)) {
       const explicitlyExcluded = isCleanExcludedGuideTipLine(source, explicitGuideExclusionContext);
       const included = (!explicitlyExcluded && /포함|노\s*팁|NO\s*TIP/i.test(source))
         || (currentCostSection === 'include' && !explicitlyExcluded);
@@ -543,8 +612,8 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
       }));
     }
 
-    const conditionalNoOptionAlternative = /(?:노\s*옵션|NO\s*OPTION)\s*(?:시|일\s*경우|경우|요청\s*시|변경\s*시).*(?:별도|추가|요금|문의)/i.test(source);
-    const conditionalNoShoppingAlternative = /(?:노\s*쇼핑|NO\s*SHOPPING)\s*(?:시|일\s*경우|경우|요청\s*시|변경\s*시).*(?:별도|추가|요금|문의)/i.test(source);
+    const conditionalNoOptionAlternative = /(?:노\s*옵션|NO\s*OPTION)\s*(?:견적|상품|요금|패키지|진행)?\s*(?:시|일\s*경우|경우|요청\s*시|변경\s*시|선택\s*시|진행\s*시)/i.test(source);
+    const conditionalNoShoppingAlternative = /(?:노\s*쇼핑|NO\s*SHOPPING)\s*(?:견적|상품|요금|패키지|진행)?\s*(?:시|일\s*경우|경우|요청\s*시|변경\s*시|선택\s*시|진행\s*시)/i.test(source);
 
     if (!conditionalNoOptionAlternative && /노\s*옵션|NO\s*OPTION|선택\s*관광\s*(없|무|0회)/i.test(source)) {
       addFact(facts, makeFact({

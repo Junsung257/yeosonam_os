@@ -574,9 +574,9 @@ function TodayWorkQueue({
       tone: 'neutral',
     },
     {
-      href: '/admin/packages',
+      href: '/admin/product-registration',
       label: '상품 검수',
-      detail: '등록 대기 상품 발행',
+      detail: 'exact revision 공개 심사',
       count: pendingPackagesCount,
       action: '검수하기',
       tone: 'neutral',

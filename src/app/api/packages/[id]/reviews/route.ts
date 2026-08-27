@@ -1,38 +1,38 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
-import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
+import { requireAdminRequest } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { getPublicCatalogDetail } from '@/lib/public-catalog';
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!isSupabaseConfigured) return NextResponse.json({ data: [] });
+  if (!isSupabaseConfigured) return apiResponse({ data: [] });
   const { id } = await params;
 
   // UUID 형식 사전 검증 — 잘못된 ID 는 빈 결과로 (500 회피)
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!UUID_RE.test(id)) {
-    return NextResponse.json({ data: [] });
+    return apiResponse({ data: [] });
   }
 
-  const publicSnapshot = await fetchLatestPublicPackageSnapshot(supabaseAdmin, id, {
-    tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
-  });
-  if (!publicSnapshot) {
-    return NextResponse.json({ data: [] }, {
+  const publicCatalogDetail = await getPublicCatalogDetail(supabaseAdmin, id);
+  if (!publicCatalogDetail) {
+    return apiResponse({ data: [] }, {
       headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600' },
     });
   }
 
   const { data, error } = await supabaseAdmin
     .from('post_trip_reviews')
-    .select('id, overall_rating, value_for_money, itinerary_quality, guide_quality, accommodation_quality, food_quality, title, review_text, pros, cons, helpful_count, source_type, status, created_at, customers(name)')
+    .select('id, overall_rating, value_for_money, itinerary_quality, guide_quality, accommodation_quality, food_quality, title, review_text, pros, cons, helpful_count, source_type, created_at')
     .eq('package_id', id)
+    .eq('status', 'approved')
     .order('created_at', { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ data: data ?? [] }, {
+  if (error) return apiResponse({ error: error.message }, { status: 500 });
+  return apiResponse({ data: data ?? [] }, {
     headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600' },
   });
 }
@@ -41,7 +41,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미연결' }, { status: 503 });
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+  if (!isSupabaseConfigured) return apiResponse({ error: 'DB 미연결' }, { status: 503 });
   const { id: packageId } = await params;
 
   const body = await req.json();
@@ -61,7 +63,7 @@ export async function POST(
   } = body;
 
   if (!overall_rating || overall_rating < 1 || overall_rating > 5) {
-    return NextResponse.json({ error: '별점(1~5)은 필수입니다' }, { status: 400 });
+    return apiResponse({ error: '별점(1~5)은 필수입니다' }, { status: 400 });
   }
 
   // admin_seeded 리뷰는 customer_id 없이 insert.
@@ -111,21 +113,23 @@ export async function POST(
     .select('id')
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return apiResponse({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ id: data?.id }, { status: 201 });
+  return apiResponse({ id: data?.id }, { status: 201 });
 }
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미연결' }, { status: 503 });
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+  if (!isSupabaseConfigured) return apiResponse({ error: 'DB 미연결' }, { status: 503 });
   const { id: packageId } = await params;
   const { reviewId, status } = await req.json();
 
   if (!reviewId || !status) {
-    return NextResponse.json({ error: 'reviewId, status 필수' }, { status: 400 });
+    return apiResponse({ error: 'reviewId, status 필수' }, { status: 400 });
   }
 
   const { error } = await supabaseAdmin
@@ -134,20 +138,22 @@ export async function PATCH(
     .eq('id', reviewId)
     .eq('package_id', packageId);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return apiResponse({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ ok: true });
+  return apiResponse({ ok: true });
 }
 
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미연결' }, { status: 503 });
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+  if (!isSupabaseConfigured) return apiResponse({ error: 'DB 미연결' }, { status: 503 });
   const { id: packageId } = await params;
   const { searchParams } = req.nextUrl;
   const reviewId = searchParams.get('reviewId');
-  if (!reviewId) return NextResponse.json({ error: 'reviewId 필수' }, { status: 400 });
+  if (!reviewId) return apiResponse({ error: 'reviewId 필수' }, { status: 400 });
 
   await supabaseAdmin
     .from('post_trip_reviews')
@@ -155,5 +161,5 @@ export async function DELETE(
     .eq('id', reviewId)
     .eq('package_id', packageId);
 
-  return NextResponse.json({ ok: true });
+  return apiResponse({ ok: true });
 }

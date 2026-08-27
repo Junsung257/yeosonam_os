@@ -84,6 +84,18 @@ export function ledgerToRenderPackageInputs(ledger: V3DraftLedger): RenderPackag
     const outbound = variant.flight_segments.find(segment => segment.leg === 'outbound') ?? variant.flight_segments[0];
     const inbound = variant.flight_segments.find(segment => segment.leg === 'inbound') ?? variant.flight_segments[1];
     const days = renderDays(variant.days);
+    const durationDays = Number(variant.duration_days);
+    const itineraryDayOmissionNotice = Number.isInteger(durationDays)
+      && durationDays > 1
+      && variant.days.length === durationDays - 1
+      ? `원문 여행기간은 ${durationDays}일이며 DAY 표제는 ${variant.days.length}일입니다. 출발·도착일 세부 일정은 상담 시 최종 확인합니다.`
+      : null;
+    const sourceSheetFallback = (variant as V3LedgerVariant & {
+      source_sheet_fallback?: { reason?: string };
+    }).source_sheet_fallback?.reason === 'schedule_and_lodging_not_in_source';
+    const sourceSheetNotice = sourceSheetFallback
+      ? '원문에는 출발·가격·항공 정보가 확인되지만 상세 일정과 숙소는 예약 상담 시 최종 확인합니다.'
+      : null;
     return {
       title,
       product_type: 'package',
@@ -124,10 +136,24 @@ export function ledgerToRenderPackageInputs(ledger: V3DraftLedger): RenderPackag
         category: notice.category,
         template_key: notice.template_key,
         review_status: notice.review_status,
-      })), ...(ticketingNotice ? [ticketingNotice] : [])],
+      })), ...(ticketingNotice ? [ticketingNotice] : []), ...(sourceSheetNotice ? [{
+        type: 'INFO',
+        title: '일정·숙소 안내',
+        text: sourceSheetNotice,
+        category: 'source_sheet_fallback',
+        review_status: 'safe_degraded',
+      }] : []), ...(itineraryDayOmissionNotice ? [{
+        type: 'INFO',
+        title: '일정 안내',
+        text: itineraryDayOmissionNotice,
+        category: 'itinerary_day_omission',
+        review_status: 'safe_degraded',
+      }] : [])],
       customer_notes: [
         ...publishableNotices.map(notice => notice.standard_text),
         ...(ticketingCondition ? [ticketingCondition.customerNotice] : []),
+        ...(sourceSheetNotice ? [sourceSheetNotice] : []),
+        ...(itineraryDayOmissionNotice ? [itineraryDayOmissionNotice] : []),
       ]
         .join('\n'),
       optional_tours: variant.options

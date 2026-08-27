@@ -42,6 +42,59 @@ describe('V6 domain projections', () => {
     expect(result.golfRounds).toHaveLength(0);
   });
 
+  it('deduplicates repeated departure dates while retaining all evidence anchors', () => {
+    const result = buildProductRegistrationV6DomainProjection({
+      packageId: 'package-1',
+      canonicalPayload: {
+        sections: [{
+          v3: { ledger: { variants: [{
+            variant_key: 'v1',
+            price_calendar: [
+              { date: '2026-10-01', amount: 599000, evidence: { node: 'p1' } },
+              { date: '2026-10-01', amount: 599000, evidence: { node: 'p2' } },
+            ],
+          }] } },
+        }],
+      },
+    });
+
+    expect(result.departures).toHaveLength(1);
+    expect(result.departures[0]?.evidence).toEqual([{ node: 'p1' }, { node: 'p2' }]);
+  });
+
+  it('keeps exact-date special pricing separate from booking availability', () => {
+    const result = buildProductRegistrationV6DomainProjection({
+      packageId: 'package-1',
+      canonicalPayload: {
+        sections: [{ v3: { ledger: { variants: [{
+          variant_key: 'golf-v1',
+          price_calendar: [
+            { date: '2026-10-30', amount: 869000, label: '별도문의', source_labels: ['제외일자'] },
+            { date: '2026-10-31', amount: '85,9000', label: '별도문의' },
+          ],
+        }] } } }],
+      },
+    });
+
+    expect(result.departures).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        departure_date: '2026-10-30',
+        adult_selling_price: 869000,
+        pricing_state: 'PRICED',
+        booking_state: 'MANUAL_CONFIRMATION_REQUIRED',
+        price_rule_type: 'EXACT_DATE_OVERRIDE',
+        sale_state: 'request',
+      }),
+      expect.objectContaining({
+        departure_date: '2026-10-31',
+        adult_selling_price: null,
+        raw_amount: '85,9000',
+        pricing_state: 'CONFLICTING',
+        booking_state: 'MANUAL_CONFIRMATION_REQUIRED',
+      }),
+    ]));
+  });
+
   it('treats supplier placeholders as unconfirmed lodging', () => {
     expect(classifyLodgingState('해당숙소')).toBe('to_be_confirmed');
     expect(classifyLodgingState('호텔 미정')).toBe('to_be_confirmed');

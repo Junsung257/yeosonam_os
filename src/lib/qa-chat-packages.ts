@@ -1,15 +1,11 @@
-import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { extractQaDestinationHint } from '@/lib/qa-destination-hint';
+import { getPublicCatalogDetail, listPublicCatalog } from '@/lib/public-catalog';
 import { getTopRecommendedPackages } from '@/lib/scoring/top-recommended';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
-/** QA 컨텍스트에 필요한 컬럼만 — `select *` 대비 페이로드·파싱 비용 절감 */
-const QA_PACKAGE_SELECT =
-  'id,title,display_title,destination,duration,nights,price,price_tiers,inclusions,excludes,itinerary,status,publication_state,package_revision,audit_status,audit_report,created_at,updated_at,optional_tours,itinerary_data,internal_code,short_code,product_summary,product_highlights,price_dates,product_type,trip_style,airline';
+type CustomerPackage = Record<string, unknown>;
+type CacheEntry = { t: number; rows: CustomerPackage[] };
 
-type CacheEntry = { t: number; rows: Record<string, unknown>[] };
 const cache = new Map<string, CacheEntry>();
 const TTL_MS = 90_000;
 
@@ -18,106 +14,46 @@ function asString(value: unknown): string | null {
 }
 
 function asNumber(value: unknown): number | null {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function asStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.map((item) => String(item).trim()).filter(Boolean);
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
 }
 
-function isQaPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
-  const publicationState = asString(row.publication_state);
-  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
-}
-
-function toQaCustomerPackageRows(
-  rows: Record<string, unknown>[],
-  sourceRows: Record<string, unknown>[] = rows,
-): Record<string, unknown>[] {
-  const sourceById = new Map(
-    sourceRows
-      .map((row) => [asString(row.id), row] as const)
-      .filter((entry): entry is readonly [string, Record<string, unknown>] => Boolean(entry[0])),
-  );
-
-  return rows
-    .map((row) => {
-      const id = asString(row.id);
-      const source = id ? sourceById.get(id) : null;
-      return {
-        id,
-        title: asString(row.title) ?? asString(row.display_title),
-        display_title: asString(row.display_title) ?? asString(row.title),
-        destination: asString(row.destination),
-        duration: asNumber(row.duration),
-        nights: asNumber(row.nights),
-        price: asNumber(row.price),
-        product_summary: asString(row.product_summary) ?? asString(row.summary),
-        product_highlights: asStringArray(row.product_highlights),
-        inclusions: asStringArray(row.inclusions),
-        excludes: asStringArray(row.excludes),
-        itinerary: asStringArray(row.itinerary),
-        internal_code: asString(source?.internal_code),
-        short_code: asString(source?.short_code),
-        price_dates: Array.isArray(row.price_dates)
-          ? row.price_dates
-          : Array.isArray(source?.price_dates)
-            ? source.price_dates
-            : [],
-        product_type: asString(row.product_type) ?? asString(source?.product_type),
-        trip_style: asString(row.trip_style) ?? asString(source?.trip_style),
-        airline: asString(row.airline) ?? asString(source?.airline),
-        _public_snapshot: row._public_snapshot ?? null,
-      };
-    })
-    .filter((row) => typeof row.id === 'string' && row.id.length > 0 && typeof row.title === 'string' && row.title.length > 0);
-}
-
-async function mergeQaPublicSnapshots(rows: Record<string, unknown>[]): Promise<Record<string, unknown>[]> {
-  const candidates = rows.filter(isQaPublicSnapshotCandidate);
-  if (candidates.length === 0) return [];
-  const merged = await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, candidates);
-  return toQaCustomerPackageRows(merged, candidates);
+function toQaCustomerPackage(pkg: CustomerPackage): CustomerPackage | null {
+  const id = asString(pkg.id);
+  const title = asString(pkg.display_title) ?? asString(pkg.title);
+  if (!id || !title) return null;
+  return {
+    id,
+    title,
+    display_title: title,
+    destination: asString(pkg.destination),
+    duration: asNumber(pkg.duration),
+    nights: asNumber(pkg.nights),
+    price: asNumber(pkg.price),
+    product_summary: asString(pkg.product_summary) ?? asString(pkg.summary),
+    product_highlights: asStringArray(pkg.product_highlights),
+    inclusions: asStringArray(pkg.inclusions),
+    excludes: asStringArray(pkg.excludes),
+    itinerary: Array.isArray(pkg.itinerary) ? pkg.itinerary : [],
+    price_dates: Array.isArray(pkg.price_dates) ? pkg.price_dates : [],
+    product_type: asString(pkg.product_type) ?? asString(pkg.product_kind),
+    trip_style: asString(pkg.trip_style),
+    airline: asString(pkg.airline),
+  };
 }
 
 function fresh(entry: CacheEntry | undefined, now: number): boolean {
   return Boolean(entry && now - entry.t < TTL_MS);
 }
 
-async function fetchApprovedPackagesFiltered(destinationHint: string): Promise<Record<string, unknown>[]> {
-  const { data, error } = await supabaseAdmin
-    .from('travel_packages')
-    .select(QA_PACKAGE_SELECT)
-    .eq('status', 'approved')
-    .in('publication_state', ['approved', 'published'])
-    .ilike('destination', `%${destinationHint}%`)
-    .order('created_at', { ascending: false })
-    .limit(120);
-
-  if (error) throw error;
-  const publicRows = await mergeQaPublicSnapshots((data || []) as Record<string, unknown>[]);
-  return rankQaPackagesForHint(publicRows, destinationHint);
-}
-
-async function fetchApprovedPackagesAll(): Promise<Record<string, unknown>[]> {
-  const { data, error } = await supabaseAdmin
-    .from('travel_packages')
-    .select(QA_PACKAGE_SELECT)
-    .eq('status', 'approved')
-    .in('publication_state', ['approved', 'published'])
-    .order('created_at', { ascending: false })
-    .limit(150);
-
-  if (error) throw error;
-  return mergeQaPublicSnapshots((data || []) as Record<string, unknown>[]);
-}
-
-async function rankQaPackagesForHint(
-  rows: Record<string, unknown>[],
-  destinationHint: string,
-): Promise<Record<string, unknown>[]> {
+async function rankQaPackagesForHint(rows: CustomerPackage[], destinationHint: string): Promise<CustomerPackage[]> {
   if (rows.length <= 1) return rows;
   try {
     const ranked = await getTopRecommendedPackages({
@@ -126,61 +62,56 @@ async function rankQaPackagesForHint(
       minGroupSize: 1,
       maxRank: rows.length,
     });
-    const rankMap = new Map(ranked.map((r, index) => [r.package_id, index]));
-    return [...rows].sort((a, b) => {
-      const ar = rankMap.get(String(a.id)) ?? Number.MAX_SAFE_INTEGER;
-      const br = rankMap.get(String(b.id)) ?? Number.MAX_SAFE_INTEGER;
-      if (ar !== br) return ar - br;
-      return 0;
-    });
-  } catch (e) {
-    console.warn('[qa-chat-packages] package_scores ranking fallback:', e);
+    const rankMap = new Map(ranked.map((row, index) => [row.package_id, index]));
+    return [...rows].sort((left, right) => (
+      (rankMap.get(String(left.id)) ?? Number.MAX_SAFE_INTEGER)
+      - (rankMap.get(String(right.id)) ?? Number.MAX_SAFE_INTEGER)
+    ));
+  } catch (error) {
+    console.warn('[qa-chat-packages] recommendation ranking unavailable', error);
     return rows;
   }
 }
 
-/**
- * 고객 QA(/api/qa/chat)용 승인 상품 목록.
- * - `hintSource`: 현재 메시지(+선택 이전 고객 발화)를 합친 문자열 → 목적지 키워드 있으면 DB 선필터.
- * - 필터 결과 0건이면 전체 목록으로 폴백 (오탐·DB 표기 불일치 방지).
- * - 키별 TTL 캐시로 연속 채팅 부하 완화.
- */
-export async function getQaChatPackageContext(hintSource?: string): Promise<Record<string, unknown>[]> {
+async function loadQaPackages(destination?: string): Promise<CustomerPackage[]> {
+  const catalog = await listPublicCatalog(supabaseAdmin, {
+    limit: 40,
+    ...(destination ? { destination } : {}),
+  });
+  const details = await Promise.all(catalog.slice(0, 30).map((item) => (
+    getPublicCatalogDetail(supabaseAdmin, item.id).catch(() => null)
+  )));
+  const rows = details
+    .map((detail) => detail ? toQaCustomerPackage(detail.package) : null)
+    .filter((row): row is CustomerPackage => Boolean(row));
+  return destination ? rankQaPackagesForHint(rows, destination) : rows;
+}
+
+/** Customer QA receives only exact, currently public snapshot facts. */
+export async function getQaChatPackageContext(hintSource?: string): Promise<CustomerPackage[]> {
   if (!isSupabaseConfigured) return [];
   const now = Date.now();
   const hint = hintSource?.trim() ? extractQaDestinationHint(hintSource) : null;
-
-  if (hint) {
-    const key = `d:${hint}`;
-    const hit = cache.get(key);
-    if (fresh(hit, now)) return hit!.rows;
-
-    try {
-      const filtered = await fetchApprovedPackagesFiltered(hint);
-      cache.set(key, { t: now, rows: filtered });
-      return filtered;
-    } catch (e) {
-      console.error('[qa-chat-packages] 목적지 필터 조회 실패:', e);
-      const stale = cache.get(key);
-      if (stale?.rows.length) return stale.rows;
-    }
-  }
-
-  const allKey = 'all';
-  const hitAll = cache.get(allKey);
-  if (fresh(hitAll, now)) return hitAll!.rows;
+  const key = hint ? `d:${hint}` : 'all';
+  const cached = cache.get(key);
+  if (fresh(cached, now)) return cached?.rows ?? [];
 
   try {
-    const rows = await fetchApprovedPackagesAll();
-    cache.set(allKey, { t: now, rows });
+    const rows = await loadQaPackages(hint ?? undefined);
+    if (hint && rows.length === 0) {
+      const all = await loadQaPackages();
+      cache.set('all', { t: now, rows: all });
+      cache.set(key, { t: now, rows: all });
+      return all;
+    }
+    cache.set(key, { t: now, rows });
     return rows;
-  } catch (e) {
-    console.error('[qa-chat-packages] 전체 조회 실패:', e);
-    return hitAll?.rows ?? [];
+  } catch (error) {
+    console.error('[qa-chat-packages] public catalog unavailable', error);
+    return cached?.rows ?? [];
   }
 }
 
-/** 상품 승인 직후 등에서 캐시를 비우고 싶을 때 호출 (선택) */
 export function invalidateQaChatPackageCache(): void {
   cache.clear();
 }

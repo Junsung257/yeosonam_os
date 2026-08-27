@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     const normalizedSub = typeof sub_id === 'string'
       ? sub_id.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40)
       : '';
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://yeosonam.co.kr';
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://yeosonam.com';
     const shortUrl = normalizedSub
       ? `${baseUrl}/r/${encodeURIComponent(canon)}/${package_id}?sub=${encodeURIComponent(normalizedSub)}`
       : `${baseUrl}/r/${encodeURIComponent(canon)}/${package_id}`;

@@ -5,8 +5,7 @@ import { renderPackage } from '@/lib/render-contract';
 import { getLegalNoticeLinesOrDefault } from '@/lib/legal-notice';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { isValidUuid } from '@/lib/supabase-filter-safe';
-import { getCurrentPublicPackage } from '@/lib/package-publication/repository';
-import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
+import { getPublicCatalogDetail } from '@/lib/public-catalog';
 import {
   PosterHeader,
   PosterPrice,
@@ -24,13 +23,8 @@ import {
 async function loadPackage(id: string) {
   const normalizedId = id.trim();
   if (!isSupabaseConfigured || !isValidUuid(normalizedId)) return null;
-  const publicSnapshot = await getCurrentPublicPackage(supabaseAdmin, {
-    tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
-    packageRef: normalizedId,
-    channel: 'customer',
-    locale: 'ko-KR',
-  });
-  return publicSnapshot?.package as {
+  const publicCatalogDetail = await getPublicCatalogDetail(supabaseAdmin, normalizedId);
+  return publicCatalogDetail?.package as {
     id: string;
     title: string;
     destination: string | null;

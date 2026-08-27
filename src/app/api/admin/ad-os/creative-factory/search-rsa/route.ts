@@ -119,7 +119,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   let packageQuery = supabaseAdmin
     .from('travel_packages')
     .select('id')
-    .in('publication_state', ['approved', 'published'])
+    .eq('publication_state', 'published')
     .order('created_at', { ascending: false })
     .limit(limit);
   if (productId) packageQuery = packageQuery.eq('id', productId);

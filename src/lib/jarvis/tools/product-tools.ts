@@ -1,455 +1,249 @@
-// ─── Product Tools: 상품 검색, 견적, 최저가, 일정표 ──────────────────────────
+// ─── Product Tools: V6.1 published authority read model ─────────────────────
 
+import { getSupabaseAdmin } from '@/lib/supabase';
 import {
-  getApprovedPackages,
-  getPackageById,
-  getPriceTierForDate,
-  getSurchargesForDate,
-} from '@/lib/supabase';
+  getPublishedDepartureFact,
+  getPublishedProductFactById,
+  getPublishedProductFacts,
+  toJarvisPublishedPackage,
+  type PublishedDepartureFact,
+  type PublishedProductFact,
+} from '@/lib/product-registration-authority/read-model';
+import { listPublicCatalog } from '@/lib/public-catalog';
 import type { UIComponent } from '../ui-types';
 
-// ─── search_packages (Self-Healing 내장) ─────────────────────────────────────
-export async function handleSearchPackages(args: Record<string, unknown>) {
-  const packages = (await getApprovedPackages(
-    args.destination as string | undefined,
-    args.keyword as string | undefined
-  )) as unknown as PkgRow[];
-  type PkgRow = Record<string, unknown>;
-  let filtered: PkgRow[] = packages;
+type JsonObject = Record<string, unknown>;
 
-  // 기본 필터
-  if (args.category) {
-    filtered = filtered.filter(p => p.category === args.category);
-  }
-  if (args.maxPrice) {
-    filtered = filtered.filter(p => ((p.price as number) ?? Infinity) <= (args.maxPrice as number));
-  }
-  if (args.keyword) {
-    const kw = (args.keyword as string).toLowerCase();
-    filtered = filtered.filter(p =>
-      (p.title as string)?.toLowerCase().includes(kw) ||
-      (p.destination as string)?.toLowerCase().includes(kw) ||
-      (p.product_type as string)?.toLowerCase().includes(kw) ||
-      (p.trip_style as string)?.toLowerCase().includes(kw) ||
-      (p.product_summary as string)?.toLowerCase().includes(kw) ||
-      ((p.product_tags as string[]) || []).some((t: string) => t.toLowerCase().includes(kw))
-    );
-  }
-  if (args.productTags) {
-    const tags = (args.productTags as string).split(',').map(t => t.trim().toLowerCase());
-    filtered = filtered.filter(p => {
-      const pkgTags = ((p.product_tags as string[]) || []).map((t: string) => t.toLowerCase());
-      const summary = ((p.product_summary as string) || '').toLowerCase();
-      const inferredTags: string[] = [];
-      if (!(p as unknown as PkgRow).guide_tip) inferredTags.push('노팁');
-      if (((p.min_participants as number) || 99) <= 8) inferredTags.push('소규모');
-      if ((p.product_type as string)?.includes('에어텔')) inferredTags.push('에어텔');
-      const allTags = [...pkgTags, ...inferredTags, summary];
-      return tags.every(tag => allTags.some(t => t.includes(tag)));
-    });
-  }
+function adminClient() {
+  return getSupabaseAdmin();
+}
 
-  // 출발일 필터
-  if (args.departureDate) {
-    const depDate = args.departureDate as string;
-    const [dy, dm, dd] = depDate.split('-').map(Number);
-    const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
-    const dayOfWeek = dayNames[new Date(dy, dm - 1, dd).getDay()];
-    filtered = filtered.filter(p => {
-      // price_dates 우선
-      const priceDates = (p.price_dates || []) as { date: string; price: number }[];
-      if (priceDates.length > 0) {
-        return priceDates.some(pd => pd.date === depDate);
-      }
-      // 기존 price_tiers 폴백
-      const excluded = (p.excluded_dates || []) as string[];
-      if (excluded.includes(depDate)) return false;
-      const tiers = (p.price_tiers || []) as {
-        departure_dates?: string[];
-        date_range?: { start: string; end: string };
-        departure_day_of_week?: string;
-        status?: string;
-      }[];
-      if (tiers.length === 0) return true;
-      return tiers.some(tier => {
-        if (tier.status === 'soldout') return false;
-        if (tier.departure_dates?.includes(depDate)) return true;
-        if (tier.date_range) {
-          const s = new Date(tier.date_range.start);
-          const e = new Date(tier.date_range.end);
-          const date = new Date(dy, dm - 1, dd);
-          if (date >= s && date <= e) {
-            return !tier.departure_day_of_week || tier.departure_day_of_week === dayOfWeek;
-          }
-        }
-        return false;
-      });
-    });
-  }
+type AdminClient = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 
-  // 월 필터
-  if (args.month) {
-    const targetMonth = String(args.month as number).padStart(2, '0');
-    filtered = filtered.filter(p => {
-      // price_dates 우선
-      const priceDates = (p.price_dates || []) as { date: string }[];
-      if (priceDates.length > 0) {
-        return priceDates.some(pd => pd.date.slice(5, 7) === targetMonth);
-      }
-      // 기존 price_tiers 폴백
-      const tiers = (p.price_tiers || []) as { date_range?: { start: string }; departure_dates?: string[]; status?: string }[];
-      if (tiers.length === 0) return true;
-      return tiers.some(t => {
-        if (t.status === 'soldout') return false;
-        if (t.date_range?.start?.slice(5, 7) === targetMonth) return true;
-        if ((t.departure_dates || []).some((d: string) => d.slice(5, 7) === targetMonth)) return true;
-        return false;
-      });
-    });
-  }
+async function getCustomerCatalogFact(client: AdminClient, packageId: string) {
+  const [catalogItem] = await listPublicCatalog(client, { ids: [packageId], limit: 1 });
+  if (!catalogItem) return null;
+  return getPublishedProductFactById({ supabase: client, productId: catalogItem.id });
+}
 
-  // 요일 필터
-  if (args.dayOfWeek) {
-    const dow = (args.dayOfWeek as string).replace('요일', '');
-    const DOW_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
-    filtered = filtered.filter(p => {
-      // price_dates 우선
-      const priceDates = (p.price_dates || []) as { date: string }[];
-      if (priceDates.length > 0) {
-        return priceDates.some(pd => {
-          const [y, m, d] = pd.date.split('-').map(Number);
-          return DOW_NAMES[new Date(y, m - 1, d).getDay()] === dow;
-        });
-      }
-      // 기존 price_tiers 폴백
-      const tiers = (p.price_tiers || []) as { departure_day_of_week?: string; status?: string }[];
-      if (tiers.length === 0) return true;
-      return tiers.some(t => t.status !== 'soldout' && (!t.departure_day_of_week || t.departure_day_of_week === dow));
-    });
-  }
-
-  // ── Self-Healing: 단계적 조건 완화 ─────────────────────────────────────────
-  let matchedLevel: 'exact' | 'month_only' | 'destination_only' = 'exact';
-
-  if (filtered.length === 0 && args.dayOfWeek) {
-    matchedLevel = 'month_only';
-    filtered = packages as unknown as PkgRow[];
-    if (args.category) filtered = filtered.filter(p => (p as Record<string, unknown>).category === args.category);
-    if (args.maxPrice) filtered = filtered.filter(p => ((p as Record<string, unknown>).price as number ?? Infinity) <= (args.maxPrice as number));
-    if (args.destination) {
-      const dest = (args.destination as string).toLowerCase();
-      filtered = filtered.filter(p =>
-        ((p as Record<string, unknown>).destination as string)?.toLowerCase().includes(dest) || ((p as Record<string, unknown>).title as string)?.toLowerCase().includes(dest)
-      );
-    }
-    if (args.month) {
-      const targetMonth = String(args.month as number).padStart(2, '0');
-      filtered = filtered.filter(p => {
-        const pp = p as Record<string, unknown>;
-        // price_dates 우선
-        const priceDates = (pp.price_dates || []) as { date: string }[];
-        if (priceDates.length > 0) {
-          return priceDates.some(pd => pd.date.slice(5, 7) === targetMonth);
-        }
-        // 기존 price_tiers 폴백
-        const tiers = (pp.price_tiers || []) as { date_range?: { start: string }; departure_dates?: string[]; status?: string }[];
-        if (tiers.length === 0) return true;
-        return tiers.some(t => t.status !== 'soldout' && (
-          t.date_range?.start?.slice(5, 7) === targetMonth ||
-          (t.departure_dates || []).some((d: string) => d.slice(5, 7) === targetMonth)
-        ));
-      });
-    }
-  }
-
-  if (filtered.length === 0 && (args.month || args.dayOfWeek)) {
-    matchedLevel = 'destination_only';
-    filtered = packages as unknown as PkgRow[];
-    if (args.category) filtered = filtered.filter(p => (p as Record<string, unknown>).category === args.category);
-    if (args.destination) {
-      const dest = (args.destination as string).toLowerCase();
-      filtered = filtered.filter(p =>
-        ((p as Record<string, unknown>).destination as string)?.toLowerCase().includes(dest) || ((p as Record<string, unknown>).title as string)?.toLowerCase().includes(dest)
-      );
-    }
-    if (args.keyword) {
-      const kw = (args.keyword as string).toLowerCase();
-      filtered = filtered.filter(p =>
-        ((p as Record<string, unknown>).title as string)?.toLowerCase().includes(kw) || ((p as Record<string, unknown>).destination as string)?.toLowerCase().includes(kw)
-      );
-    }
-  }
-
-  const resultPackages = filtered.slice(0, 6).map(p => {
-    const pp = p as Record<string, unknown>;
-    const tiers = (pp.price_tiers || []) as { adult_price?: number; status?: string }[];
-    const prices = tiers.map(t => t.adult_price).filter(Boolean) as number[];
-    const minPrice = prices.length > 0 ? Math.min(...prices) : (pp.price as number);
-    const maxPrice = prices.length > 0 ? Math.max(...prices) : (pp.price as number);
-    const depDays = (pp.departure_days as string[]) || [];
-    return {
-      id: pp.id as string,
-      title: pp.title as string,
-      destination: pp.destination as string,
-      category: (pp.category as string) || 'package',
-      product_type: pp.product_type as string,
-      trip_style: pp.trip_style as string,
-      departure_days: depDays,
-      duration: pp.duration as number,
-      min_price: minPrice,
-      max_price: maxPrice,
-      price_tiers_count: tiers.length,
-      ticketing_deadline: pp.ticketing_deadline,
-      guide_tip: pp.guide_tip,
-      min_participants: pp.min_participants,
-      land_operator: pp.land_operator,
-      product_tags: (pp.product_tags as string[]) || [],
-      product_highlights: (pp.product_highlights as string[]) || [],
-      product_summary: pp.product_summary,
-    };
+async function getCustomerCatalogFacts(
+  client: AdminClient,
+  options: { destination?: string; keyword?: string; limit?: number },
+) {
+  const catalog = await listPublicCatalog(client, {
+    limit: Math.max(1, Math.min(200, options.limit ?? 100)),
+    ...(options.destination ? { destination: options.destination } : {}),
   });
+  const ids = new Set(catalog.map((item) => item.id));
+  if (ids.size === 0) return [];
+  const facts = await getPublishedProductFacts({ supabase: client, ...options });
+  return facts.filter((fact) => ids.has(fact.packageId));
+}
 
-  const uiComponents: UIComponent[] = resultPackages.map(p => ({
-    type: 'package_card' as const,
-    packageId: p.id as string,
-    title: (p.title as string) || '',
-    destination: (p.destination as string) || '',
-    nights: 0,
-    days: 0,
-    priceFrom: (p.min_price as number) || 0,
-    tags: (p.product_tags as string[]),
-    landOperator: (p.land_operator as string) || undefined,
-  }));
+function projectionValue(fact: PublishedProductFact, key: string): unknown {
+  return fact.cardProjection[key] ?? fact.lpProjection[key];
+}
 
+function titleOf(fact: PublishedProductFact): string {
+  return String(projectionValue(fact, 'title') ?? '');
+}
+
+function destinationOf(fact: PublishedProductFact): string {
+  return String(projectionValue(fact, 'destination') ?? '');
+}
+
+function packageResult(fact: PublishedProductFact): JsonObject {
+  const priced = fact.departureInstances.filter(row => row.adult_selling_price !== null);
+  const values = priced.map(row => row.adult_selling_price as number);
+  const min = values.length ? Math.min(...values) : null;
+  const max = values.length ? Math.max(...values) : null;
+  const pkg = toJarvisPublishedPackage(fact);
   return {
-    result: { packages: resultPackages, matched_level: matchedLevel },
-    uiComponents,
+    id: fact.packageId,
+    title: titleOf(fact),
+    destination: destinationOf(fact),
+    category: projectionValue(fact, 'category') ?? 'package',
+    product_type: projectionValue(fact, 'product_type'),
+    duration: projectionValue(fact, 'duration'),
+    nights: projectionValue(fact, 'nights'),
+    min_price: min,
+    max_price: max,
+    price_dates: pkg.price_dates,
+    departure_instances: fact.departureInstances,
+    product_tags: projectionValue(fact, 'product_tags') ?? [],
+    product_highlights: projectionValue(fact, 'product_highlights') ?? [],
+    product_summary: projectionValue(fact, 'product_summary'),
   };
 }
 
-// ─── get_price_quote (±3일 Adjacent Date Scan 내장) ──────────────────────────
-export async function handleGetPriceQuote(args: Record<string, unknown>) {
-  const packageId = args.packageId as string;
-  const departureDate = args.departureDate as string;
-  const adultCount = (args.adultCount as number) || 1;
-  const childCount = (args.childCount as number) || 0;
+function dayName(date: string): string {
+  const names = ['일', '월', '화', '수', '목', '금', '토'];
+  const parsed = new Date(`${date}T00:00:00Z`);
+  return names[parsed.getUTCDay()] ?? '';
+}
 
-  const pkg = await getPackageById(packageId);
-  if (!pkg) return { result: { error: '상품을 찾을 수 없습니다.' } };
+function dateInRange(date: string, from: string, to: string): boolean {
+  return date >= from && date <= to;
+}
 
-  const excludedDates = (pkg.excluded_dates || []) as string[];
-  if (excludedDates.includes(departureDate)) {
-    return { result: { error: `${departureDate}는 항공 미운항일입니다. 다른 날짜를 선택해 주세요.`, excluded: true } };
-  }
+function dateOffset(date: string, delta: number): string {
+  const parsed = new Date(`${date}T00:00:00Z`);
+  parsed.setUTCDate(parsed.getUTCDate() + delta);
+  return parsed.toISOString().slice(0, 10);
+}
 
-  const priceTiers = (pkg.price_tiers || []) as Parameters<typeof getPriceTierForDate>[0];
-  const tier = getPriceTierForDate(priceTiers, departureDate);
+function departureSearchMatch(row: PublishedDepartureFact, args: Record<string, unknown>): boolean {
+  if (row.pricing_state === 'CONFLICTING' || row.pricing_state === 'MISSING' || row.pricing_state === 'UNRESOLVED') return false;
+  if (args.departureDate && row.departure_date !== args.departureDate) return false;
+  if (args.month && Number(row.departure_date.slice(5, 7)) !== Number(args.month)) return false;
+  if (args.dayOfWeek && dayName(row.departure_date) !== String(args.dayOfWeek).replace('요일', '')) return false;
+  return true;
+}
 
-  if (!tier) {
-    return {
-      result: {
-        error: `${departureDate}에 맞는 가격 정보를 찾을 수 없습니다.`,
-        available_tiers_count: priceTiers.length,
-        package_title: pkg.title,
-        fallback_price: pkg.price,
-      }
-    };
-  }
-
-  const surcharges = (pkg.surcharges || []) as Parameters<typeof getSurchargesForDate>[0];
-  const surchargeTotal = getSurchargesForDate(surcharges, departureDate);
-
-  const adultPrice = tier.adult_price || 0;
-  const childPrice = tier.child_price || adultPrice;
-  const subtotal = adultPrice * adultCount + childPrice * childCount;
-  const total = subtotal + surchargeTotal;
-  const baseTotal1Person = adultPrice + surchargeTotal;
-
-  // ── ±3일 인접 날짜 스캔 ──────────────────────────────────────────────────
-  const adjacentDates: {
-    date: string;
-    price: number;
-    saving: number;
-    label: string;
-  }[] = [];
-
-  const baseDate = new Date(departureDate);
-  for (let delta = -3; delta <= 3; delta++) {
-    if (delta === 0) continue;
-    const d = new Date(baseDate);
-    d.setDate(d.getDate() + delta);
-    const dateStr = d.toISOString().split('T')[0];
-
-    if (excludedDates.includes(dateStr)) continue;
-
-    const adjTier = getPriceTierForDate(priceTiers, dateStr);
-    if (!adjTier || adjTier.status === 'soldout') continue;
-
-    const adjAdultPrice = adjTier.adult_price || 0;
-    const adjSurcharge = getSurchargesForDate(surcharges, dateStr);
-    const adjTotal1Person = adjAdultPrice + adjSurcharge;
-    const saving = baseTotal1Person - adjTotal1Person;
-
-    if (saving >= 50000) {
-      const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
-      const dayName = dayNames[d.getDay()];
-      const direction = delta < 0 ? `${Math.abs(delta)}일 앞당기면` : `${delta}일 미루면`;
-      adjacentDates.push({
-        date: dateStr,
-        price: adjTotal1Person,
-        saving,
-        label: `${direction} ${saving.toLocaleString()}원 절약 → ${dateStr}(${dayName}) 판매가 ${adjTotal1Person.toLocaleString()}원`,
-      });
+// ─── search_packages ────────────────────────────────────────────────────────
+export async function handleSearchPackages(args: Record<string, unknown>) {
+  const client = adminClient();
+  if (!client) return { result: { error: '상품 권위 저장소가 구성되지 않았습니다.' }, uiComponents: [] };
+  const facts = await getCustomerCatalogFacts(client, {
+    destination: typeof args.destination === 'string' ? args.destination : undefined,
+    keyword: typeof args.keyword === 'string' ? args.keyword : undefined,
+    limit: 100,
+  });
+  const filtered = facts.filter(fact => {
+    const pkg = packageResult(fact);
+    if (args.category && pkg.category !== args.category) return false;
+    if (args.maxPrice && (pkg.min_price === null || Number(pkg.min_price) > Number(args.maxPrice))) return false;
+    if (args.productTags) {
+      const tags = String(args.productTags).split(',').map(tag => tag.trim().toLocaleLowerCase()).filter(Boolean);
+      const packageTags = Array.isArray(pkg.product_tags) ? pkg.product_tags.map(String).map(tag => tag.toLocaleLowerCase()) : [];
+      if (!tags.every(tag => packageTags.some(candidate => candidate.includes(tag)))) return false;
     }
-  }
-
-  // saving 큰 순서 정렬
-  adjacentDates.sort((a, b) => b.saving - a.saving);
-
-  // Generative UI용 DateChip 생성
-  const uiComponents = adjacentDates.map(adj => ({
-    type: 'date_chip' as const,
-    date: adj.date,
-    price: adj.price,
-    saving: adj.saving,
-    label: adj.label,
+    return !args.departureDate && !args.month && !args.dayOfWeek
+      ? true
+      : fact.departureInstances.some(row => departureSearchMatch(row, args));
+  });
+  const resultPackages = filtered.slice(0, 6).map(packageResult);
+  const uiComponents: UIComponent[] = resultPackages.map(pkg => ({
+    type: 'package_card' as const,
+    packageId: String(pkg.id),
+    title: String(pkg.title ?? ''),
+    destination: String(pkg.destination ?? ''),
+    nights: Number(pkg.nights ?? 0),
+    days: Number(pkg.duration ?? 0),
+    priceFrom: typeof pkg.min_price === 'number' ? pkg.min_price : 0,
+    tags: Array.isArray(pkg.product_tags) ? pkg.product_tags as string[] : [],
+    landOperator: typeof pkg.land_operator === 'string' ? pkg.land_operator : undefined,
   }));
+  return { result: { packages: resultPackages, matched_level: resultPackages.length ? 'exact' : 'none' }, uiComponents };
+}
 
+// ─── get_price_quote ─────────────────────────────────────────────────────────
+export async function handleGetPriceQuote(args: Record<string, unknown>) {
+  const client = adminClient();
+  const packageId = String(args.packageId ?? '');
+  const departureDate = String(args.departureDate ?? '');
+  const adultCount = Number(args.adultCount ?? 1) || 1;
+  const childCount = Number(args.childCount ?? 0) || 0;
+  if (!client) return { result: { error: '상품 권위 저장소가 구성되지 않았습니다.' } };
+  const fact = await getCustomerCatalogFact(client, packageId);
+  if (!fact) return { result: { error: '상품을 찾을 수 없습니다.' } };
+  const departure = getPublishedDepartureFact(fact, departureDate);
+  if (!departure) return { result: { error: `${departureDate}에 대한 검증된 출발 가격이 없습니다.` } };
+  if (departure.pricing_state === 'CONFLICTING' || departure.adult_selling_price === null) {
+    return { result: { error: `${departureDate} 가격은 원문 충돌로 검토 중입니다. 추측 가격을 안내하지 않습니다.`, pricing_state: departure.pricing_state } };
+  }
+  const adultPrice = departure.adult_selling_price;
+  const childPrice = departure.child_selling_price ?? adultPrice;
+  const subtotal = adultPrice * adultCount + childPrice * childCount;
+  const adjacentDates = [-3, -2, -1, 1, 2, 3].map(delta => {
+    const candidate = getPublishedDepartureFact(fact, dateOffset(departureDate, delta));
+    if (!candidate || candidate.adult_selling_price === null || !['PRICED', 'REQUEST_ONLY'].includes(candidate.pricing_state)) return null;
+    return {
+      date: candidate.departure_date,
+      price: candidate.adult_selling_price,
+      saving: adultPrice - candidate.adult_selling_price,
+      label: `${candidate.departure_date}(${dayName(candidate.departure_date)}) 판매가 ${candidate.adult_selling_price.toLocaleString()}원`,
+    };
+  }).filter((item): item is { date: string; price: number; saving: number; label: string } => Boolean(item && item.saving >= 50000));
   return {
     result: {
-      package_id: pkg.id,
-      package_title: pkg.title,
+      package_id: fact.packageId,
+      package_title: titleOf(fact),
       departure_date: departureDate,
       adult_count: adultCount,
       child_count: childCount,
       adult_price: adultPrice,
       child_price: childPrice,
+      currency: departure.currency,
       subtotal,
-      surcharge: surchargeTotal,
-      total,
-      period_label: tier.period_label,
-      status: tier.status,
-      ticketing_deadline: pkg.ticketing_deadline,
-      guide_tip: pkg.guide_tip,
-      single_supplement: pkg.single_supplement,
-      small_group_surcharge: adultCount + childCount <= 7 ? pkg.small_group_surcharge : null,
-      note: tier.note,
+      total: subtotal,
+      booking_state: departure.booking_state,
+      pricing_state: departure.pricing_state,
+      note: departure.booking_state === 'MANUAL_CONFIRMATION_REQUIRED'
+        ? '해당 날짜는 특별요금으로 등록되어 예약 가능 여부를 별도 확인해야 합니다.'
+        : undefined,
       adjacent_dates: adjacentDates,
     },
-    uiComponents,
+    uiComponents: adjacentDates.map(adj => ({ type: 'date_chip' as const, ...adj })),
   };
 }
 
-// ─── find_cheapest_dates ──────────────────────────────────────────────────────
+// ─── find_cheapest_dates ─────────────────────────────────────────────────────
 export async function handleFindCheapestDates(args: Record<string, unknown>) {
-  const packageId = args.packageId as string;
-  const adultCount = (args.adultCount as number) || 1;
-
-  const pkg = await getPackageById(packageId);
-  if (!pkg) return { result: { error: '상품을 찾을 수 없습니다.' } };
-
-  const today = new Date();
-  const fromDate = args.fromDate ? new Date(args.fromDate as string) : today;
-  const toDate = args.toDate
-    ? new Date(args.toDate as string)
-    : new Date(today.getFullYear(), today.getMonth() + 6, today.getDate());
-
-  const priceTiers = (pkg.price_tiers || []) as Parameters<typeof getPriceTierForDate>[0];
-  const surcharges = (pkg.surcharges || []) as Parameters<typeof getSurchargesForDate>[0];
-  const excludedDates = (pkg.excluded_dates || []) as string[];
-
-  // 날짜 범위 내 모든 날짜 스캔 (최대 180일)
-  const results: { date: string; price: number; label: string }[] = [];
-  const maxDays = Math.min(
-    Math.floor((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)),
-    180
-  );
-
-  for (let i = 0; i <= maxDays; i++) {
-    const d = new Date(fromDate);
-    d.setDate(d.getDate() + i);
-    const dateStr = d.toISOString().split('T')[0];
-
-    if (excludedDates.includes(dateStr)) continue;
-
-    const tier = getPriceTierForDate(priceTiers, dateStr);
-    if (!tier || tier.status === 'soldout') continue;
-
-    const adjAdultPrice = (tier.adult_price || 0);
-    const adjSurcharge = getSurchargesForDate(surcharges, dateStr);
-    const total1Person = adjAdultPrice + adjSurcharge;
-
-    const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
-    const dayName = dayNames[d.getDay()];
-
-    results.push({
-      date: dateStr,
-      price: total1Person * adultCount,
-      label: `${dateStr}(${dayName}) — 1인 ${total1Person.toLocaleString()}원`,
-    });
-  }
-
-  // 가격 오름차순 정렬, TOP 5 반환
-  results.sort((a, b) => a.price - b.price);
-  const top5 = results.slice(0, 5);
-
-  const uiComponents = top5.map(r => ({
-    type: 'date_chip' as const,
-    date: r.date,
-    price: r.price / adultCount,
-    saving: top5.length > 1 ? (results[results.length - 1].price / adultCount) - (r.price / adultCount) : 0,
-    label: r.label,
-  }));
-
+  const client = adminClient();
+  if (!client) return { result: { error: '상품 권위 저장소가 구성되지 않았습니다.' }, uiComponents: [] };
+  const fact = await getCustomerCatalogFact(client, String(args.packageId ?? ''));
+  if (!fact) return { result: { error: '상품을 찾을 수 없습니다.' }, uiComponents: [] };
+  const today = new Date().toISOString().slice(0, 10);
+  const from = typeof args.fromDate === 'string' ? args.fromDate : today;
+  const to = typeof args.toDate === 'string' ? args.toDate : dateOffset(from, 180);
+  const adultCount = Number(args.adultCount ?? 1) || 1;
+  const results = fact.departureInstances
+    .filter(row => dateInRange(row.departure_date, from, to)
+      && row.adult_selling_price !== null
+      && ['PRICED', 'REQUEST_ONLY'].includes(row.pricing_state)
+      && !['SOLD_OUT', 'SALES_CLOSED', 'CANCELLED'].includes(row.booking_state))
+    .map(row => ({
+      date: row.departure_date,
+      price: row.adult_selling_price! * adultCount,
+      booking_state: row.booking_state,
+      label: `${row.departure_date}(${dayName(row.departure_date)}) — 1인 ${row.adult_selling_price!.toLocaleString()}원`,
+    }))
+    .sort((a, b) => a.price - b.price)
+    .slice(0, 5);
   return {
-    result: {
-      package_title: pkg.title,
-      cheapest_dates: top5,
-      scan_range: { from: fromDate.toISOString().split('T')[0], to: toDate.toISOString().split('T')[0] },
-    },
-    uiComponents,
+    result: { package_title: titleOf(fact), cheapest_dates: results, scan_range: { from, to } },
+    uiComponents: results.map(row => ({ type: 'date_chip' as const, date: row.date, price: row.price / adultCount, saving: 0, label: row.label })),
   };
 }
 
-// ─── generate_itinerary ───────────────────────────────────────────────────────
+// ─── generate_itinerary ──────────────────────────────────────────────────────
 export async function handleGenerateItinerary(args: Record<string, unknown>) {
-  const packageId = args.packageId as string;
-
-  const pkg = await getPackageById(packageId);
-  if (!pkg) return { result: { error: '상품을 찾을 수 없습니다.' } };
-
-  // 기존 일정 데이터가 있으면 반환
-  const itinerary = (pkg as Record<string, unknown>).itinerary as {
-    day: number; title: string; activities: string[];
-  }[] | undefined;
-
-  if (itinerary && itinerary.length > 0) {
-    const uiComponent = {
-      type: 'itinerary_card' as const,
-      title: pkg.title || '',
-      destination: pkg.destination || '',
-      days: itinerary,
-    };
+  const client = adminClient();
+  if (!client) return { result: { error: '상품 권위 저장소가 구성되지 않았습니다.' }, uiComponents: [] };
+  const fact = await getCustomerCatalogFact(client, String(args.packageId ?? ''));
+  if (!fact) return { result: { error: '상품을 찾을 수 없습니다.' }, uiComponents: [] };
+  const lp = fact.lpProjection;
+  const itinerary = (lp.itinerary ?? lp.days) as JsonObject[] | undefined;
+  if (Array.isArray(itinerary) && itinerary.length > 0) {
+    const uiDays = itinerary.map((day, index) => ({
+      day: Number(day.day ?? index + 1),
+      title: String(day.title ?? ''),
+      activities: Array.isArray(day.activities) ? day.activities.map(String) : [],
+    }));
     return {
-      result: {
-        package_title: pkg.title,
-        destination: pkg.destination,
-        duration: pkg.duration,
-        itinerary,
-      },
-      uiComponents: [uiComponent],
+      result: { package_title: titleOf(fact), destination: destinationOf(fact), duration: lp.duration, itinerary },
+      uiComponents: [{ type: 'itinerary_card' as const, title: titleOf(fact), destination: destinationOf(fact), days: uiDays }],
     };
   }
-
-  // 일정 데이터 없으면 기본 정보만 반환
   return {
     result: {
-      package_title: pkg.title,
-      destination: pkg.destination,
-      duration: pkg.duration,
-      product_highlights: pkg.product_highlights || [],
-      product_summary: pkg.product_summary,
-      note: '상세 일정표 데이터가 아직 등록되지 않았습니다.',
+      package_title: titleOf(fact),
+      destination: destinationOf(fact),
+      duration: lp.duration,
+      product_highlights: lp.product_highlights ?? [],
+      product_summary: lp.product_summary,
+      note: '검증된 상세 일정 데이터가 아직 공개 snapshot에 없습니다.',
     },
     uiComponents: [],
   };

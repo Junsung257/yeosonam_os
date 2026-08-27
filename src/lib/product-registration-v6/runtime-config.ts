@@ -4,6 +4,12 @@ export type ProductRegistrationV6RuntimeConfig = {
   shadowEnabled: boolean;
   publishEnabled: boolean;
   publicationFrozen: boolean;
+  /**
+   * Legacy observability field. V6.1 never lets an environment variable
+   * authorize publication; a frozen release requires an exact, one-time DB
+   * authorization for the revision/snapshot/proof/pointer tuple.
+   */
+  sourceProofAutoPublishEnabled: boolean;
 };
 
 function authorityMode(): ProductRegistrationV6RuntimeConfig['authorityMode'] {
@@ -29,8 +35,19 @@ export function getProductRegistrationV6RuntimeConfig(): ProductRegistrationV6Ru
     shadowEnabled: enabled('PRODUCT_REGISTRATION_V6_SHADOW_ENABLED', true),
     publishEnabled: enabled('PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED'),
     publicationFrozen: enabled('PRODUCT_REGISTRATION_PUBLICATION_FREEZE', true),
+    // Deliberately ignore PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH.
+    // Publication authority is a database record, never process configuration.
+    sourceProofAutoPublishEnabled: false,
   };
 }
+
+/**
+ * Source-proof mode is deliberately a *publish attempt* switch, not a
+ * publication bypass.  It lets a Workflow reach the database CAS writer;
+ * the writer still enforces authority mode, kill switches, immutable
+ * lineage, verified claims and passed mobile proof for the exact source.
+ */
+export function productRegistrationV6SourceProofAutoPublishEnabled(): boolean { return false; }
 
 export function productRegistrationV6PublicationBlocker(): string | null {
   const config = getProductRegistrationV6RuntimeConfig();

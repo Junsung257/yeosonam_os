@@ -7,19 +7,20 @@ function source(): string {
 }
 
 describe('things-to-do public package data boundary', () => {
-  it('renders recommended packages only after current public snapshot merge', () => {
+  it('renders recommended packages only after the exact public catalog lookup', () => {
     const text = source();
-    const snapshotMergeIndex = text.indexOf('listCurrentPublicPackageCardSnapshots');
+    const catalogIndex = text.indexOf('listPublicCatalog');
     const normalizeIndex = text.indexOf('packages: publicPackages');
 
     expect(text).not.toContain(".from('travel_packages')");
-    expect(snapshotMergeIndex).toBeGreaterThan(0);
-    expect(normalizeIndex).toBeGreaterThan(snapshotMergeIndex);
+    expect(catalogIndex).toBeGreaterThan(0);
+    expect(text).toContain('destination: region');
+    expect(normalizeIndex).toBeGreaterThan(catalogIndex);
   });
 
   it('does not select raw customer package title, price, duration, airline, or photos for cards', () => {
     const text = source();
     expect(text).not.toContain(".from('travel_packages')");
-    expect(text).toContain('listCurrentPublicPackageCardSnapshots');
+    expect(text).toContain('listPublicCatalog');
   });
 });

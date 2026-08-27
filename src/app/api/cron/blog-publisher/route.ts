@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cronUnauthorizedResponse, isCronOrVercelAuthorized } from '@/lib/cron-auth';
 import { logWarning } from '@/lib/sentry-logger';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { runQualityGates, type QualityGateReport } from '@/lib/blog-quality-gate';
 import {
   BlogAiResponseError,
@@ -12,7 +11,8 @@ import {
   type BlogAiTextResult,
 } from '@/lib/blog-ai-caller';
 import { generateBlogSeo, type AngleType } from '@/lib/content-generator';
-import { buildProductBlogBrief, buildProductSlugSuffix } from '@/lib/blog-product-brief';
+import { buildProductBlogBriefFromPublishedFact, buildProductSlugSuffix } from '@/lib/blog-product-brief';
+import { getPublishedBlogContentFactById, toJarvisPublishedPackage } from '@/lib/product-registration-authority/read-model';
 import { generateProductConsultantBlogPost } from '@/lib/blog-product-consultant-writer';
 import {
   BLOG_EDITORIAL_VOICE,
@@ -325,11 +325,9 @@ async function loadQueueDemandEvidenceV3(item: any): Promise<{
       .eq('queue_id', item.id),
     item.product_id
       ? supabaseAdmin
-          .from('travel_packages')
-          .select('id')
-          .eq('id', item.product_id)
-          .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-          .in('publication_state', ['approved', 'published'])
+          .from('product_registration_customer_fact_view')
+          .select('product_id')
+          .eq('product_id', item.product_id)
           .limit(1)
       : Promise.resolve({ data: [], error: null }),
     item.primary_keyword
@@ -4415,17 +4413,11 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
   if (!hasBlogApiKey(BLOG_DEEPSEEK_MODELS.draft)) {
     throw new Error('AI API 키 미설정 — 상품 블로그 생성 불가');
   }
-  const { data: pkg, error } = await supabaseAdmin
-    .from('travel_packages')
-    .select('*')
-    .eq('id', item.product_id)
-    .limit(1);
-
-  if (error || !pkg || pkg.length === 0) {
+  const fact = await getPublishedBlogContentFactById({ supabase: supabaseAdmin, productId: item.product_id });
+  if (!fact) {
     throw new Error(`상품 조회 실패: ${item.product_id}`);
   }
-
-  const product = pkg[0];
+  const product = toJarvisPublishedPackage(fact) as any;
   const openContract = await loadCustomerOpenContractForPackage(supabaseAdmin, item.product_id);
   if (!isCustomerOpenContractBlogPublishable(openContract)) {
     throw new Error(`product_customer_open_contract_failed:${customerOpenContractBlogBlockReason(openContract)}`);
@@ -4442,7 +4434,7 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
     attractions = attrs || [];
   }
 
-  const productBrief = buildProductBlogBrief(product, angle);
+  const productBrief = buildProductBlogBriefFromPublishedFact(fact, angle);
   const productConsultBrief = buildProductConsultBrief(productBrief);
   let groundedDraft = generateProductConsultantBlogPost(product, productBrief);
   const reviewSnips = await fetchApprovedReviewSnippets({
