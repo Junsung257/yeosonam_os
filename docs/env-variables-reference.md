@@ -58,10 +58,16 @@ Readiness 응답의 `generationReady`와 `publicationReady`는 분리된다. `ap
 | `BLOG_STAGING_RUNTIME_VERIFY_CONFIRM` | 정확히 `STAGING_SNAPSHOT_REFRESH_ALLOWED`; snapshot 갱신이 포함됨을 명시적으로 승인 |
 | `BLOG_STAGING_SUPABASE_BRANCH_NAME` | Management API가 확인할 preview branch 이름 |
 | `BLOG_STAGING_SUPABASE_PROJECT_REF` | preview branch의 20자 project ref |
+| `BLOG_STAGING_SUPABASE_URL` | 위 preview ref와 정확히 일치하는 `https://<preview-ref>.supabase.co` origin |
 | `BLOG_PRODUCTION_SUPABASE_PROJECT_REF` | parent production project ref; 기본값 없이 반드시 명시 |
 | `SUPABASE_ACCESS_TOKEN` | branch metadata 조회용 read-only token. `environment:read`와 branch read 권한만 허용 |
 | `SUPABASE_URL` | `https://<preview-ref>.supabase.co` 형태의 직접 server origin |
 | `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_ANON_KEY` | 해당 preview 전용 key; production key 사용 금지 |
+
+V4 Preview를 Vercel에 설정하는 workflow는 `BLOG_STAGING_SUPABASE_*`,
+`BLOG_STAGING_CRON_SECRET`, `BLOG_STAGING_V4_SHARED_KEY_USED`,
+`BLOG_STAGING_OPS_READ_TOKEN`처럼 staging 전용 이름의 secret만 받습니다.
+일반 `SUPABASE_SERVICE_ROLE_KEY`나 `CRON_SECRET`을 Preview 설정에 재사용하지 않습니다.
 
 검증기는 Management API가 `parent_project_ref`와 target ref가 일치하고 `is_default=false`, `persistent=false`, `with_data=false`임을 증명하기 전에는 Supabase Data API client를 생성하지 않습니다.
 

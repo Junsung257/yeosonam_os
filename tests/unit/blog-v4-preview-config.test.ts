@@ -48,4 +48,17 @@ describe('Blog V4 Preview Supabase target', () => {
       SUPABASE_URL: `https://${STAGING_REF}.supabase.co`,
     })).toThrow('missing_BLOG_STAGING_SUPABASE_PROJECT_REF');
   });
+
+  it('keeps the Preview configurator contract scoped to staging-only secrets', async () => {
+    const source = await import('node:fs/promises');
+    const script = await source.readFile(
+      new URL('../../scripts/configure-vercel-blog-v4-preview.mjs', import.meta.url),
+      'utf8',
+    );
+
+    expect(script).toContain('BLOG_STAGING_SUPABASE_SERVICE_ROLE_KEY');
+    expect(script).toContain('BLOG_STAGING_CRON_SECRET');
+    expect(script).not.toContain("process.env.SUPABASE_SERVICE_ROLE_KEY");
+    expect(script).not.toContain("process.env.CRON_SECRET");
+  });
 });
