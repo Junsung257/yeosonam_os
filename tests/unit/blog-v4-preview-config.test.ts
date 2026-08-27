@@ -61,4 +61,24 @@ describe('Blog V4 Preview Supabase target', () => {
     expect(script).not.toContain("process.env.SUPABASE_SERVICE_ROLE_KEY");
     expect(script).not.toContain("process.env.CRON_SECRET");
   });
+
+  it('verifies Branch metadata without opening a Data API client or mutating snapshots', async () => {
+    const source = await import('node:fs/promises');
+    const verifier = await source.readFile(
+      new URL('../../scripts/verify-blog-v4-preview-target.ts', import.meta.url),
+      'utf8',
+    );
+    const workflow = await source.readFile(
+      new URL('../../.github/workflows/blog-v4-preview-config.yml', import.meta.url),
+      'utf8',
+    );
+
+    expect(verifier).toContain('verifyBlogStagingBranchMetadata');
+    expect(verifier).toContain('dataApiCalls: 0');
+    expect(verifier).toContain('snapshotMutations: 0');
+    expect(verifier).not.toContain('createClient');
+    expect(verifier).not.toContain('.rpc(');
+    expect(workflow).toContain('verify-blog-v4-preview-target.ts');
+    expect(workflow).toContain('BLOG_STAGING_SUPABASE_ACCESS_TOKEN');
+  });
 });
