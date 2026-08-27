@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { resolvePreviewSupabaseTarget } from './lib/blog-v4-preview-config.mjs';
 
 const token = process.env.VERCEL_TOKEN;
 const projectId = process.env.VERCEL_PROJECT_ID;
@@ -9,6 +10,8 @@ const sha = process.env.GITHUB_SHA;
 for (const [name, value] of Object.entries({ token, projectId, teamId, branch, sha })) {
   if (!value) throw new Error(`missing_${name}`);
 }
+
+const previewSupabase = resolvePreviewSupabaseTarget(process.env);
 
 const api = async (path, init = {}) => {
   const response = await fetch(`https://api.vercel.com${path}`, {
@@ -37,9 +40,9 @@ const envs = await api(`/v9/projects/${encodeURIComponent(projectId)}/env${query
 const existing = Array.isArray(envs?.envs) ? envs.envs : [];
 
 const values = [
-  ['SUPABASE_URL', process.env.SUPABASE_URL, 'encrypted'],
-  ['NEXT_PUBLIC_SUPABASE_URL', process.env.NEXT_PUBLIC_SUPABASE_URL, 'encrypted'],
-  ['SUPABASE_PROJECT_REF', process.env.SUPABASE_PROJECT_REF, 'encrypted'],
+  ['SUPABASE_URL', previewSupabase.url, 'encrypted'],
+  ['NEXT_PUBLIC_SUPABASE_URL', previewSupabase.url, 'encrypted'],
+  ['SUPABASE_PROJECT_REF', previewSupabase.projectRef, 'encrypted'],
   ['SUPABASE_SERVICE_ROLE_KEY', process.env.SUPABASE_SERVICE_ROLE_KEY, 'sensitive'],
   ['DEEPSEEK_API_KEY', process.env.DEEPSEEK_STAGING_API_KEY, 'sensitive'],
   ['BLOG_V4_SHARED_KEY_USED', process.env.BLOG_V4_SHARED_KEY_USED, 'encrypted'],
