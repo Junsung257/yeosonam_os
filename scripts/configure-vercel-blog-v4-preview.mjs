@@ -44,6 +44,7 @@ const values = [
   ['NEXT_PUBLIC_SUPABASE_URL', previewSupabase.url, 'encrypted'],
   ['SUPABASE_PROJECT_REF', previewSupabase.projectRef, 'encrypted'],
   ['SUPABASE_SERVICE_ROLE_KEY', process.env.BLOG_STAGING_SUPABASE_SERVICE_ROLE_KEY, 'sensitive'],
+  ['SUPABASE_ANON_KEY', process.env.BLOG_STAGING_SUPABASE_ANON_KEY, 'sensitive'],
   ['DEEPSEEK_API_KEY', process.env.DEEPSEEK_STAGING_API_KEY, 'sensitive'],
   ['BLOG_V4_SHARED_KEY_USED', process.env.BLOG_STAGING_V4_SHARED_KEY_USED, 'encrypted'],
   ['CRON_SECRET', process.env.BLOG_STAGING_CRON_SECRET, 'sensitive'],

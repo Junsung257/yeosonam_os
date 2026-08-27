@@ -57,6 +57,7 @@ describe('Blog V4 Preview Supabase target', () => {
     );
 
     expect(script).toContain('BLOG_STAGING_SUPABASE_SERVICE_ROLE_KEY');
+    expect(script).toContain('BLOG_STAGING_SUPABASE_ANON_KEY');
     expect(script).toContain('BLOG_STAGING_CRON_SECRET');
     expect(script).not.toContain("process.env.SUPABASE_SERVICE_ROLE_KEY");
     expect(script).not.toContain("process.env.CRON_SECRET");
