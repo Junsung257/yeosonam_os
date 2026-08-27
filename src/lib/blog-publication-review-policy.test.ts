@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   getInformationalReviewBlockReason,
+  isHighRiskAutoDiscardTopic,
   isHighRiskInformationalTopic,
 } from './blog-publication-review-policy';
 
@@ -14,6 +15,14 @@ describe('informational publication review policy', () => {
     '처방약 해외 반입과 영문 처방전',
   ])('classifies high-risk informational topics: %s', (title) => {
     expect(isHighRiskInformationalTopic({ title })).toBe(true);
+  });
+
+  it.each([
+    '괌 항공권 가격과 잔여석 확인',
+    '하와이 호텔 운영시간과 예약 가능 여부',
+  ])('classifies V4 unattended topics for automatic discard: %s', (title) => {
+    expect(isHighRiskAutoDiscardTopic({ title })).toBe(true);
+    expect(isHighRiskInformationalTopic({ title })).toBe(false);
   });
 
   it('does not confuse reservation terms with medication queries', () => {

@@ -9,6 +9,34 @@ const rollback = readFileSync(
   'supabase/rollbacks/blog-v4-content-factory-20260819.sql',
   'utf8',
 ).toLowerCase();
+const terminalizationMigration = readFileSync(
+  'supabase/migrations/20260824114843_blog_v4_operation_terminalization.sql',
+  'utf8',
+).toLowerCase();
+const stagingQualityRepairMigration = readFileSync(
+  'supabase/migrations/20260826060456_blog_v4_staging_quality_repair.sql',
+  'utf8',
+).toLowerCase();
+const stagingFailedQualityRepairMigration = readFileSync(
+  'supabase/migrations/20260826062634_blog_v4_staging_quality_repair_failed.sql',
+  'utf8',
+).toLowerCase();
+const revisionQualityDecisionMigration = readFileSync(
+  'supabase/migrations/20260826082731_blog_v4_revision_quality_decision_20260826.sql',
+  'utf8',
+).toLowerCase();
+const qualityContractStateMigration = readFileSync(
+  'supabase/migrations/20260827010000_blog_v4_quality_contract_state_20260827.sql',
+  'utf8',
+).toLowerCase();
+const terminalSuccessMigration = readFileSync(
+  'supabase/migrations/20260827020000_blog_v4_terminal_success_clears_failure.sql',
+  'utf8',
+).toLowerCase();
+const autoDiscardMigration = readFileSync(
+  'supabase/migrations/20260827030000_blog_v4_auto_discard_high_risk.sql',
+  'utf8',
+).toLowerCase();
 
 describe('Blog V4 content factory migration contract', () => {
   it('creates the four service-role ledgers with RLS and explicit grants', () => {
@@ -42,6 +70,73 @@ describe('Blog V4 content factory migration contract', () => {
     expect(migration).toContain('blog_demand_signal_cluster_conflict');
     expect(migration).toContain('v_expires_at, v_verified_at');
     expect(migration).toContain("lease_expires_at = now() + interval '15 minutes'");
+  });
+
+  it('adds one fenced terminalizer for fatal and review handoffs', () => {
+    expect(terminalizationMigration).toContain('terminalize_blog_content_operation_v4');
+    expect(terminalizationMigration).toContain('requeue_blog_content_operation_v4');
+    expect(terminalizationMigration).toContain('fencing_token = fencing_token + 1');
+    expect(terminalizationMigration).toContain("status not in (\n    'failed', 'human_review', 'approved_for_slot'");
+    expect(terminalizationMigration).toContain('lease_owner = null');
+    expect(terminalizationMigration).toContain('lease_expires_at = null');
+    expect(terminalizationMigration).toContain('completed_at = coalesce(completed_at, now())');
+    expect(terminalizationMigration).toContain('to service_role');
+  });
+
+  it('limits human-review requeue to an explicitly seeded draft-only staging queue', () => {
+    expect(stagingQualityRepairMigration).toContain("v_operation.status = 'human_review'");
+    expect(stagingQualityRepairMigration).toContain("v_queue.source = 'user_seed'");
+    expect(stagingQualityRepairMigration).toContain("v_queue.meta ->> 'blog_v4_staging_seed'");
+    expect(stagingQualityRepairMigration).toContain("v_queue.meta ->> 'publication_disposition' = 'draft_only'");
+    expect(stagingQualityRepairMigration).toContain("status = 'pending_review'");
+    expect(stagingQualityRepairMigration).toContain('to service_role');
+  });
+
+  it('also limits failed-operation recovery to the same staging owner boundary', () => {
+    expect(stagingFailedQualityRepairMigration).toContain("v_operation.status in ('human_review', 'failed')");
+    expect(stagingFailedQualityRepairMigration).toContain("v_queue.source = 'user_seed'");
+    expect(stagingFailedQualityRepairMigration).toContain("v_queue.meta ->> 'blog_v4_staging_seed'");
+    expect(stagingFailedQualityRepairMigration).toContain("v_queue.meta ->> 'publication_disposition' = 'draft_only'");
+    expect(stagingFailedQualityRepairMigration).toContain('to service_role');
+  });
+
+  it('pins one immutable revision to one final quality decision and normalizes operation state', () => {
+    expect(revisionQualityDecisionMigration).toContain('create table if not exists public.blog_content_revisions');
+    expect(revisionQualityDecisionMigration).toContain('create table if not exists public.blog_quality_decisions');
+    expect(revisionQualityDecisionMigration).toContain('blog_quality_decision_pass_consistency');
+    expect(revisionQualityDecisionMigration).toContain('final_revision_id');
+    expect(revisionQualityDecisionMigration).toContain('final_quality_decision_id');
+    expect(revisionQualityDecisionMigration).toContain("'completed'");
+    expect(revisionQualityDecisionMigration).toContain('trg_blog_content_revisions_immutable');
+    expect(revisionQualityDecisionMigration).toContain('to service_role');
+  });
+
+  it('projects the final quality decision into the V4 operation state columns', () => {
+    expect(qualityContractStateMigration).toContain('v_operation_state jsonb');
+    expect(qualityContractStateMigration).toContain('generation_status = coalesce(v_generation_status, generation_status)');
+    expect(qualityContractStateMigration).toContain('review_status = coalesce(v_review_status, review_status)');
+    expect(qualityContractStateMigration).toContain('publication_status = coalesce(v_publication_status, publication_status)');
+    expect(qualityContractStateMigration).toContain('indexing_status = coalesce(v_indexing_status, indexing_status)');
+    expect(qualityContractStateMigration).toContain('final_quality_decision_id = coalesce');
+    expect(qualityContractStateMigration).toContain('to service_role');
+  });
+
+  it('clears stale retry failures on successful terminal projections', () => {
+    expect(terminalSuccessMigration).toContain("in ('completed', 'approved_for_slot')");
+    expect(terminalSuccessMigration).toContain('then null');
+    expect(terminalSuccessMigration).toContain('explicitly supplies');
+    expect(terminalSuccessMigration).toContain('to service_role');
+  });
+
+  it('terminalizes high-risk operations and retires their source queue row atomically', () => {
+    expect(autoDiscardMigration).toContain("p_terminal_status = 'quarantined'");
+    expect(autoDiscardMigration).toContain("set status = 'skipped'");
+    expect(autoDiscardMigration).toContain("'blog_v4_disposition', 'auto_discarded'");
+    expect(autoDiscardMigration).toContain('generation_status = coalesce');
+    expect(autoDiscardMigration).toContain('lease_owner = null');
+    expect(autoDiscardMigration).toContain('a replay may observe an event');
+    expect(autoDiscardMigration).toContain("if p_terminal_status = 'quarantined' and v_operation.queue_id is not null then");
+    expect(autoDiscardMigration).toContain('to service_role');
   });
 
   it('publishes commercial content and its indexing outbox in one fenced transaction', () => {

@@ -26,9 +26,11 @@ describe('blog DeepSeek V4 cron contract', () => {
     expect(config.crons.some((cron) => cron.path === '/api/cron/blog-publisher')).toBe(false);
   });
 
-  it('does not schedule legacy blog producers alongside the durable factory', () => {
+  it('schedules the durable refill while keeping unrelated legacy producers disabled', () => {
+    expect(config.crons).toContainEqual({
+      path: '/api/cron/blog-scheduler', schedule: '0 15 * * *',
+    });
     for (const path of [
-      '/api/cron/blog-scheduler',
       '/api/cron/blog-regenerate-zero-click',
       '/api/cron/trend-topic-miner',
       '/api/cron/programmatic-seo-generator',

@@ -50,6 +50,13 @@ async function runBlogPublicationController(request: NextRequest) {
   if (!isCronOrVercelAuthorized(request)) return cronUnauthorizedResponse();
   if (!isSupabaseConfigured) return { skipped: true, reason: 'supabase_not_configured' };
 
+  const factoryEnabled = ['1', 'true'].includes(
+    String(process.env.BLOG_CONTENT_FACTORY_ENABLED || '').trim().toLowerCase(),
+  );
+  if (process.env.VERCEL_ENV === 'production' && !factoryEnabled) {
+    return { skipped: true, reason: 'content_factory_required_in_production' };
+  }
+
   const policy = readBlogAutopublishPolicyV3();
   if (!['live', 'reviewed_only'].includes(policy.mode)) {
     return { skipped: true, reason: `autopublish_mode_${policy.mode}`, policy };
@@ -69,9 +76,6 @@ async function runBlogPublicationController(request: NextRequest) {
   }
 
   const now = new Date();
-  const factoryEnabled = ['1', 'true'].includes(
-    String(process.env.BLOG_CONTENT_FACTORY_ENABLED || '').trim().toLowerCase(),
-  );
   const kstMinutes = (now.getUTCHours() * 60 + now.getUTCMinutes() + 9 * 60) % (24 * 60);
   if (factoryEnabled && (kstMinutes < 9 * 60 || kstMinutes > 22 * 60)) {
     return { skipped: true, reason: 'content_factory_publication_window_closed', rollout };

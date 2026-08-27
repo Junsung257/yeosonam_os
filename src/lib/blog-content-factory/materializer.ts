@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { buildBlogInformationRepresentativeKey } from '@/lib/blog-information-representative';
 import type { BlogPublicationRampStage } from '@/lib/blog-publication-rollout';
+import { isHighRiskAutoDiscardTopic } from '@/lib/blog-publication-review-policy';
 import { buildQueuedInformationBrief } from '@/lib/blog-queue-research';
 import { decideBlogDemandMaterializationV4, normalizeBlogDemandQueryV4 } from './demand';
 import { evaluateBlogContentFactoryQuotaV4, type BlogContentFactoryInventoryCountsV4 } from './quota';
@@ -51,10 +52,17 @@ function queueQuery(row: QueueCandidate): string {
 
 function riskFor(row: QueueCandidate): BlogContentOperationRisk {
   const explicit = String(row.meta?.risk_level ?? '').toUpperCase();
+  const query = queueQuery(row);
+  const highRiskTopic = isHighRiskAutoDiscardTopic({
+    title: row.topic,
+    category: row.category,
+    topic: query,
+  });
+  if (highRiskTopic) return 'HIGH';
   if (['LOW', 'MEDIUM', 'HIGH'].includes(explicit)) return explicit as BlogContentOperationRisk;
-  return /(?:입국|비자|여권|세관|면세|보험|의료|안전|esta|eta|etias)/i.test(queueQuery(row))
+  return /(?:입국|비자|여권|세관|면세|보험|의료|안전|esta|eta|etias)/i.test(query)
     ? 'HIGH'
-    : /(?:요금|가격|운영시간|공항|교통|날씨|우기|환율)/i.test(queueQuery(row))
+    : /(?:요금|가격|운영시간|공항|교통|날씨|우기|환율)/i.test(query)
       ? 'MEDIUM'
       : 'LOW';
 }

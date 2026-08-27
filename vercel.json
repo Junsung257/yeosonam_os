@@ -126,8 +126,16 @@
       "schedule": "5,15,25,35,45,55 16-21 * * *"
     },
     {
+      "path": "/api/cron/blog-scheduler",
+      "schedule": "0 15 * * *"
+    },
+    {
       "path": "/api/cron/blog-publication-controller",
       "schedule": "0,30 0-13 * * *"
+    },
+    {
+      "path": "/api/cron/blog-indexing-worker",
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/cron/serp-rank-snapshot",
