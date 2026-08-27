@@ -200,6 +200,9 @@ create index if not exists idx_blog_content_revisions_creative_created
 create index if not exists idx_blog_content_revisions_operation
   on public.blog_content_revisions(operation_id, revision_no desc)
   where operation_id is not null;
+create index if not exists idx_blog_content_revisions_parent
+  on public.blog_content_revisions(parent_revision_id)
+  where parent_revision_id is not null;
 create index if not exists idx_blog_quality_decisions_passed
   on public.blog_quality_decisions(passed, evaluated_at desc);
 create or replace function public.prevent_immutable_blog_content_revision_mutation_v1()
