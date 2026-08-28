@@ -205,6 +205,39 @@ describe('middleware blog public status contract', () => {
   });
 });
 
+describe('middleware package availability preflight credentials', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it('uses the server-only Supabase key before public keys for internal publication reads', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY', 'publishable-key');
+    vi.stubEnv('SUPABASE_SECRET_KEY', 'server-secret-key');
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('[]', {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }));
+
+    const response = await middleware(new NextRequest(
+      'https://www.yeosonam.com/packages/fbca42ad-50cd-4622-bde0-5dc13009e833',
+    ));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ pathname: '/rest/v1/product_registration_v5_publication_pointers' }),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          apikey: 'server-secret-key',
+          authorization: 'Bearer server-secret-key',
+        }),
+      }),
+    );
+  });
+});
+
 describe('middleware blog API boundary', () => {
   afterEach(() => {
     vi.unstubAllEnvs();

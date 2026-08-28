@@ -445,11 +445,12 @@ function getSupabaseRestConfig(): { url: string; key: string } | null {
   const key =
     getSecret('SUPABASE_SERVICE_ROLE_KEY') ||
     getSecret('SUPABASE_SERVICE_KEY') ||
+    getSecret('SUPABASE_SECRET_KEY') ||
+    getSecret('SUPABASE_SECRET_DEFAULT_KEY') ||
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
     getSecret('SUPABASE_PUBLISHABLE_KEY') ||
-    getSecret('SUPABASE_ANON_KEY') ||
-    getSecret('SUPABASE_SECRET_KEY');
+    getSecret('SUPABASE_ANON_KEY');
 
   if (!url || !/^https?:\/\//.test(url) || !key || url.includes('your_supabase_url')) {
     return null;
