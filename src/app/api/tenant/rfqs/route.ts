@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  isSupabaseConfigured,
-  getTenant,
-  listGroupRfqs,
-  getRfqBids,
+  isSupabaseAdminConfigured,
   GroupRfq,
 } from '@/lib/supabase';
 import { sensitiveBackendUnavailable } from '@/lib/sensitive-api-fail-closed';
+import { getTenantPortalTenant, isTenantPortalAuthError, requireTenantPortalRequest } from '@/lib/tenant-portal-auth';
+import { sanitizeTenantPortalRfq } from '@/lib/tenant-portal-rfq';
+import { getServerRfqBids, listServerGroupRfqs } from '@/lib/db/rfq-server';
 
 interface RfqWithTierInfo extends GroupRfq {
   is_unlocked: boolean;
@@ -23,17 +23,15 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const tenantId = searchParams.get('tenant_id');
 
-  if (!tenantId) {
-    return NextResponse.json({ error: 'tenant_id가 필요합니다.' }, { status: 400 });
-  }
+  const authorization = await requireTenantPortalRequest(request, tenantId ?? '');
+  if (isTenantPortalAuthError(authorization)) return authorization;
 
-  if (!isSupabaseConfigured) {
+  if (!isSupabaseAdminConfigured) {
     return sensitiveBackendUnavailable('tenant_rfqs');
   }
 
   try {
-    // 테넌트 조회 (티어 확인)
-    const tenant = await getTenant(tenantId);
+    const tenant = await getTenantPortalTenant(authorization.tenantId);
     if (!tenant) {
       return NextResponse.json({ error: '테넌트를 찾을 수 없습니다.' }, { status: 404 });
     }
@@ -42,8 +40,8 @@ export async function GET(request: NextRequest) {
     const now = new Date();
 
     // status IN ('published', 'bidding') 인 RFQ 조회
-    const publishedRfqs = await listGroupRfqs('published');
-    const biddingRfqs = await listGroupRfqs('bidding');
+    const publishedRfqs = await listServerGroupRfqs('published');
+    const biddingRfqs = await listServerGroupRfqs('bidding');
     const allRfqs = [...publishedRfqs, ...biddingRfqs];
 
     // bid_deadline이 아직 안 지난 것만 필터
@@ -70,15 +68,12 @@ export async function GET(request: NextRequest) {
           : undefined;
 
         // 해당 테넌트의 기존 입찰 확인
-        const bids = await getRfqBids(rfq.id);
-        const myBid = bids.find(b => b.tenant_id === tenantId);
+        const bids = await getServerRfqBids(rfq.id, authorization.tenantId);
+        const myBid = bids.find(b => b.tenant_id === authorization.tenantId);
 
         // 고객 개인정보 마스킹
         const sanitized: RfqWithTierInfo = {
-          ...rfq,
-          customer_name: '고객 (익명)',
-          customer_phone: undefined,
-          customer_id: undefined,
+          ...sanitizeTenantPortalRfq(rfq, isUnlocked),
           is_unlocked: isUnlocked,
           unlocks_in_seconds: unlocksInSeconds,
           my_bid: myBid
@@ -95,7 +90,10 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    return NextResponse.json({ rfqs: enriched, count: enriched.length });
+    return NextResponse.json(
+      { rfqs: enriched, count: enriched.length },
+      { headers: { 'Cache-Control': 'private, no-store' } },
+    );
   } catch (error) {
     console.error('테넌트 RFQ 목록 조회 오류:', error);
     return NextResponse.json(

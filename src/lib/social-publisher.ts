@@ -7,10 +7,19 @@
  * Twitter/X: Twitter API v2 직접 호출
  * Naver Cafe: Naver Cafe API v1 직접 호출
  */
+import { randomUUID } from 'node:crypto';
 import { supabaseAdmin } from '@/lib/supabase';
-import { resolveOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
+import {
+  resolveOAuthToken,
+  resolvePlatformOAuthToken,
+  type OAuthProvider,
+} from '@/lib/marketing-pipeline/token-resolver';
 import { getSecret } from '@/lib/secret-registry';
-import { publishToThreads as publishToThreadsCore } from '@/lib/threads-publisher';
+import {
+  getThreadsConfig,
+  publishToThreads as publishToThreadsCore,
+} from '@/lib/threads-publisher';
+import { isUuid } from '@/lib/uuid';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -19,6 +28,7 @@ export type SocialPlatform = 'instagram' | 'facebook' | 'threads' | 'twitter' | 
 export interface PublishRequest {
   contentDistributionId: string;
   platform: SocialPlatform;
+  tenantId?: string;
   imageUrls?: string[];
   caption: string;
   scheduledAt?: string;
@@ -30,12 +40,43 @@ export interface PublishResult {
   externalPostId?: string;
   publishedAt: string;
   error?: string;
+  /** External request may have been accepted even though the response failed. */
+  requiresReconciliation?: boolean;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const META_GRAPH_BASE = 'https://graph.facebook.com/v18.0';
 const TWITTER_API_BASE = 'https://api.twitter.com/2';
+const PUBLISH_LEASE_MS = 10 * 60 * 1000;
+
+type PublishQueueRow = {
+  id: string;
+  tenant_id: string | null;
+  platform: string;
+  payload: Record<string, unknown> | null;
+  product_id: string | null;
+};
+
+async function resolvePublishingToken(
+  tenantId: string | undefined,
+  provider: OAuthProvider,
+) {
+  return tenantId
+    ? resolveOAuthToken(tenantId, provider)
+    : resolvePlatformOAuthToken(provider);
+}
+
+function resolvePublishingAccountId(
+  token: { metadata?: Record<string, unknown> },
+  tenantId: string | undefined,
+  metadataKey: string,
+  platformSecretKey: 'INSTAGRAM_BUSINESS_ACCOUNT_ID' | 'META_PAGE_ID' | 'THREADS_USER_ID' | 'NAVER_CAFE_ID',
+): string | null {
+  if (!tenantId) return getSecret(platformSecretKey);
+  const value = token.metadata?.[metadataKey];
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
@@ -68,27 +109,38 @@ export async function processPublishQueue(opts?: {
   tenantId?: string;
   limit?: number;
 }): Promise<{ published: number; failed: number; results: PublishResult[] }> {
-  const limit = opts?.limit ?? 10;
+  const limit = Math.max(1, Math.min(opts?.limit ?? 10, 100));
+  const tenantId = opts?.tenantId?.trim();
+  if (opts?.tenantId !== undefined && (!tenantId || !isUuid(tenantId))) {
+    return { published: 0, failed: 0, results: [] };
+  }
 
   // ── 1. 승인된 콘텐츠 조회 ──────────────────────────────────────────────
-  let query = supabaseAdmin
+  // publishing lease가 만료된 행은 외부 게시 결과가 불명확할 수 있으므로
+  // 자동 재취득하지 않는다. 운영 reconcile 후 approved로 되돌린 경우에만
+  // 다시 처리해 duplicate external post를 방지한다.
+  let approvedQuery = supabaseAdmin
     .from('content_distributions')
-    .select('id, platform, payload, product_id')
+    .select('id, tenant_id, platform, payload, product_id')
     .eq('status', 'approved')
     .order('updated_at', { ascending: true })
     .limit(limit);
 
   if (opts?.platform) {
-    query = query.eq('platform', opts.platform);
+    approvedQuery = approvedQuery.eq('platform', opts.platform);
+  }
+  if (tenantId) {
+    approvedQuery = approvedQuery.eq('tenant_id', tenantId);
   }
 
-  const { data: rows, error: fetchErr } = await query;
+  const { data: approvedRows, error: approvedErr } = await approvedQuery;
 
-  if (fetchErr) {
-    console.error('[social-publisher] 승인 콘텐츠 조회 실패:', fetchErr);
+  if (approvedErr) {
+    console.error('[social-publisher] 승인 콘텐츠 조회 실패:', approvedErr);
     return { published: 0, failed: 0, results: [] };
   }
 
+  const rows = (approvedRows ?? []) as unknown as PublishQueueRow[];
   if (!rows?.length) {
     return { published: 0, failed: 0, results: [] };
   }
@@ -132,23 +184,50 @@ export async function processPublishQueue(opts?: {
       }
     }
 
+    // 여러 worker가 동시에 같은 approved row를 읽어도, 이 조건부 UPDATE 중
+    // 하나만 publishing lease를 획득하도록 한다.
+    const claimToken = randomUUID();
+    const claimExpiresAt = new Date(Date.now() + PUBLISH_LEASE_MS).toISOString();
+    let claimQuery = supabaseAdmin
+      .from('content_distributions')
+      .update({
+        status: 'publishing',
+        publish_claim_token: claimToken,
+        publish_lease_expires_at: claimExpiresAt,
+        publish_claimed_at: new Date().toISOString(),
+      })
+      .eq('id', row.id);
+    if (row.tenant_id) claimQuery = claimQuery.eq('tenant_id', row.tenant_id);
+    else claimQuery = claimQuery.is('tenant_id', null);
+    claimQuery = claimQuery.eq('status', 'approved');
+    const { data: claimed, error: claimErr } = await claimQuery.select('id').maybeSingle();
+    if (claimErr || !claimed) continue;
+
     const result = await publishToSocial({
       contentDistributionId: row.id,
       platform,
+      tenantId: typeof row.tenant_id === 'string' ? row.tenant_id.trim() : undefined,
       caption,
       imageUrls: payload?.imageUrls,
     });
 
     // ── 4. DB 상태 업데이트 ────────────────────────────────────────────
     if (result.success) {
-      const { error: updateErr } = await supabaseAdmin
+      let updateQuery = supabaseAdmin
         .from('content_distributions')
         .update({
           status: 'published',
           external_id: result.externalPostId ?? null,
           published_at: result.publishedAt,
+          publish_claim_token: null,
+          publish_lease_expires_at: null,
+          publish_claimed_at: null,
         })
         .eq('id', row.id);
+      updateQuery = updateQuery.eq('status', 'publishing').eq('publish_claim_token', claimToken);
+      if (row.tenant_id) updateQuery = updateQuery.eq('tenant_id', row.tenant_id);
+      else updateQuery = updateQuery.is('tenant_id', null);
+      const { error: updateErr } = await updateQuery;
 
       if (updateErr) {
         console.error(`[social-publisher] DB 업데이트 실패 (published): row=${row.id}`, updateErr);
@@ -156,22 +235,39 @@ export async function processPublishQueue(opts?: {
 
       published++;
     } else {
-      const { data: current } = await supabaseAdmin
+      let currentQuery = supabaseAdmin
         .from('content_distributions')
         .select('retry_count')
         .eq('id', row.id)
+        .eq('status', 'publishing')
+        .eq('publish_claim_token', claimToken)
         .limit(1);
+      if (row.tenant_id) currentQuery = currentQuery.eq('tenant_id', row.tenant_id);
+      else currentQuery = currentQuery.is('tenant_id', null);
+      const { data: current } = await currentQuery;
 
       const retryCount = ((current?.[0] as { retry_count?: number } | undefined)?.retry_count ?? 0) + 1;
+      const nextStatus = result.requiresReconciliation
+        ? 'needs_reconcile'
+        : retryCount >= 3
+          ? 'failed'
+          : 'approved';
 
-      const { error: updateErr } = await supabaseAdmin
+      let updateQuery = supabaseAdmin
         .from('content_distributions')
         .update({
-          status: retryCount >= 3 ? 'failed' : 'approved',
+          status: nextStatus,
           retry_count: retryCount,
           error_message: result.error ?? null,
+          publish_claim_token: null,
+          publish_lease_expires_at: null,
+          publish_claimed_at: null,
         })
         .eq('id', row.id);
+      updateQuery = updateQuery.eq('status', 'publishing').eq('publish_claim_token', claimToken);
+      if (row.tenant_id) updateQuery = updateQuery.eq('tenant_id', row.tenant_id);
+      else updateQuery = updateQuery.is('tenant_id', null);
+      const { error: updateErr } = await updateQuery;
 
       if (updateErr) {
         console.error(`[social-publisher] DB 업데이트 실패 (failed): row=${row.id}`, updateErr);
@@ -224,14 +320,19 @@ async function publishToInstagram(request: PublishRequest): Promise<PublishResul
   const now = new Date().toISOString();
 
   try {
-    const token = await resolveOAuthToken('', 'meta');
+    const token = await resolvePublishingToken(request.tenantId, 'meta');
     if (!token) {
       return { platform: 'instagram', success: false, publishedAt: now, error: 'Meta OAuth 토큰 없음' };
     }
 
-    const igUserId = getSecret('INSTAGRAM_BUSINESS_ACCOUNT_ID');
+    const igUserId = resolvePublishingAccountId(
+      token,
+      request.tenantId,
+      'instagram_business_account_id',
+      'INSTAGRAM_BUSINESS_ACCOUNT_ID',
+    );
     if (!igUserId) {
-      return { platform: 'instagram', success: false, publishedAt: now, error: 'INSTAGRAM_BUSINESS_ACCOUNT_ID 미설정' };
+      return { platform: 'instagram', success: false, publishedAt: now, error: request.tenantId ? '테넌트 Instagram 계정 ID 미등록' : 'INSTAGRAM_BUSINESS_ACCOUNT_ID 미설정' };
     }
 
     if (!request.imageUrls?.length) {
@@ -290,6 +391,7 @@ async function publishToInstagram(request: PublishRequest): Promise<PublishResul
       success: false,
       publishedAt: now,
       error: err instanceof Error ? err.message : String(err),
+      requiresReconciliation: true,
     };
   }
 }
@@ -304,14 +406,19 @@ async function publishToFacebook(request: PublishRequest): Promise<PublishResult
   const now = new Date().toISOString();
 
   try {
-    const token = await resolveOAuthToken('', 'meta');
+    const token = await resolvePublishingToken(request.tenantId, 'meta');
     if (!token) {
       return { platform: 'facebook', success: false, publishedAt: now, error: 'Meta OAuth 토큰 없음' };
     }
 
-    const pageId = getSecret('META_PAGE_ID');
+    const pageId = resolvePublishingAccountId(
+      token,
+      request.tenantId,
+      'facebook_page_id',
+      'META_PAGE_ID',
+    );
     if (!pageId) {
-      return { platform: 'facebook', success: false, publishedAt: now, error: 'META_PAGE_ID 미설정' };
+      return { platform: 'facebook', success: false, publishedAt: now, error: request.tenantId ? '테넌트 Facebook Page ID 미등록' : 'META_PAGE_ID 미설정' };
     }
 
     const accessToken = token.accessToken;
@@ -354,6 +461,7 @@ async function publishToFacebook(request: PublishRequest): Promise<PublishResult
       success: false,
       publishedAt: now,
       error: err instanceof Error ? err.message : String(err),
+      requiresReconciliation: true,
     };
   }
 }
@@ -370,14 +478,22 @@ async function publishToThreads(request: PublishRequest): Promise<PublishResult>
   const now = new Date().toISOString();
 
   try {
-    const token = await resolveOAuthToken('', 'meta');
+    const platformThreadsConfig = request.tenantId ? null : await getThreadsConfig();
+    const token = platformThreadsConfig
+      ? { accessToken: platformThreadsConfig.accessToken }
+      : await resolvePublishingToken(request.tenantId, 'meta');
     if (!token) {
       return { platform: 'threads', success: false, publishedAt: now, error: 'Meta OAuth 토큰 없음' };
     }
 
-    const threadsUserId = getSecret('THREADS_USER_ID');
+    const threadsUserId = platformThreadsConfig?.threadsUserId ?? resolvePublishingAccountId(
+      token,
+      request.tenantId,
+      'threads_user_id',
+      'THREADS_USER_ID',
+    );
     if (!threadsUserId) {
-      return { platform: 'threads', success: false, publishedAt: now, error: 'THREADS_USER_ID 미설정' };
+      return { platform: 'threads', success: false, publishedAt: now, error: request.tenantId ? '테넌트 Threads 사용자 ID 미등록' : 'THREADS_USER_ID 미설정' };
     }
 
     const accessToken = token.accessToken;
@@ -396,6 +512,7 @@ async function publishToThreads(request: PublishRequest): Promise<PublishResult>
         success: false,
         publishedAt: now,
         error: result.error ?? `Threads 발행 실패 (step: ${result.step})`,
+        requiresReconciliation: result.step !== 'validate',
       };
     }
 
@@ -413,6 +530,7 @@ async function publishToThreads(request: PublishRequest): Promise<PublishResult>
       success: false,
       publishedAt: now,
       error: err instanceof Error ? err.message : String(err),
+      requiresReconciliation: true,
     };
   }
 }
@@ -431,9 +549,15 @@ async function publishToTwitter(request: PublishRequest): Promise<PublishResult>
   const now = new Date().toISOString();
 
   try {
-    const token = await resolveOAuthToken('', 'twitter');
+    const token = await resolvePublishingToken(request.tenantId, 'twitter');
     if (!token) {
-      // Twitter OAuth 없으면 X API v2 OAuth 2.0 Bearer Token 시도
+      // 테넌트 발행은 공용 bearer로 우회하지 않는다. 공용 bearer는
+      // 명시적인 platform-scoped 작업에서만 허용한다.
+      if (request.tenantId) {
+        return { platform: 'twitter', success: false, publishedAt: now, error: '테넌트 Twitter OAuth 토큰 없음' };
+      }
+
+      // Twitter OAuth 없으면 명시적인 platform-scoped 작업에서만 bearer 시도
       const bearerToken = getSecret('TWITTER_BEARER_TOKEN');
       if (!bearerToken) {
         return { platform: 'twitter', success: false, publishedAt: now, error: 'Twitter OAuth 토큰 및 Bearer Token 없음' };
@@ -470,14 +594,14 @@ async function publishToTwitter(request: PublishRequest): Promise<PublishResult>
       };
     }
 
-    // OAuth 1.0a 방식 (user context tweets) — OAuth 헤더 서명 필요
-    console.log(`[social-publisher] [TWITTER] OAuth 1.0a 발행 (OAuth 헤더 서명 필요): caption=${request.caption.slice(0, 50)}...`);
-
+    // OAuth 1.0a user-context 서명이 아직 구현되지 않았으므로 가짜
+    // external id를 반환하지 않는다. 외부 발행이 확인된 경우에만
+    // content_distributions를 published로 전환해야 한다.
     return {
       platform: 'twitter',
-      success: true,
-      externalPostId: `tw_${Date.now()}`,
+      success: false,
       publishedAt: now,
+      error: 'Twitter user-context publisher is not configured',
     };
   } catch (err) {
     return {
@@ -485,6 +609,7 @@ async function publishToTwitter(request: PublishRequest): Promise<PublishResult>
       success: false,
       publishedAt: now,
       error: err instanceof Error ? err.message : String(err),
+      requiresReconciliation: true,
     };
   }
 }
@@ -501,14 +626,19 @@ async function publishToNaverCafe(request: PublishRequest): Promise<PublishResul
   const now = new Date().toISOString();
 
   try {
-    const token = await resolveOAuthToken('', 'naver');
+    const token = await resolvePublishingToken(request.tenantId, 'naver');
     if (!token) {
       return { platform: 'naver_cafe', success: false, publishedAt: now, error: 'Naver OAuth 토큰 없음' };
     }
 
-    const cafeId = getSecret('NAVER_CAFE_ID');
+    const cafeId = resolvePublishingAccountId(
+      token,
+      request.tenantId,
+      'naver_cafe_id',
+      'NAVER_CAFE_ID',
+    );
     if (!cafeId) {
-      return { platform: 'naver_cafe', success: false, publishedAt: now, error: 'NAVER_CAFE_ID 미설정' };
+      return { platform: 'naver_cafe', success: false, publishedAt: now, error: request.tenantId ? '테넌트 Naver Cafe ID 미등록' : 'NAVER_CAFE_ID 미설정' };
     }
 
     const accessToken = token.accessToken;
@@ -553,6 +683,7 @@ async function publishToNaverCafe(request: PublishRequest): Promise<PublishResul
       success: false,
       publishedAt: now,
       error: err instanceof Error ? err.message : String(err),
+      requiresReconciliation: true,
     };
   }
 }
@@ -563,7 +694,9 @@ async function checkMetaTokenHealth(
   platform: SocialPlatform,
   tenantId?: string,
 ): Promise<{ ok: boolean; message: string }> {
-  const token = await resolveOAuthToken(tenantId ?? '', 'meta');
+  const token = tenantId
+    ? await resolveOAuthToken(tenantId, 'meta')
+    : await resolvePlatformOAuthToken('meta');
   if (!token) {
     return { ok: false, message: 'Meta OAuth 토큰 없음 — 소셜 미디어 연동 필요' };
   }
@@ -588,7 +721,9 @@ async function checkMetaTokenHealth(
 async function checkNaverTokenHealth(
   tenantId?: string,
 ): Promise<{ ok: boolean; message: string }> {
-  const token = await resolveOAuthToken(tenantId ?? '', 'naver');
+  const token = tenantId
+    ? await resolveOAuthToken(tenantId, 'naver')
+    : await resolvePlatformOAuthToken('naver');
   if (!token) {
     return { ok: false, message: 'Naver OAuth 토큰 없음 — 네이버 연동 필요' };
   }
@@ -644,8 +779,10 @@ async function findBlogUrlForCardNews(productId: string): Promise<string | null>
 async function checkTwitterTokenHealth(
   tenantId?: string,
 ): Promise<{ ok: boolean; message: string }> {
-  const token = await resolveOAuthToken(tenantId ?? '', 'twitter');
-  const bearerToken = getSecret('TWITTER_BEARER_TOKEN');
+  const token = tenantId
+    ? await resolveOAuthToken(tenantId, 'twitter')
+    : await resolvePlatformOAuthToken('twitter');
+  const bearerToken = tenantId ? null : getSecret('TWITTER_BEARER_TOKEN');
 
   if (!token && !bearerToken) {
     return { ok: false, message: 'Twitter OAuth 토큰 및 Bearer Token 없음' };

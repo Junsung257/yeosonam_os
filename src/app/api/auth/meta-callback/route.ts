@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createHmac, timingSafeEqual } from 'crypto';
+import { apiResponse } from '@/lib/api-response';
 import { saveOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
 import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin } from '@/lib/supabase';
+import { consumeOAuthState, verifyOAuthState } from '@/lib/oauth-state';
+import { requireAdminRequest, resolveAdminActorId } from '@/lib/admin-guard';
+import {
+  isTenantPortalAuthError,
+  requireTenantAdminRole,
+  requireTenantPortalRequest,
+} from '@/lib/tenant-portal-auth';
 
 /**
  * Meta OAuth 콜백
@@ -13,14 +20,6 @@ import { supabaseAdmin } from '@/lib/supabase';
  * state.payload 에 platform 이 있으면 Threads 전용 OAuth 로 처리.
  */
 export const dynamic = 'force-dynamic';
-
-const STATE_TTL_MS = 10 * 60 * 1000;
-
-interface StatePayload {
-  tenant_id: string;
-  ts: number;
-  platform?: 'meta' | 'threads';
-}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -40,24 +39,48 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'code 또는 state 누락' }, { status: 400 });
   }
 
-  let payload: StatePayload;
-  try {
-    const dotIdx = stateRaw.lastIndexOf('.');
-    if (dotIdx < 0) throw new Error('state 형식 오류');
-    const enc = stateRaw.slice(0, dotIdx);
-    const sig = stateRaw.slice(dotIdx + 1);
-    const expected = createHmac('sha256', getSecret('OAUTH_STATE_SECRET') ?? 'dev').update(enc).digest('hex').slice(0, 16);
-    const sigBuf = Buffer.from(sig);
-    const expBuf = Buffer.from(expected);
-    if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) throw new Error('state 서명 불일치');
-    const decoded = JSON.parse(Buffer.from(enc, 'base64url').toString('utf8')) as StatePayload;
-    if (Date.now() - decoded.ts > STATE_TTL_MS) throw new Error('state 만료');
-    payload = decoded;
-  } catch {
+  const payload = verifyOAuthState(stateRaw, 'meta')
+    ?? verifyOAuthState(stateRaw, 'threads');
+  if (!payload) {
     return NextResponse.json({ error: 'state 검증 실패' }, { status: 400 });
   }
 
-  const isThreadsOAuth = payload.platform === 'threads';
+  const isThreadsOAuth = payload.provider === 'threads';
+  let actorUserId: string | null | undefined;
+  let authorizedTenantId: string | undefined;
+  if (isThreadsOAuth && payload.scope !== 'platform') {
+    return apiResponse({ error: 'state scope mismatch' }, { status: 400 });
+  }
+  if (!isThreadsOAuth && (payload.scope !== 'tenant' || !payload.tenant_id)) {
+    return apiResponse({ error: 'state scope mismatch' }, { status: 400 });
+  }
+  if (isThreadsOAuth) {
+    const authError = await requireAdminRequest(request);
+    if (authError) return authError;
+    actorUserId = await resolveAdminActorId(request);
+    if (!actorUserId) {
+      return apiResponse(
+        { code: 'INTERACTIVE_ADMIN_SESSION_REQUIRED', error: 'OAuth 연결은 관리자 사용자 세션에서 시작해야 합니다.' },
+        { status: 403 },
+      );
+    }
+  } else {
+    const authorization = await requireTenantPortalRequest(request, payload.tenant_id!);
+    if (isTenantPortalAuthError(authorization)) return authorization;
+    const roleError = requireTenantAdminRole(authorization);
+    if (roleError) return roleError;
+    actorUserId = authorization.userId;
+    authorizedTenantId = authorization.tenantId;
+  }
+  const consumedPayload = await consumeOAuthState(
+    stateRaw,
+    payload.provider,
+    Date.now(),
+    actorUserId,
+  );
+  if (!consumedPayload) {
+    return NextResponse.json({ error: 'state 검증 실패' }, { status: 400 });
+  }
   const appId = isThreadsOAuth
     ? getSecret('THREADS_APP_ID') || getSecret('META_APP_ID')
     : getSecret('META_APP_ID');
@@ -106,7 +129,7 @@ export async function GET(request: NextRequest) {
   const metaUserId = longJson?.user_id ?? shortJson?.user_id;
   const expiresIn = longJson?.expires_in;
 
-  if (payload.platform === 'threads') {
+  if (payload.provider === 'threads') {
     // Threads 전용: 토큰을 DB system_secrets 에 저장
     const upsertData: Record<string, unknown> = {
       key: 'THREADS_ACCESS_TOKEN',
@@ -126,10 +149,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/admin?oauth=threads_success', request.url));
   }
 
-  await saveOAuthToken(payload.tenant_id, 'meta', {
+  await saveOAuthToken(authorizedTenantId!, 'meta', {
     accessToken: finalToken,
     expiresIn,
     scopes: ['ads_management', 'ads_read', 'read_insights'],
+    metadata: metaUserId ? { meta_user_id: metaUserId } : {},
   });
 
   return NextResponse.redirect(new URL('/admin?oauth=meta_success', request.url));

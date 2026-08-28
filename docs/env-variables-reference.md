@@ -478,6 +478,7 @@ REVALIDATE_SECRET=your_random_secret
 | `TWITTER_BEARER_TOKEN` | Twitter/X API v2 Bearer Token | [Twitter Developer Portal](https://developer.twitter.com) → Projects → Keys and tokens |
 | `NAVER_CAFE_ID` | 네이버 카페 고유 ID (카페 URL에서 숫자 부분) | 네이버 카페 관리 페이지 |
 | `INSTAGRAM_BUSINESS_ACCOUNT_ID` | Instagram 비즈니스 계정 ID (IG User ID와 다를 수 있음) | Meta Business Suite → Instagram 계정 설정 |
+| `OAUTH_STATE_SECRET` | OAuth state 서명·CSRF 방어용 서버 전용 고엔트로피 시크릿 | Secret Manager (development/preview/production 모두 필수) |
 
 ### 선택 — 광고 안전 장치 (기본값 dry-run)
 
@@ -485,7 +486,7 @@ REVALIDATE_SECRET=your_random_secret
 |---|---|---|
 | `META_ADS_DRY_RUN` | `1`이면 Meta/Google 광고 API 실제 호출 안 함 (DB 로그만) | `1` |
 | `META_ADS_TEST_MODE` | `1`이면 Meta 광고를 PAUSED 상태로 생성 | `1` |
-| `NEXT_PUBLIC_DEFAULT_TENANT_ID` | 마케팅 파이프라인 기본 테넌트 ID | `default` |
+| `NEXT_PUBLIC_DEFAULT_TENANT_ID` | 플랫폼 공용 마케팅 작업이 사용할 기본 테넌트 UUID | 유효한 tenant UUID (문자열 `default` 금지) |
 | `AFFILIATE_JWT_SECTET` | 제휴 JWT 서명용 시크릿 | fallback: `'yeosonam-dev-jwt-secret-fallback'` |
 ---
 ### Phase 1 — 키워드 최적화 API (2026-05-24)

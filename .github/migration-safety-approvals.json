@@ -371,6 +371,24 @@
       "approvedIssueCounts": {
         "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 8
       }
+    },
+    "20260828120000_oauth_states_and_tenant_memberships.sql": {
+      "sha256": "81f7b718b614aa8d621f051ee2a5f35e144dd3c2762c87af6cc65370e12f4423",
+      "status": "A",
+      "rationale": "This exact migration is already applied on the active production Supabase project. oauth_states is server-only with public, anon, and authenticated privileges revoked; the explicit service-role policy is added by the immediately following reconciliation migration 20260828150000 without rewriting applied history.",
+      "evidence": "docs/specs/20260828-production-release-hardening/verification.md",
+      "approvedIssueCounts": {
+        "high:security:New table 'oauth_states' has no RLS policy": 1
+      }
+    },
+    "20260828130000_social_publishing_hardening.sql": {
+      "sha256": "1357ac1ed1f6eb575b6136f77b048cd629718d0a708aef94ef9ae3dbee88059f",
+      "status": "A",
+      "rationale": "This exact migration is already applied on the active production Supabase project. The replay-safe publish-claim index was built on an empty content_distributions table before production traffic for this feature; Supabase remote migrations are transactional and cannot use CREATE INDEX CONCURRENTLY, while fresh databases have no customer traffic during bootstrap.",
+      "evidence": "docs/specs/20260828-production-release-hardening/verification.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 1
+      }
     }
   }
 }

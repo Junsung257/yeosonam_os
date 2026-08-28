@@ -1,7 +1,12 @@
 import { type NextRequest } from 'next/server';
-import { createHmac } from 'crypto';
 import { getSecret } from '@/lib/secret-registry';
 import { apiResponse } from '@/lib/api-response';
+import { createOAuthState, registerOAuthState } from '@/lib/oauth-state';
+import {
+  isTenantPortalAuthError,
+  requireTenantAdminRole,
+  requireTenantPortalRequest,
+} from '@/lib/tenant-portal-auth';
 
 /**
  * 네이버 OAuth 시작 (블로그 API 연동)
@@ -20,6 +25,11 @@ export async function GET(request: NextRequest) {
     return apiResponse({ error: 'tenant_id 필수 (UUID v4 형식)' }, { status: 400 });
   }
 
+  const authorization = await requireTenantPortalRequest(request, tenantId);
+  if (isTenantPortalAuthError(authorization)) return authorization;
+  const roleError = requireTenantAdminRole(authorization);
+  if (roleError) return roleError;
+
   const clientId = getSecret('NAVER_CLIENT_ID');
   const siteUrl  = process.env.NEXT_PUBLIC_SITE_URL;
   if (!clientId || !siteUrl) {
@@ -29,14 +39,19 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // CSRF 방어용 HMAC-signed state (10분 유효) — Google OAuth와 동일 패턴
-  const stateSecret = getSecret('OAUTH_STATE_SECRET');
-  if (!stateSecret) {
-    console.warn('[naver-oauth-start] OAUTH_STATE_SECRET 미설정 — CSRF 보호 비활성화 상태');
+  let state: string;
+  try {
+    state = createOAuthState({ provider: 'naver', tenantId: authorization.tenantId });
+    await registerOAuthState({
+      rawState: state,
+      provider: 'naver',
+      tenantId: authorization.tenantId,
+      actorUserId: authorization.userId,
+    });
+  } catch (error) {
+    console.error('[naver-oauth-start] state registration failed', error);
+    return apiResponse({ error: 'OAuth state storage is unavailable' }, { status: 503 });
   }
-  const payload = Buffer.from(JSON.stringify({ tenant_id: tenantId, ts: Date.now() })).toString('base64url');
-  const sig     = createHmac('sha256', stateSecret ?? 'dev').update(payload).digest('hex').slice(0, 16);
-  const state   = `${payload}.${sig}`;
 
   const params = new URLSearchParams({
     response_type: 'code',
@@ -46,5 +61,5 @@ export async function GET(request: NextRequest) {
   });
 
   const url = `https://nid.naver.com/oauth2.0/authorize?${params.toString()}`;
-  return apiResponse({ url });
+  return apiResponse({ url }, { headers: { 'Cache-Control': 'private, no-store' } });
 }

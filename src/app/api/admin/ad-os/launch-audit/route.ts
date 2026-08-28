@@ -13,7 +13,7 @@ import {
   getGoogleAdsConfigStatus,
   getNaverAdsConfigStatus,
 } from '@/lib/search-ads-api';
-import { resolveOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
+import { resolvePlatformOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
 
 export const dynamic = 'force-dynamic';
 
@@ -100,7 +100,7 @@ export const POST = withAdminGuard(async () => {
   const googleApproved = keywords.filter((row) => row.platform === 'google' && row.plan_status === 'approved' && ['approved', 'testing'].includes(row.autopilot_status || '') && row.tier !== 'negative');
   const naverConfig = getNaverAdsConfigStatus();
   const googleConfig = getGoogleAdsConfigStatus();
-  const googleToken = googleConfig.configured ? await resolveOAuthToken('', 'google_ads') : null;
+  const googleToken = googleConfig.configured ? await resolvePlatformOAuthToken('google_ads') : null;
 
   const items: AuditItem[] = [
     item(

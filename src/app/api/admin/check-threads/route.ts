@@ -4,17 +4,16 @@
  */
 import { apiResponse } from '@/lib/api-response';
 import { withAdminGuard } from '@/lib/admin-guard';
-import { isThreadsConfigured, getThreadsConfig } from '@/lib/threads-publisher';
+import { getThreadsConfig } from '@/lib/threads-publisher';
 
 export const dynamic = 'force-dynamic';
 
 async function getHandler() {
-  const configured = isThreadsConfigured();
-  let config = null;
+  const config = await getThreadsConfig();
+  const configured = Boolean(config);
   let testResult = null;
 
   if (configured) {
-    config = await getThreadsConfig();
     // 실제 발행 없이 연결만 확인 (GET /me)
     try {
       const r = await fetch(

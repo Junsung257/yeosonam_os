@@ -1,7 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { requireAdminRequest } from '@/lib/admin-guard';
 import { apiResponse } from '@/lib/api-response';
-import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import {
   buildClobeAuthorizationUrl,
   buildClobeRedirectUri,
@@ -12,30 +10,24 @@ import {
   registerClobeOAuthClient,
   sealClobeOAuthState,
 } from '@/lib/clobe-oauth';
+import { registerOpaqueOAuthState } from '@/lib/oauth-state';
+import {
+  isTenantPortalAuthError,
+  requireTenantAdminRole,
+  requireTenantPortalRequest,
+} from '@/lib/tenant-portal-auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-async function resolveTenantId(rawTenantId: string | null): Promise<string | null> {
-  if (rawTenantId && UUID_RE.test(rawTenantId)) return rawTenantId;
-  if (!isSupabaseConfigured) return null;
-  const { data } = await supabaseAdmin
-    .from('tenants')
-    .select('id')
-    .eq('status', 'active')
-    .order('created_at', { ascending: true })
-    .limit(1);
-  return data?.[0]?.id ?? null;
-}
-
 export async function GET(request: NextRequest) {
-  const authError = await requireAdminRequest(request);
-  if (authError) return authError;
+  const requestedTenantId = request.nextUrl.searchParams.get('tenant_id') ?? '';
+  const authorization = await requireTenantPortalRequest(request, requestedTenantId);
+  if (isTenantPortalAuthError(authorization)) return authorization;
+  const roleError = requireTenantAdminRole(authorization);
+  if (roleError) return roleError;
 
-  const tenantId = await resolveTenantId(request.nextUrl.searchParams.get('tenant_id'));
-  if (!tenantId) {
+  if (!authorization.tenantId) {
     return apiResponse({ error: 'tenant_id is required' }, { status: 400 });
   }
 
@@ -50,12 +42,18 @@ export async function GET(request: NextRequest) {
     const registration = await registerClobeOAuthClient(metadata, redirectUri);
     const pkce = createPkcePair();
     const state = sealClobeOAuthState({
-      tenant_id: tenantId,
+      tenant_id: authorization.tenantId,
       client_id: registration.client_id,
       code_verifier: pkce.codeVerifier,
       token_endpoint: metadata.token_endpoint,
       resource: getClobeMcpUrl(),
       ts: Date.now(),
+    });
+    await registerOpaqueOAuthState({
+      rawState: state,
+      provider: 'clobe',
+      tenantId: authorization.tenantId,
+      actorUserId: authorization.userId,
     });
     const url = buildClobeAuthorizationUrl({
       metadata,
@@ -66,7 +64,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (request.nextUrl.searchParams.get('json') === '1') {
-      return apiResponse({ url });
+      return apiResponse({ url }, { headers: { 'Cache-Control': 'private, no-store' } });
     }
     return NextResponse.redirect(url);
   } catch (error) {

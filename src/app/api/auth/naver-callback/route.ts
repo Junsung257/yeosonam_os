@@ -1,36 +1,16 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { createHmac, timingSafeEqual } from 'crypto';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { saveOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
 import { getSecret } from '@/lib/secret-registry';
+import { consumeOAuthState, verifyOAuthState } from '@/lib/oauth-state';
+import {
+  isTenantPortalAuthError,
+  requireTenantAdminRole,
+  requireTenantPortalRequest,
+} from '@/lib/tenant-portal-auth';
 
 export const dynamic = 'force-dynamic';
-
-const STATE_TTL_MS = 10 * 60 * 1000;
-
-function verifyState(stateRaw: string): string | null {
-  const dotIdx = stateRaw.lastIndexOf('.');
-  if (dotIdx < 0) return null;
-
-  const payload = stateRaw.slice(0, dotIdx);
-  const sig = stateRaw.slice(dotIdx + 1);
-  const expected = createHmac('sha256', getSecret('OAUTH_STATE_SECRET') ?? 'dev')
-    .update(payload)
-    .digest('hex')
-    .slice(0, 16);
-  const sigBuf = Buffer.from(sig);
-  const expBuf = Buffer.from(expected);
-  if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) return null;
-
-  const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as {
-    tenant_id?: string;
-    ts?: number;
-  };
-  if (!decoded.tenant_id || typeof decoded.ts !== 'number') return null;
-  if (Date.now() - decoded.ts > STATE_TTL_MS) return null;
-  return decoded.tenant_id;
-}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -48,13 +28,17 @@ export async function GET(request: NextRequest) {
     return apiResponse({ error: 'code or state is missing' }, { status: 400 });
   }
 
-  let tenantId: string | null = null;
-  try {
-    tenantId = verifyState(stateRaw);
-  } catch {
-    tenantId = null;
+  const state = verifyOAuthState(stateRaw, 'naver');
+  if (!state?.tenant_id) {
+    return apiResponse({ error: 'state verification failed' }, { status: 400 });
   }
-  if (!tenantId) {
+
+  const authorization = await requireTenantPortalRequest(request, state.tenant_id);
+  if (isTenantPortalAuthError(authorization)) return authorization;
+  const roleError = requireTenantAdminRole(authorization);
+  if (roleError) return roleError;
+  const consumedState = await consumeOAuthState(stateRaw, 'naver', Date.now(), authorization.userId);
+  if (!consumedState?.tenant_id) {
     return apiResponse({ error: 'state verification failed' }, { status: 400 });
   }
 
@@ -108,7 +92,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    await saveOAuthToken(tenantId, 'naver', {
+    await saveOAuthToken(authorization.tenantId, 'naver', {
       accessToken: tokenJson.access_token,
       refreshToken: tokenJson.refresh_token,
       expiresIn: tokenJson.expires_in ?? 3600,
