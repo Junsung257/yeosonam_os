@@ -20,11 +20,12 @@
 - [x] focused security tests 및 전체 Vitest 통과
 - [x] type-check, lint, production build/postbuild 통과
 - [x] 보안 정적 검사 결과 기록
+- [x] live probe에서 확인한 내부 마케팅 테이블의 browser-role grant/policy 잔존을 후보 migration으로 격리
 
 ## 배포 전 승인/수동 확인
 
-- [ ] live Supabase schema·grant·RLS·tenant membership probe
-- [ ] 두 forward migration을 production Supabase에 적용
+- [x] live Supabase schema·grant·RLS·tenant membership probe (pre-migration absence and historical grants confirmed; post-migration validation pending)
+- [ ] 세 forward migration을 production Supabase에 적용
 - [ ] production `OAUTH_STATE_SECRET` provision 및 rotation 기록
 - [ ] tenant별 verified social target account metadata provision
 - [ ] `NEXT_PUBLIC_DEFAULT_TENANT_ID`가 실제 UUID인지 확인
@@ -36,5 +37,5 @@
 ## 보류
 
 - [ ] `pptxgenjs -> image-size` advisory — 사용자 보류
-- [ ] live RLS broad-policy remediation — 별도 migration/승인 필요
+- [x] live RLS broad-policy remediation candidate migration 작성 (`20260828140000`); live apply/승인은 별도 필요
 - [ ] Twitter OAuth user-context publisher 구현
