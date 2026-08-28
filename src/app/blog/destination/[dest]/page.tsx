@@ -13,6 +13,7 @@ import {
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import { isGeneratedBlogImageUrl } from '@/lib/blog-image-gen';
 import { BLOG_PUBLIC_ANGLE_LABELS } from '@/lib/blog-public-taxonomy';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
@@ -281,6 +282,11 @@ function DestinationContent({
                           </div>
                         }
                       />
+                      {isGeneratedBlogImageUrl(post.og_image_url) ? (
+                        <span className="absolute left-2 top-2 z-10 rounded-full bg-black/60 px-2 py-1 text-[10px] font-medium text-white/90 backdrop-blur-sm">
+                          AI 생성 참고 이미지
+                        </span>
+                      ) : null}
                     </div>
                     <div className="p-5">
                       <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 mb-3 inline-block">

@@ -11,6 +11,7 @@ export interface HeroSlide {
   tagline?: string;
   minPrice?: number;
   href: string;
+  disclosure?: string;
 }
 
 interface Props {
@@ -49,13 +50,17 @@ export default function HeroBanner({ slides, autoPlayMs = 5000 }: Props) {
           className={`absolute inset-0 transition-opacity duration-700 ${i === current ? 'opacity-100' : 'opacity-0'}`}
           aria-hidden={i !== current}
         >
-          <SafeCoverNextImg
-            src={s.image}
-            alt={s.destination}
-            sizes="(max-width: 768px) 100vw, 100vw"
-            priority={i === 0}
-            fallback={<div className="absolute inset-0 bg-gradient-to-br from-brand-dark to-brand" aria-hidden />}
-          />
+          {s.image ? (
+            <SafeCoverNextImg
+              src={s.image}
+              alt={s.destination}
+              sizes="(max-width: 768px) 100vw, 100vw"
+              priority={i === 0}
+              fallback={<div className="absolute inset-0 bg-gradient-to-br from-brand-dark to-brand" aria-hidden />}
+            />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-brand-dark via-brand to-[#2563EB]" aria-hidden />
+          )}
         </div>
       ))}
 
@@ -110,6 +115,11 @@ export default function HeroBanner({ slides, autoPlayMs = 5000 }: Props) {
       <div className="absolute top-4 right-4 text-[11px] text-white/70 font-medium tabular-nums">
         {current + 1} / {slides.length}
       </div>
+      {slide.disclosure && (
+        <div className="absolute top-4 left-4 rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-medium text-white/85 backdrop-blur-sm">
+          {slide.disclosure}
+        </div>
+      )}
     </div>
   );
 }

@@ -44,6 +44,21 @@ describe('blog public sections contract', () => {
     }
   });
 
+  it('discloses generated conceptual media on every public blog card surface', () => {
+    const detailSource = readSource('src/app/blog/[slug]/page.tsx');
+    for (const file of [
+      'src/app/blog/BlogData.tsx',
+      'src/app/blog/destination/[dest]/page.tsx',
+      'src/app/blog/angle/[angle]/page.tsx',
+    ]) {
+      const source = readSource(file);
+      expect(source).toContain('isGeneratedBlogImageUrl');
+      expect(source).toContain('AI 생성 참고 이미지');
+    }
+    expect(detailSource).toContain('generatedHeroImage');
+    expect(detailSource).toContain('실제 현장 기록이나 최신 운영 상황의 증거로 사용하지 않습니다.');
+  });
+
   it('keeps public blog surfaces on the shared canonical origin contract', () => {
     const files = [
       'src/app/blog/page.tsx',

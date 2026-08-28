@@ -6,6 +6,7 @@ import { ScrollReveal } from '@/components/blog/ScrollReveal';
 import { BackToTop } from '@/components/blog/BackToTop';
 import { encodeDestinationPathSegment } from '@/lib/regions';
 import { fmtDateISO } from '@/lib/admin-utils';
+import { isGeneratedBlogImageUrl } from '@/lib/blog-image-gen';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import {
   BLOG_PUBLIC_ANGLES,
@@ -35,6 +36,14 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
   package_intro: '상품',
   pillar: '목적지 가이드',
 };
+
+function AiImageBadge({ url }: { url: string | null }) {
+  return isGeneratedBlogImageUrl(url) ? (
+    <span className="absolute left-2 top-2 z-10 rounded-full bg-black/60 px-2 py-1 text-[10px] font-medium text-white/90 backdrop-blur-sm">
+      AI 생성 참고 이미지
+    </span>
+  ) : null;
+}
 
 interface BlogPost extends PublicBlogCatalogPost {
   detail_available?: boolean | null;
@@ -243,6 +252,7 @@ function HeroCard({ post }: { post: BlogPost }) {
             />
           }
         />
+        <AiImageBadge url={post.og_image_url} />
       </div>
       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-transparent" />
       <div className="absolute bottom-0 left-0 right-0 p-6 md:p-10 text-white">
@@ -301,6 +311,7 @@ function SideCard({ post }: { post: BlogPost }) {
             />
           }
         />
+        <AiImageBadge url={post.og_image_url} />
       </div>
       {/* 텍스트 */}
       <div className="flex flex-col justify-center min-w-0 py-1 gap-1.5">
@@ -363,6 +374,7 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
             />
           }
         />
+        <AiImageBadge url={post.og_image_url} />
       </div>
 
       <div className="p-4 md:p-5">

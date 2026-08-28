@@ -1,40 +1,22 @@
 /**
- * AI Image Generation Pipeline
+ * Blog media adapter.
  *
- * 블로그 각 H2 섹션에 어울리는 이미지를 AI(Gemini native image)로 생성하거나
- * Pexels에서 검색하여 자동 삽입.
- *
- * 실패 체인: Gemini native image → Supabase Storage → Pexels 검색 → null
- *
- * Rate limit 보호: 한 번 호출당 최소 1초 간격
+ * New content uses the Yeosonam media pipeline:
+ *   disclosed GPT conceptual cover -> deterministic branded graphic fallback.
+ * Pexels/Gemini are intentionally not automatic fallbacks here.
  */
 
-import { getSecret } from '@/lib/secret-registry';
-import { supabaseAdmin } from '@/lib/supabase';
-import { destToEnKeyword, searchPexelsPhotos } from '@/lib/pexels';
-import { buildBlogImageSearchQuery, selectRelevantPexelsPhoto } from '@/lib/blog-image-relevance';
 import { createHash } from 'node:crypto';
+import { destToEnKeyword } from '@/lib/pexels';
+import { buildBlogImageSearchQuery } from '@/lib/blog-image-relevance';
+import {
+  isMediaCodexEnabled,
+  MEDIA_BRIEF_VERSION,
+  renderDeterministicMedia,
+  type MediaPurpose,
+} from '@/lib/media-generation';
 
-const BLOG_IMAGE_MODEL = process.env.BLOG_IMAGE_MODEL ?? 'gemini-3.1-flash-image';
-const BLOG_IMAGE_BUCKET = 'blog-assets';
-
-let lastCallTs = 0;
-
-/**
- * rate limit 방어: 최소 1초 간격
- */
-async function rateLimitGuard(): Promise<void> {
-  const now = Date.now();
-  const elapsed = now - lastCallTs;
-  if (elapsed < 1000) {
-    await new Promise((r) => setTimeout(r, 1000 - elapsed));
-  }
-  lastCallTs = Date.now();
-}
-
-/**
- * 섹션 제목(한국어)을 분석해 이미지 검색용 영어 키워드 생성
- */
+/** Retained for query-quality regression tests and legacy manual tooling. */
 export function buildSearchQuery(sectionTitle: string, destination: string, keyword: string): string {
   const destinationQuery = destination ? destToEnKeyword(destination) : 'travel destination';
   return buildBlogImageSearchQuery({
@@ -43,12 +25,12 @@ export function buildSearchQuery(sectionTitle: string, destination: string, keyw
     sectionTitle,
   });
 }
-
 interface GeminiInteractionImage {
   data: string;
   mimeType: string;
 }
 
+/** @deprecated Compatibility parser for historical Gemini response fixtures. */
 export function extractGeminiInteractionImage(value: unknown): GeminiInteractionImage | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const response = value as Record<string, unknown>;
@@ -62,7 +44,6 @@ export function extractGeminiInteractionImage(value: unknown): GeminiInteraction
       };
     }
   }
-
   const steps = Array.isArray(response.steps) ? response.steps : [];
   for (const step of [...steps].reverse()) {
     if (!step || typeof step !== 'object' || Array.isArray(step)) continue;
@@ -82,6 +63,7 @@ export function extractGeminiInteractionImage(value: unknown): GeminiInteraction
   return null;
 }
 
+/** Retained as the public prompt-policy regression surface. */
 export function buildGeneratedBlogImagePrompt(prompt: string): string {
   return [
     'Create a high-quality editorial travel image for a Korean travel guide.',
@@ -95,163 +77,75 @@ export function buildGeneratedBlogImagePrompt(prompt: string): string {
   ].join(' ');
 }
 
-async function persistGeneratedImage(base64: string, mimeType: string): Promise<string | null> {
-  const bytes = Buffer.from(base64, 'base64');
-  if (bytes.length === 0 || bytes.length > 6 * 1024 * 1024) return null;
-  const extension = mimeType === 'image/png' ? 'png' : 'jpg';
-  const hash = createHash('sha256').update(bytes).digest('hex');
-  const storagePath = `generated/blog/${hash.slice(0, 2)}/${hash}.${extension}`;
-  const { error } = await supabaseAdmin.storage
-    .from(BLOG_IMAGE_BUCKET)
-    .upload(storagePath, bytes, {
-      contentType: mimeType,
-      cacheControl: '31536000',
-      upsert: false,
-    });
-
-  if (error && !/already exists|duplicate/i.test(error.message)) {
-    console.warn(`[blog-image-gen] generated image storage upload failed: ${error.message}`);
-    return null;
-  }
-
-  const { data } = supabaseAdmin.storage.from(BLOG_IMAGE_BUCKET).getPublicUrl(storagePath);
-  return /^https:\/\//i.test(data.publicUrl) ? data.publicUrl : null;
+function stableOwnerId(sectionTitle: string, keyword: string, destination: string): string {
+  return `blog-${createHash('sha256')
+    .update(`${destination}:${keyword}:${sectionTitle}`)
+    .digest('hex')
+    .slice(0, 24)}`;
 }
 
-/**
- * Gemini native image API를 통해 이미지 생성 시도
- * 환경변수: GEMINI_API_KEY
- * 엔드포인트: https://generativelanguage.googleapis.com/v1beta/interactions
- */
-async function tryGeminiImage(prompt: string): Promise<string | null> {
-  const apiKey = getSecret('GEMINI_API_KEY') || getSecret('GOOGLE_GEMINI_API_KEY');
-  if (!apiKey) return null;
-
+async function deterministicFallback(input: {
+  ownerId: string;
+  purpose: MediaPurpose;
+  sectionTitle: string;
+  keyword: string;
+  destination: string;
+}): Promise<string | null> {
   try {
-    await rateLimitGuard();
-
-    const imagePrompt = buildGeneratedBlogImagePrompt(prompt);
-
-    const res = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/interactions',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey,
-        },
-        body: JSON.stringify({
-          model: BLOG_IMAGE_MODEL,
-          input: imagePrompt,
-          response_format: {
-            type: 'image',
-            mime_type: 'image/jpeg',
-            aspect_ratio: '16:9',
-            image_size: '1K',
-          },
-        }),
-        signal: AbortSignal.timeout(45000),
+    const asset = await renderDeterministicMedia({
+      brief: {
+        version: MEDIA_BRIEF_VERSION,
+        ownerType: 'blog',
+        ownerId: input.ownerId,
+        purpose: input.purpose === 'blog_cover' ? 'brand_fallback' : input.purpose,
+        assetClass: 'deterministic_graphic',
+        locale: 'ko-KR',
+        subject: `${input.destination || input.keyword} ${input.sectionTitle}`,
+        destination: input.destination || null,
+        factualConstraints: [input.keyword, input.sectionTitle].filter(Boolean),
+        stylePreset: 'yeosonam_information',
+        aspectRatio: '16:9',
+        disclosureRequired: false,
       },
-    );
-
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '');
-      console.warn(`[blog-image-gen] Gemini image generation failed (${res.status}): ${errText.substring(0, 200)}`);
-      return null;
-    }
-
-    const generated = extractGeminiInteractionImage(await res.json());
-    if (!generated) {
-      console.warn('[blog-image-gen] Gemini response did not contain an image');
-      return null;
-    }
-    return persistGeneratedImage(generated.data, generated.mimeType);
-  } catch (err) {
-    console.warn(
-      '[blog-image-gen] Gemini image generation exception:',
-      err instanceof Error ? err.message : err,
-    );
-    return null;
-  }
-}
-
-/**
- * Pexels 검색으로 이미지 URL 획득 (fallback)
- */
-async function tryPexelsSearch(
-  query: string,
-  destination: string,
-  keyword: string,
-  sectionTitle: string,
-): Promise<string | null> {
-  try {
-    await rateLimitGuard();
-    const photos = await searchPexelsPhotos(query, 18, 1);
-    const photo = selectRelevantPexelsPhoto(photos, {
-      destinationQuery: destination ? destToEnKeyword(destination) : 'travel destination',
-      primaryKeyword: keyword,
-      sectionTitle,
+      eyebrow: input.destination || '여소남 여행 가이드',
+      title: input.sectionTitle || input.keyword || '여행 핵심 가이드',
+      lines: [
+        input.keyword || '여행 준비 핵심 정보',
+        '검증된 본문 내용을 기준으로 확인하세요',
+      ],
+      footer: '실제 일정·가격·운영 조건은 본문과 예약 안내를 확인하세요.',
+      approvalMode: 'automatic',
     });
-    return photo
-      ? photo.src.landscape || photo.src.large || photo.src.original
-      : null;
-  } catch (err) {
-    console.warn(
-      '[blog-image-gen] Pexels 검색 실패:',
-      err instanceof Error ? err.message : err,
-    );
+    return asset.url;
+  } catch (error) {
+    console.warn('[blog-image-gen] deterministic fallback failed:', error instanceof Error ? error.message : error);
     return null;
   }
 }
 
-/**
- * 섹션 제목에 맞는 이미지 URL을 생성한다.
- *
- * @param sectionTitle - H2 섹션 제목 (한국어)
- * @param keyword      - 블로그 메인 키워드
- * @param destination  - 여행 목적지
- * @returns 이미지 URL 또는 null
- *
- * 실패 체인:
- *   1. Gemini native image 생성 후 공개 Storage 업로드 (GEMINI_API_KEY 필요)
- *   2. Pexels 검색 (PEXELS_API_KEY 필요)
- *   3. null 반환
- */
 export async function generateSectionImage(
   sectionTitle: string,
   keyword: string,
   destination?: string,
-  options?: { skipPexelsFallback?: boolean },
+  options?: {
+    skipPexelsFallback?: boolean;
+    ownerId?: string;
+    purpose?: Extract<MediaPurpose, 'blog_cover' | 'blog_inline_summary' | 'blog_inline_cta'>;
+    approvalMode?: 'automatic' | 'manual';
+  },
 ): Promise<string | null> {
   const dest = destination || keyword || '';
-
-  // AI 이미지 생성 비활성화 여부 확인
-  const aiEnabled = getSecret('AI_IMAGE_GEN_ENABLED') !== 'false';
-
-  const searchQuery = buildSearchQuery(sectionTitle, dest, keyword);
-
-  // 1) Gemini native image 시도
-  if (aiEnabled) {
-    const generatedUrl = await tryGeminiImage(`${dest}. ${keyword}. Section: ${sectionTitle}.`);
-    if (generatedUrl) return generatedUrl;
-  }
-
-  // 2) Pexels fallback
-  if (!options?.skipPexelsFallback) {
-    const pexelsUrl = await tryPexelsSearch(searchQuery, dest, keyword, sectionTitle);
-    if (pexelsUrl) return pexelsUrl;
-  }
-
-  return null;
+  const ownerId = options?.ownerId || stableOwnerId(sectionTitle, keyword, dest);
+  const purpose = options?.purpose ?? 'blog_cover';
+  return deterministicFallback({ ownerId, purpose, sectionTitle, keyword, destination: dest });
 }
 
-/**
- * AI 이미지 생성 기능이 설정되었는지 확인
- */
 export function isAiImageGenConfigured(): boolean {
-  return !!(getSecret('GEMINI_API_KEY') || getSecret('GOOGLE_GEMINI_API_KEY') || getSecret('PEXELS_API_KEY'));
+  return isMediaCodexEnabled();
 }
 
 export function isGeneratedBlogImageUrl(value: string | null | undefined): boolean {
-  return typeof value === 'string' && /\/storage\/v1\/object\/public\/blog-assets\/generated\/blog\//i.test(value);
+  if (typeof value !== 'string') return false;
+  return /\/storage\/v1\/object\/public\/blog-assets\/generated\/blog\//i.test(value)
+    || /\/storage\/v1\/object\/public\/media-assets\/openai_generated\/blog\//i.test(value);
 }

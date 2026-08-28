@@ -19,6 +19,12 @@ export type PublicContentPackage = {
   inclusions?: string[];
   excludes?: string[];
   itinerary?: string[];
+  hero_image_url?: string;
+  images_public?: Array<{
+    url: string;
+    source: string;
+    alt?: string | null;
+  }>;
 };
 
 function asString(value: unknown): string | null {
@@ -38,6 +44,17 @@ function asStringArray(value: unknown): string[] {
 function asRecordArray(value: unknown): Array<Record<string, unknown>> {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item)));
+}
+
+function asPublicImages(value: unknown): NonNullable<PublicContentPackage['images_public']> {
+  const images: NonNullable<PublicContentPackage['images_public']> = [];
+  for (const item of asRecordArray(value)) {
+    const url = asString(item.url);
+    const source = asString(item.source);
+    if (!url || !source) continue;
+    images.push({ url, source, alt: asString(item.alt) });
+  }
+  return images;
 }
 
 function asPriceTiers(value: unknown): Array<{ adult_price?: number; period_label?: string }> {
@@ -87,6 +104,8 @@ function toPublicContentPackage(row: Record<string, unknown>): PublicContentPack
     inclusions: asStringArray(row.inclusions),
     excludes: asStringArray(row.excludes),
     itinerary: asStringArray(row.itinerary),
+    hero_image_url: asString(row.hero_image_url) ?? undefined,
+    images_public: asPublicImages(row.images_public),
   };
 }
 

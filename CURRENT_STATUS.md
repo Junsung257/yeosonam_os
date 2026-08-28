@@ -1,4 +1,12 @@
-# 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-08-24 기준)
+# 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-08-28 기준)
+
+## 2026-08-28 ChatGPT 구독형 공용 미디어 파이프라인
+
+- 블로그·정보형 카드뉴스·홈 캠페인용 공용 미디어를 `media_assets` 원장과 전용 Storage bucket으로 통합했다. 생성 출처·프롬프트/brief digest·QA·검수·교체 이력을 보존하고, 공개 AI 이미지는 `AI 생성 참고 이미지`를 표시한다.
+- 이미지는 `OPENAI_API_KEY`가 아니라 로그인된 Codex의 built-in ImageGen 구독 사용량으로 만든다. Vercel 내부 API는 전용 Bearer token으로 claim/complete/fail을 처리하고, 로컬 워커는 서버가 서명한 작업만 한 건씩 실행한다.
+- 블로그 발행은 이미지 생성과 분리했다. 먼저 결정론적 브랜드 WebP로 발행하고 rollout 대상만 비동기 GPT 커버로 원자 교체한다. 공급사·공식·수동 사진과 동시 변경된 커버는 덮어쓰지 않으며 실패·한도 소진 시 기존 커버를 유지한다.
+- 상품 상세/public snapshot은 documentary evidence 경계다. GPT 콘셉트 이미지와 코드형 캠페인 자산은 상품 hero/gallery로 승격할 수 없다. 정보형 카드뉴스는 한 master background를 재사용하고, 홈은 승인된 캠페인 자산만 별도 disclosure와 함께 사용한다.
+- 운영 기본 안전장치는 안정 해시 rollout, KST 일일 claim 상한, lease, 공개 전 자동 QA, 수동 검수 UI(`/admin/marketing/media`)다. 상세 계약은 `docs/media-generation-current-ssot.md`가 단일 정보 소스다.
 
 ## 2026-08-24 어드민 로그인 운영 설정 복구·재발 방지
 
