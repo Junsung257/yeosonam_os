@@ -6,7 +6,7 @@
 
 ## 기준점
 
-- 기준 커밋: `origin/main` = `c8c30b21d2c67d434ad6131ae45e389a71b7590b`
+- 기준 커밋: `origin/main` = `75aba6248ff3ef997561c2e28ce3ee3fcc432037`
 - 후보 브랜치: `codex/production-release-20260828`
 - 후보 worktree: `C:\dev\yeosonam-os-production-release-20260828`
 - 원본 작업 폴더: `C:\dev\yeosonam-os` — 기존 948개 변경을 수정·삭제하지 않고 보존
@@ -25,9 +25,9 @@
 ## 의도적 비범위
 
 - 원본 dirty worktree의 948개 변경을 자동 병합·삭제·reset하지 않는다.
-- 원격 Supabase migration, production deploy, push, PR merge를 이 작업에서 실행하지 않는다.
+- 원본 dirty worktree의 변경을 원격 배포 후보에 자동으로 섞지 않는다.
 - `pptxgenjs -> image-size` advisory는 사용자 결정대로 보류한다.
-- 기존 전체 RLS 정책의 live schema 검증과 production 환경변수 검증은 원격 승인 게이트로 남긴다.
+- 기존 전체 RLS 정책 중 이번 범위를 벗어난 advisor 잔여 항목은 별도 hardening 작업으로 남긴다.
 
 ## 운영 안전 조건
 

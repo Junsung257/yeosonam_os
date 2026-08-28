@@ -3,7 +3,7 @@
 ## 후보 기준
 
 - Worktree: `C:\dev\yeosonam-os-production-release-20260828`
-- Base: `origin/main` / `c8c30b21d2c67d434ad6131ae45e389a71b7590b`
+- Base: `origin/main` / `75aba6248ff3ef997561c2e28ce3ee3fcc432037`
 - Original worktree preservation: 948 status lines confirmed
 
 ## 통과한 검사
@@ -25,21 +25,34 @@
 ## 추가 live readiness probe
 
 - 연결된 Supabase active project `ixaxnvbmhzjvupissmly`를 읽기 전용으로 확인했다.
-- live migration 최신 항목은 `20260828103551_media_assets_rls_and_fk_hardening`이며 후보의 `20260828120000`, `20260828130000`은 아직 적용되지 않았다.
-- `oauth_states`, `tenant_memberships`, publish claim 컬럼은 live에 아직 없다.
-- `content_distributions`, `social_platform_configs`, `tenant_api_tokens`는 RLS가 켜져 있지만 browser role grant가 넓고, `content_distributions_auth_select` 및 `social_platform_configs_auth_select_safe` 같은 historical authenticated policy가 확인됐다.
+- pre-migration live migration 최신 항목은 `20260828103551_media_assets_rls_and_fk_hardening`이었다.
+- pre-migration에는 `oauth_states`, `tenant_memberships`, publish claim 컬럼이 없었다.
+- pre-migration의 `content_distributions`, `social_platform_configs`, `tenant_api_tokens`는 RLS가 켜져 있지만 browser role grant가 넓고, `content_distributions_auth_select` 및 `social_platform_configs_auth_select_safe` 같은 historical authenticated policy가 확인됐다.
 - 현재 애플리케이션의 해당 접근은 guarded server route와 `supabaseAdmin`으로만 수행되므로 `20260828140000_sensitive_marketing_access_hardening.sql`에서 browser role 권한/정책을 제거하도록 추가했다.
-- live project의 tenant/token/content 관련 표본 row 수는 0으로 확인되어 migration 사전 조건 probe는 통과했지만, 실제 적용은 별도 승인 후 수행한다.
+- live project의 tenant/token/content 관련 표본 row 수는 0으로 확인되어 migration 사전 조건 probe를 통과했다.
+
+## Production migration 적용 결과
+
+- Supabase active project `ixaxnvbmhzjvupissmly`에 세 migration을 순서대로 적용했다.
+- 원격 migration history에는 `oauth_states_and_tenant_memberships`, `social_publishing_hardening`, `sensitive_marketing_access_hardening`이 기록됐다.
+- post-migration probe에서 `oauth_states`, `tenant_memberships`, publish claim 컬럼, `needs_reconcile`, Twitter provider 제약, claim index가 모두 확인됐다.
+- 대상 내부 테이블 5개는 RLS가 활성화됐고 `content_distributions`, `social_platform_configs`, `tenant_api_tokens`에는 anon/authenticated grant와 browser-role policy가 없으며 service-role policy만 유지된다.
+- Supabase security advisor는 저장소 전체의 기존 INFO/WARN/ERROR 항목을 반환했다. 이번 migration 대상에 새로 발생한 browser-access finding은 확인되지 않았다.
+
+## Production runtime environment
+
+- Vercel project `yeosonam` Production에서 `OAUTH_STATE_SECRET` 존재와 64자 길이를 확인했다.
+- 운영 DB의 `Product Registration Platform` tenant UUID를 `NEXT_PUBLIC_DEFAULT_TENANT_ID`로 provision했고, 실제 값은 문서·로그에 기록하지 않았다.
 
 ## 환경 의존 또는 보류된 검사
 
 - `npm run audit:select-cols:ci` — `NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY` 미설정으로 실행 불가. 운영 credential 환경에서 재실행 필요.
 - Supabase CLI — local environment에 설치되어 있지 않아 migration을 CLI로 dry-run하지 못함.
-- live Supabase RLS/grant/role/membership probe — 읽기 전용으로 수행했고, pre-migration 상태와 browser-role 권한/historical policy 잔존을 확인했다. 원격 DB 변경 권한/승인이 없으므로 migration은 적용하지 않았다.
+- live Supabase RLS/grant/role/membership probe — 읽기 전용 pre/post 검증을 완료했다.
 - `audit:supabase-client-boundary` 및 `audit:api-response` — clean 기준 branch의 package scripts에 없어 실행 불가.
 - Build 중 sitemap — local build에 `SUPABASE_SERVICE_ROLE_KEY`가 없어 pointer-only package catalog를 생략했다는 경고가 있었으나 build/postbuild는 성공했다.
 - `pptxgenjs -> image-size` dependency advisory — 사용자 요청으로 보류.
 
 ## 배포 상태
 
-코드 후보 구현과 로컬 검증, live read-only probe는 완료했지만 production DB migration 3건, secret/tenant account provisioning, production deploy/push/merge는 아직 실행하지 않았다. 이 항목들이 승인·확인되기 전에는 production 완료로 표시하지 않는다.
+코드 후보 구현, 로컬 검증, production DB migration 3건, 필수 runtime env provision은 완료했다. 아직 production deploy와 push/PR/merge, tenant별 verified social target metadata provision, preview 시나리오 검증은 남아 있다.

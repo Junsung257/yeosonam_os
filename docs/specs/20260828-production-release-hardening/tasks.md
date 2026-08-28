@@ -24,11 +24,11 @@
 
 ## 배포 전 승인/수동 확인
 
-- [x] live Supabase schema·grant·RLS·tenant membership probe (pre-migration absence and historical grants confirmed; post-migration validation pending)
-- [ ] 세 forward migration을 production Supabase에 적용
-- [ ] production `OAUTH_STATE_SECRET` provision 및 rotation 기록
+- [x] live Supabase schema·grant·RLS·tenant membership probe (pre/post migration validation complete)
+- [x] 세 forward migration을 production Supabase에 적용 및 단계별 검증
+- [x] production `OAUTH_STATE_SECRET` 설정 확인 및 rotation 기록 유지 (64자, 기존 값 변경 없음)
 - [ ] tenant별 verified social target account metadata provision
-- [ ] `NEXT_PUBLIC_DEFAULT_TENANT_ID`가 실제 UUID인지 확인
+- [x] `NEXT_PUBLIC_DEFAULT_TENANT_ID`를 실제 platform tenant UUID로 Production provision 및 비노출 검증
 - [ ] 운영 Supabase credentials로 `audit:select-cols:ci` 재실행
 - [ ] preview에서 tenant cross-access/OAuth replay/queue double-worker 시나리오 실행
 - [ ] Vercel production deploy 및 health/observability 확인
@@ -37,5 +37,5 @@
 ## 보류
 
 - [ ] `pptxgenjs -> image-size` advisory — 사용자 보류
-- [x] live RLS broad-policy remediation candidate migration 작성 (`20260828140000`); live apply/승인은 별도 필요
+- [x] live RLS broad-policy remediation candidate migration 작성·Production 적용 (`20260828140000`)
 - [ ] Twitter OAuth user-context publisher 구현

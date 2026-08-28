@@ -21,8 +21,9 @@
 
 1. `20260828120000_oauth_states_and_tenant_memberships.sql`
 2. `20260828130000_social_publishing_hardening.sql`
+3. `20260828140000_sensitive_marketing_access_hardening.sql`
 
-적용 전 live schema/role/RLS probe와 migration dry-run을 실행하고, 실패 시 migration을 적용하지 않는다. 두 migration은 아직 원격에 적용하지 않았다.
+적용 전 live schema/role/RLS probe를 실행한다. migration은 위 순서대로 적용하고 각 단계 직후 구조·정책을 검증한다.
 
 ### D. 소셜 credential 운영 준비
 
