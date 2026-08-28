@@ -144,3 +144,24 @@ export async function resolveAdminActorId(req: NextRequest): Promise<string | nu
     ? subject
     : null;
 }
+
+/**
+ * Interactive OAuth must be started by a real Supabase admin session.
+ * Shared API tokens and development bypass cookies are intentionally rejected
+ * because they cannot be bound to one accountable human actor.
+ */
+export async function requireHumanAdminActor(req: NextRequest): Promise<NextResponse | null> {
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+
+  if (isValidAdminApiToken(req) || !(await resolveAdminActorId(req))) {
+    const response = apiResponse(
+      { code: 'INTERACTIVE_ADMIN_SESSION_REQUIRED', error: 'OAuth 연결은 관리자 사용자 세션에서 시작해야 합니다.' },
+      { status: 403 },
+    );
+    response.headers.set('Cache-Control', 'private, no-store');
+    return response;
+  }
+
+  return null;
+}

@@ -17,7 +17,7 @@
 
 import type { SearchAdKeyword, Platform } from './keyword-brain';
 import { getSecret } from '@/lib/secret-registry';
-import { resolveOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
+import { resolvePlatformOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
 
 // ── 환경 변수 체크 ───────────────────────────────────────
 
@@ -730,7 +730,7 @@ export async function fetchGooglePerformance(keywords: SearchAdKeyword[]): Promi
   }
 
   try {
-    const token = await resolveOAuthToken('', 'google_ads');
+    const token = await resolvePlatformOAuthToken('google_ads');
     const developerToken = getSecret('GOOGLE_ADS_DEVELOPER_TOKEN')!;
     const customerId = getSecret('GOOGLE_ADS_CUSTOMER_ID')?.replace(/-/g, '') ?? '';
 
@@ -842,7 +842,7 @@ export async function updateGoogleBid(keywordId: string, newBid: number): Promis
   }
 
   try {
-    const token = await resolveOAuthToken('', 'google_ads');
+    const token = await resolvePlatformOAuthToken('google_ads');
     const developerToken = getSecret('GOOGLE_ADS_DEVELOPER_TOKEN')!;
     const customerId = getSecret('GOOGLE_ADS_CUSTOMER_ID')?.replace(/-/g, '') ?? '';
 
@@ -899,7 +899,7 @@ export async function pauseGoogleKeyword(keywordId: string): Promise<boolean> {
   }
 
   try {
-    const token = await resolveOAuthToken('', 'google_ads');
+    const token = await resolvePlatformOAuthToken('google_ads');
     const developerToken = getSecret('GOOGLE_ADS_DEVELOPER_TOKEN')!;
     const customerId = getSecret('GOOGLE_ADS_CUSTOMER_ID')?.replace(/-/g, '') ?? '';
 
@@ -984,7 +984,7 @@ export async function generateGoogleHistoricalMetrics(
   }
 
   try {
-    const token = await resolveOAuthToken('', 'google_ads');
+    const token = await resolvePlatformOAuthToken('google_ads');
     const developerToken = getSecret('GOOGLE_ADS_DEVELOPER_TOKEN')!;
     const customerId = getSecret('GOOGLE_ADS_CUSTOMER_ID')?.replace(/-/g, '') ?? '';
 
@@ -1109,7 +1109,7 @@ export async function fetchGoogleSearchTerms(
   }
 
   try {
-    const token = await resolveOAuthToken('', 'google_ads');
+    const token = await resolvePlatformOAuthToken('google_ads');
     const developerToken = getSecret('GOOGLE_ADS_DEVELOPER_TOKEN')!;
     const customerId = getSecret('GOOGLE_ADS_CUSTOMER_ID')?.replace(/-/g, '') ?? '';
 

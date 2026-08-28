@@ -27,6 +27,7 @@
 
 import { resolveMetaToken } from './meta-token-resolver';
 import { getSecret } from './secret-registry';
+import { isSupabaseConfigured, supabaseAdmin } from './supabase';
 import {
   detectEngagementBait,
   countWordsForThreadsHook,
@@ -84,6 +85,8 @@ export interface ThreadsPublishResult {
 }
 
 export function isThreadsConfigured(): boolean {
+  // 동기 provider 인터페이스 호환용 빠른 환경변수 체크. 실제 발행/관리자
+  // 상태 확인은 getThreadsConfig()를 사용해 DB system_secrets도 확인한다.
   return !!(
     (getSecret('THREADS_ACCESS_TOKEN') || getSecret('META_ACCESS_TOKEN')) &&
     getSecret('THREADS_USER_ID')
@@ -96,13 +99,27 @@ export function isThreadsConfigured(): boolean {
  * Phase 7 자동 refresh 크론이 DB 에 최신 값을 유지.
  */
 export async function getThreadsConfig(): Promise<{ threadsUserId: string; accessToken: string } | null> {
-  const userId = getSecret('THREADS_USER_ID');
+  const userId = await resolveSystemSecret('THREADS_USER_ID');
   if (!userId) return null;
   const token =
     (await resolveMetaToken('THREADS_ACCESS_TOKEN')) ||
     (await resolveMetaToken('META_ACCESS_TOKEN'));
   if (!token) return null;
   return { threadsUserId: userId, accessToken: token };
+}
+
+async function resolveSystemSecret(key: 'THREADS_USER_ID'): Promise<string | null> {
+  const envValue = getSecret(key);
+  if (envValue) return envValue;
+  if (!isSupabaseConfigured) return null;
+
+  const { data } = await supabaseAdmin
+    .from('system_secrets')
+    .select('value')
+    .eq('key', key)
+    .maybeSingle();
+  const value = typeof data?.value === 'string' ? data.value.trim() : '';
+  return value || null;
 }
 
 export async function publishToThreads(input: PublishThreadsInput): Promise<ThreadsPublishResult> {

@@ -17,7 +17,7 @@
  */
 import { BaseMarketingAgent, type MarketingContext, type AgentResult } from '../base-agent';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { resolveOAuthToken } from '../token-resolver';
+import { resolveOAuthToken, resolvePlatformOAuthToken } from '../token-resolver';
 import { getSecret } from '@/lib/secret-registry';
 import { buildUtm, applyUtmToUrl, normalizeUtmValue } from '@/lib/utm-builder';
 import {
@@ -306,7 +306,7 @@ export class AdPublishAgent extends BaseMarketingAgent {
     creatives: AdCreativeRow[],
     runDate: string,
   ): Promise<void> {
-    const googleToken = await resolveOAuthToken('', 'google_ads');
+    const googleToken = await resolvePlatformOAuthToken('google_ads');
     const developerToken = getSecret('GOOGLE_ADS_DEVELOPER_TOKEN');
     const customerId = campaign.ad_account_id?.replace(/-/g, '') ?? '';
 

@@ -1,6 +1,7 @@
 import { randomBytes, createHash } from 'crypto';
 import { decrypt, encrypt } from '@/lib/encryption';
 import { getSecret } from '@/lib/secret-registry';
+import { isUuid } from '@/lib/uuid';
 
 const DEFAULT_CLOBE_MCP_URL = 'https://api.clobe.ai/mcp';
 const STATE_TTL_MS = 10 * 60 * 1000;
@@ -64,6 +65,7 @@ export function unsealClobeOAuthState(rawState: string): ClobeOAuthState | null 
     const parsed = JSON.parse(decrypt(rawState)) as Partial<ClobeOAuthState>;
     if (
       !parsed.tenant_id ||
+      !isUuid(parsed.tenant_id) ||
       !parsed.client_id ||
       !parsed.code_verifier ||
       !parsed.token_endpoint ||
@@ -72,7 +74,7 @@ export function unsealClobeOAuthState(rawState: string): ClobeOAuthState | null 
     ) {
       return null;
     }
-    if (Date.now() - parsed.ts > STATE_TTL_MS) return null;
+    if (Date.now() - parsed.ts > STATE_TTL_MS || parsed.ts - Date.now() > 60_000) return null;
     return parsed as ClobeOAuthState;
   } catch {
     return null;

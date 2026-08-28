@@ -18,6 +18,7 @@ import { ReportingAgent } from './agents/reporting-agent';
 import { SocialPublishAgent } from './agents/social-publish-agent';
 import { AdPublishAgent } from './agents/ad-publish-agent';
 import { getSecret } from '@/lib/secret-registry';
+import { isUuid } from '@/lib/uuid';
 
 export interface PipelineResult {
   tenantId: string;
@@ -29,7 +30,13 @@ export interface PipelineResult {
 
 /** 테넌트 ID가 필요한지 여부 (싱글 테넌트면 default 사용) */
 function resolveTenantId(tenantId: string): string {
-  return tenantId || getSecret('NEXT_PUBLIC_DEFAULT_TENANT_ID') || 'default';
+  const normalizedTenantId = tenantId.trim();
+  if (isUuid(normalizedTenantId)) return normalizedTenantId;
+
+  const configuredTenantId = getSecret('NEXT_PUBLIC_DEFAULT_TENANT_ID')?.trim();
+  if (configuredTenantId && isUuid(configuredTenantId)) return configuredTenantId;
+
+  throw new Error('[marketing-pipeline] a valid tenant UUID is required');
 }
 
 export async function runMarketingPipeline(tenantId: string): Promise<PipelineResult> {

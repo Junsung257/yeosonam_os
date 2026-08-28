@@ -8,6 +8,7 @@
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { decrypt, encrypt } from '@/lib/encryption';
 import { getSecret } from '@/lib/secret-registry';
+import { isUuid } from '@/lib/uuid';
 
 export type OAuthProvider = 'google_ads' | 'meta' | 'naver' | 'google_analytics' | 'twitter' | 'clobe';
 
@@ -28,7 +29,8 @@ export async function resolveOAuthToken(
   tenantId: string,
   provider: OAuthProvider,
 ): Promise<OAuthTokens | null> {
-  if (!isSupabaseConfigured) return null;
+  const normalizedTenantId = tenantId.trim();
+  if (!isSupabaseConfigured || !isUuid(normalizedTenantId)) return null;
 
   let query = supabaseAdmin
     .from('tenant_api_tokens')
@@ -38,9 +40,7 @@ export async function resolveOAuthToken(
     .order('updated_at', { ascending: false })
     .limit(1);
 
-  if (tenantId.trim()) {
-    query = query.eq('tenant_id', tenantId);
-  }
+  query = query.eq('tenant_id', normalizedTenantId);
 
   const { data, error } = await query;
 
@@ -75,6 +75,20 @@ export async function resolveOAuthToken(
 }
 
 /**
+ * Resolve an explicitly configured platform tenant token.
+ *
+ * Platform-wide jobs must opt into this function; the tenant-scoped resolver
+ * never falls back to an arbitrary row when tenantId is empty.
+ */
+export async function resolvePlatformOAuthToken(
+  provider: OAuthProvider,
+): Promise<OAuthTokens | null> {
+  const platformTenantId = getSecret('NEXT_PUBLIC_DEFAULT_TENANT_ID')?.trim();
+  if (!platformTenantId || !isUuid(platformTenantId)) return null;
+  return resolveOAuthToken(platformTenantId, provider);
+}
+
+/**
  * 토큰 저장 (upsert) — OAuth 콜백에서 사용
  */
 export async function saveOAuthToken(
@@ -88,6 +102,9 @@ export async function saveOAuthToken(
     metadata?: Record<string, unknown>;
   },
 ): Promise<void> {
+  if (!isUuid(tenantId.trim())) {
+    throw new Error('[saveOAuthToken] a valid tenant UUID is required');
+  }
   const expiresAt = tokens.expiresIn
     ? new Date(Date.now() + tokens.expiresIn * 1000).toISOString()
     : null;
@@ -117,6 +134,7 @@ async function saveRefreshedToken(
   expiresAt: Date | undefined,
   refreshToken?: string,
 ): Promise<void> {
+  if (!isUuid(tenantId.trim())) return;
   const values: {
     encrypted_access_token: string;
     encrypted_refresh_token?: string;
@@ -130,14 +148,11 @@ async function saveRefreshedToken(
     values.encrypted_refresh_token = encrypt(refreshToken);
   }
 
-  let query = supabaseAdmin
+  const query = supabaseAdmin
     .from('tenant_api_tokens')
     .update(values)
-    .eq('provider', provider);
-
-  if (tenantId.trim()) {
-    query = query.eq('tenant_id', tenantId);
-  }
+    .eq('provider', provider)
+    .eq('tenant_id', tenantId.trim());
 
   await query;
 }
@@ -167,7 +182,7 @@ async function tryRefreshToken(
       return await refreshGoogleToken(tenantId, provider, refreshToken);
     }
     if (provider === 'meta') {
-      return await refreshMetaToken(tenantId, refreshToken);
+      return await refreshMetaToken(tenantId, refreshToken, metadata);
     }
     if (provider === 'clobe') {
       return await refreshClobeToken(tenantId, refreshToken, metadata);
@@ -209,7 +224,11 @@ async function refreshGoogleToken(tenantId: string, provider: OAuthProvider, ref
   return { accessToken: json.access_token, refreshToken, expiresAt };
 }
 
-async function refreshMetaToken(tenantId: string, shortToken: string): Promise<OAuthTokens | null> {
+async function refreshMetaToken(
+  tenantId: string,
+  shortToken: string,
+  metadata: Record<string, unknown> = {},
+): Promise<OAuthTokens | null> {
   const appId = getSecret('META_APP_ID');
   const appSecret = getSecret('META_APP_SECRET');
   if (!appId || !appSecret) return null;
@@ -231,7 +250,7 @@ async function refreshMetaToken(tenantId: string, shortToken: string): Promise<O
 
   await saveRefreshedToken(tenantId, 'meta', json.access_token, expiresAt);
 
-  return { accessToken: json.access_token, expiresAt };
+  return { accessToken: json.access_token, expiresAt, metadata };
 }
 
 async function refreshClobeToken(
