@@ -35,6 +35,7 @@ yarn-error.log*
 
 # Local env files
 .env*.local
+.env.prod
 
 # Vercel env pull 결과 (로컬 개발용, git에 커밋 금지)
 .env.vercel
