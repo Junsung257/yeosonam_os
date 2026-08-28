@@ -62,6 +62,7 @@
 | **정산 현재 SSOT·ledger·지급 계약** | **`docs/settlement-current-ssot.md`** |
 | **마케팅 현재 SSOT·Ad OS·외부발행 계약** | **`docs/marketing-current-ssot.md`** |
 | **AI Ops 현재 SSOT·자비스·RAG·모델 라우팅** | **`docs/ai-ops-current-ssot.md`** |
+| **AI 이미지·미디어 원장·검수·공개 경계** | **`docs/media-generation-current-ssot.md`** |
 | 배포 전 체크리스트 | `docs/deploy-checklist.md` |
 | 환경 변수 레퍼런스 | `docs/env-variables-reference.md` |
 | Supabase Auth 오픈 보안 게이트 | `docs/supabase-auth-open-gate.md` |

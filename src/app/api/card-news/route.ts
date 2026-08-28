@@ -1,15 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'node:crypto';
 import { cacheHeader } from '@/lib/api-response';
 import { isSupabaseConfigured, getCardNewsList, upsertCardNews, type CardNews } from '@/lib/supabase';
 import { isAdminRequest } from '@/lib/admin-guard';
 import { updateFactoryJobStep } from '@/lib/content-factory-step';
-import { searchPexelsPhotos, buildPexelsKeyword, isPexelsConfigured, getBrandPlaceholder } from '@/lib/pexels';
+import { getBrandPlaceholder } from '@/lib/card-news/placeholders';
 import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { pickMarketingPrice } from '@/lib/marketing-price';
 import { getSecret } from '@/lib/secret-registry';
 import { logError, logWarning } from '@/lib/sentry-logger';
 import type { ContentBrief } from '@/lib/validators/content-brief';
 import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
+import {
+  enqueueConceptualMedia,
+  isMediaCodexEnabled,
+  isStableRolloutParticipant,
+  MEDIA_BRIEF_VERSION,
+} from '@/lib/media-generation';
+
+function stableCardNewsOwnerId(subject: string): string {
+  return `card-${createHash('sha256').update(subject).digest('hex').slice(0, 24)}`;
+}
+
+function verifiedPackageImageUrls(pkg: Awaited<ReturnType<typeof loadPublicContentPackageForGeneration>>): string[] {
+  if (!pkg) return [];
+  const fromSnapshot = (pkg.images_public ?? [])
+    .filter((image) => image.source !== 'brand_fallback')
+    .map((image) => image.url)
+    .filter((url) => /^https:\/\//i.test(url));
+  if (fromSnapshot.length > 0) return [...new Set(fromSnapshot)];
+  return pkg.hero_image_url && /^https:\/\//i.test(pkg.hero_image_url) ? [pkg.hero_image_url] : [];
+}
+
+async function resolveInfoCardNewsBackground(input: {
+  ownerId: string;
+  subject: string;
+  destination?: string | null;
+}): Promise<string> {
+  const fallback = getBrandPlaceholder('cover', input.subject);
+  if (!isMediaCodexEnabled() || !isStableRolloutParticipant(input.ownerId, 'card_news')) return fallback;
+  try {
+    await enqueueConceptualMedia({
+      version: MEDIA_BRIEF_VERSION,
+      ownerType: 'card_news',
+      ownerId: input.ownerId,
+      purpose: 'card_news_background',
+      assetClass: 'conceptual_allowed',
+      locale: 'ko-KR',
+      subject: input.subject,
+      destination: input.destination || null,
+      factualConstraints: ['정보형 카드뉴스의 배경이며 구체적인 상품·호텔·관광지 실사로 보이면 안 됨'],
+      stylePreset: 'yeosonam_campaign',
+      aspectRatio: '16:9',
+      disclosureRequired: true,
+    }, {
+      approvalMode: 'manual',
+      sourceMetadata: { requested_quality: 'medium', requested_from: 'card_news' },
+    });
+    return fallback;
+  } catch (error) {
+    logWarning('[api/card-news] Codex background enqueue failed', error);
+    return fallback;
+  }
+}
 
 export async function GET(request: NextRequest) {
   if (!(await isAdminRequest(request))) {
@@ -61,31 +114,26 @@ export async function POST(request: NextRequest) {
     // ── Brief 기반 생성 (V2 파이프라인) ────────────────────────
     if (brief) {
       const { generateCardCopy } = await import('@/lib/content-pipeline/card-copy');
-      const { searchPexelsPhotos, isPexelsConfigured } = await import('@/lib/pexels');
       const { supabaseAdmin } = await import('@/lib/supabase');
 
       const copySlides = await generateCardCopy(brief as unknown as ContentBrief);
       const briefAny = brief as Record<string, unknown>;
 
-      // Pexels 이미지 병렬 로드 — 키워드 실패 시 h1/destination 폴백
-      const pexelsEnabled = isPexelsConfigured();
-      const fallbackKeyword = (briefAny.h1 || briefAny.target_audience || 'travel')
-        .toString().split(/\s+/).slice(0, 2).join(' ') || 'travel';
-      const images: string[] = await Promise.all(
-        copySlides.map(async (s) => {
-          if (!pexelsEnabled) return '';
-          const candidates = [s.pexels_keyword, fallbackKeyword, 'travel landscape']
-            .filter((k): k is string => !!k && k.trim().length > 0);
-          for (const kw of candidates) {
-            try {
-              const photos = await searchPexelsPhotos(kw, 3);
-              const url = photos[0]?.src?.large2x || photos[0]?.src?.large;
-              if (url) return url;
-            } catch { /* 다음 후보 */ }
-          }
-          return '';
-        })
-      );
+      const briefSubject = String(briefAny.h1 || topic || briefAny.target_audience || '여행 정보');
+      let images: string[] = [];
+      if (resolvedMode === 'product' && package_id) {
+        const publicPackage = await loadPublicContentPackageForGeneration(package_id);
+        const verified = verifiedPackageImageUrls(publicPackage);
+        images = copySlides.map((_, index) => verified[index % Math.max(verified.length, 1)] || '');
+      } else {
+        const masterBackground = await resolveInfoCardNewsBackground({
+          ownerId: stableCardNewsOwnerId(`${topic || briefSubject}:${category_id || ''}`),
+          subject: briefSubject,
+          destination: typeof briefAny.destination === 'string' ? briefAny.destination : null,
+        });
+        images = copySlides.map(() => masterBackground);
+      }
+      const usesAiConceptBackground = images.some((url) => /\/media-assets\/openai_generated\//i.test(url));
 
       // V2 slides — copySlides 에 V2 슬롯이 이미 있으므로 직접 활용
       const templateFamily: 'editorial' | 'cinematic' | 'premium' | 'bold' =
@@ -104,7 +152,8 @@ export async function POST(request: NextRequest) {
         // V1 template 매핑
         template_id: s.template_id,
         role: s.role,
-        badge: s.badge,
+        badge: s.badge ?? (usesAiConceptBackground ? 'AI 콘셉트 배경' : undefined),
+        media_disclosure: usesAiConceptBackground ? 'AI 생성 참고 이미지' : undefined,
         brief_section_position: s.position,
         // V2 슬롯 — copySlides 에서 직접
         template_family: templateFamily,
@@ -427,46 +476,11 @@ ${toneDesc} 톤으로 작성. 브랜드명은 '여소남'. ${extraPrompt ? `추�
     ].slice(0, slideCount);
   }
 
-  // ── Step 3: Pexels 이미지 병렬 로드 (fallback 포함) ─────────
-  const pexelsEnabled = isPexelsConfigured();
-
-  async function getImage(keyword: string): Promise<string> {
-    // 1차: Pexels API
-    if (pexelsEnabled) {
-      try {
-        const photos = await searchPexelsPhotos(keyword, 5);
-        if (photos[0]?.src?.large2x) return photos[0].src.large2x;
-      } catch (e) {
-        logWarning('[api/card-news] Pexels search failed', { keyword, error: e });
-      }
-    }
-    // 2차: 키워드 단순화 후 재시도
-    if (pexelsEnabled) {
-      try {
-        const simpleKeyword = keyword.split(' ').slice(0, 2).join(' ');
-        const photos = await searchPexelsPhotos(simpleKeyword, 5);
-        if (photos[0]?.src?.large2x) return photos[0].src.large2x;
-      } catch { /* ignore */ }
-    }
-    // 3차: destination만으로 검색
-    if (pexelsEnabled) {
-      try {
-        const photos = await searchPexelsPhotos(`${destination} travel`, 5);
-        if (photos[0]?.src?.large2x) return photos[0].src.large2x;
-      } catch { /* ignore */ }
-    }
-    return '';
-  }
-
-  let images: string[];
-  try {
-    images = await Promise.race([
-      Promise.all(aiSlides.map(s => getImage(s.pexels_keyword || `${destination} travel`))),
-      new Promise<string[]>(resolve => setTimeout(() => resolve(aiSlides.map(() => '')), 12000)),
-    ]);
-  } catch {
-    images = aiSlides.map(() => '');
-  }
+  // 상품 카드에는 public snapshot의 검증된 실사만 사용한다.
+  const verifiedImages = verifiedPackageImageUrls(pkg);
+  const images = aiSlides.map((_, index) =>
+    verifiedImages[index % Math.max(verifiedImages.length, 1)] || '',
+  );
 
   // ── Step 4: 슬라이드 조립 ───────────────────────────────────
   return aiSlides.map((s, i) => ({
@@ -475,7 +489,7 @@ ${toneDesc} 톤으로 작성. 브랜드명은 '여소남'. ${extraPrompt ? `추�
     headline: s.headline,
     body: s.body,
     bg_image_url: images[i] ?? '',
-    pexels_keyword: s.pexels_keyword || buildPexelsKeyword(destination, 'cover'),
+    pexels_keyword: s.pexels_keyword || `${destination} verified package image`,
     overlay_style: i === 0 ? 'gradient-bottom' : i === aiSlides.length - 1 ? 'gradient-bottom' : 'dark',
     headline_style: { fontFamily: 'Pretendard', fontSize: i === 0 ? 40 : 32, color: '#ffffff', fontWeight: 'bold', textAlign: 'center' },
     body_style: { fontFamily: 'Pretendard', fontSize: 18, color: '#e0e0e0', fontWeight: 'normal', textAlign: 'center' },
@@ -558,22 +572,13 @@ ${toneDesc} 톤. 브랜드: 여소남. ${extraPrompt}
     ].slice(0, slideCount);
   }
 
-  // Pexels 이미지 로드 (실패 시 여소남 브랜드 Placeholder로 Fallback)
-  const pexelsEnabled = isPexelsConfigured();
-  async function getImage(keyword: string, idx: number, total: number): Promise<string> {
-    if (pexelsEnabled) {
-      try {
-        const photos = await searchPexelsPhotos(keyword, 5);
-        if (photos[0]?.src?.large2x) return photos[0].src.large2x;
-      } catch { /* noop */ }
-    }
-    const purpose: 'cover' | 'content' | 'cta' =
-      idx === 0 ? 'cover' : idx === total - 1 ? 'cta' : 'content';
-    return getBrandPlaceholder(purpose, keyword);
-  }
-  const images = await Promise.all(
-    aiSlides.map((s, i) => getImage(s.pexels_keyword, i, aiSlides.length))
-  );
+  // 정보형 세트는 GPT/브랜드 master background 한 장을 포맷별로 재사용한다.
+  const masterBackground = await resolveInfoCardNewsBackground({
+    ownerId: stableCardNewsOwnerId(topic),
+    subject: topic,
+  });
+  const images = aiSlides.map(() => masterBackground);
+  const usesAiConceptBackground = /\/media-assets\/openai_generated\//i.test(masterBackground);
 
   return aiSlides.map((s, i) => ({
     id: crypto.randomUUID(),
@@ -582,6 +587,8 @@ ${toneDesc} 톤. 브랜드: 여소남. ${extraPrompt}
     body: s.body,
     bg_image_url: images[i] ?? '',
     pexels_keyword: s.pexels_keyword,
+    badge: usesAiConceptBackground ? 'AI 콘셉트 배경' : undefined,
+    media_disclosure: usesAiConceptBackground ? 'AI 생성 참고 이미지' : undefined,
     overlay_style: i === 0 ? 'gradient-bottom' : i === aiSlides.length - 1 ? 'gradient-bottom' : 'dark',
     headline_style: { fontFamily: 'Pretendard', fontSize: i === 0 ? 40 : 32, color: '#ffffff', fontWeight: 'bold', textAlign: 'center' },
     body_style: { fontFamily: 'Pretendard', fontSize: 18, color: '#e0e0e0', fontWeight: 'normal', textAlign: 'center' },

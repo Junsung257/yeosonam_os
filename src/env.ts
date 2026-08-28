@@ -46,6 +46,7 @@ export const env = createEnv({
     // ── Cron / Internal ──
     CRON_SECRET: z.string().min(1).optional(),
     ADMIN_API_TOKEN: z.string().min(1).optional(),
+    MEDIA_CODEX_WORKER_TOKEN: z.string().min(32).optional(),
     REVALIDATE_SECRET: z.string().min(1).optional(),
 
     // ── Rate Limit (Upstash, P0-1) ──
@@ -107,6 +108,7 @@ export const env = createEnv({
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     CRON_SECRET: process.env.CRON_SECRET,
     ADMIN_API_TOKEN: process.env.ADMIN_API_TOKEN,
+    MEDIA_CODEX_WORKER_TOKEN: process.env.MEDIA_CODEX_WORKER_TOKEN,
     REVALIDATE_SECRET: process.env.REVALIDATE_SECRET,
     UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
     UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,

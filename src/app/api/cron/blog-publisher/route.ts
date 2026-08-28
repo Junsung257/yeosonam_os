@@ -45,6 +45,7 @@ import {
   findRelevantBlogPexelsImage,
 } from '@/lib/blog-inline-images';
 import { generateSectionImage, isGeneratedBlogImageUrl } from '@/lib/blog-image-gen';
+import { enqueuePublishedBlogCover } from '@/lib/blog-media-jobs';
 import { indexBlog } from '@/lib/jarvis/rag/indexer';
 import { parsePublisherBridgeResponse } from '@/lib/blog-card-news-bridge';
 import { calculateBlogPublishSlotQuota } from '@/lib/blog-publish-slot-quota';
@@ -4097,6 +4098,12 @@ async function processQueueItem(
     } catch (e) {
       // 로그 저장 실패는 발행 성공을 롤백하지 않는다.
       logWarning('[cron/blog-publisher] marketing_logs record failed (non-blocking)', e);
+    }
+
+    try {
+      await enqueuePublishedBlogCover(creativeId);
+    } catch (e) {
+      logWarning('[cron/blog-publisher] Codex cover enqueue failed (non-blocking)', e);
     }
 
     return {

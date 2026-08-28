@@ -326,10 +326,20 @@ LLM trace는 원문 prompt/response를 속성에 저장하지 않고 `gen_ai.ope
 
 | 키 | 용도 |
 |---|---|
-| `PEXELS_API_KEY` | 이미지 fallback (블로그·카드뉴스) |
-| `GEMINI_API_KEY` | 블로그 AI 참고 이미지 생성 (서버 전용) |
-| `AI_IMAGE_GEN_ENABLED` | `false`이면 AI 생성만 끄고 Pexels fallback은 유지 |
-| `BLOG_IMAGE_MODEL` | 블로그 이미지 모델 override (기본 `gemini-3.1-flash-image`) |
+| `OPENAI_API_KEY` | 기존 텍스트/기타 API 연동용 서버 secret. 구독형 공용 미디어 생성에는 사용하지 않음 |
+| `MEDIA_CODEX_WORKER_TOKEN` | Vercel 내부 API와 Windows Codex 워커가 공유하는 32자 이상 전용 Bearer secret. 브라우저·Git·로그 공개 금지 |
+| `MEDIA_CODEX_API_BASE_URL` | 로컬 워커 전용 서버 URL. 기본 `https://www.yeosonam.com`; localhost 외 HTTPS만 허용 |
+| `MEDIA_CODEX_ENABLED` | `true`일 때만 구독형 Codex 이미지 작업 enqueue/claim 허용. 기본 비활성 |
+| `MEDIA_CODEX_DAILY_LIMIT` | KST 일일 Codex 작업 claim 상한. 기본 `6`, 허용 `1`~`30` |
+| `MEDIA_CODEX_JOB_LEASE_MINUTES` | claim lease 시간. 기본 `30`, 허용 `5`~`90` |
+| `MEDIA_CODEX_BLOG_ROLLOUT_PERCENT` | 블로그 커버의 안정 해시 canary 비율 `0`~`100`. 기본 `0` |
+| `MEDIA_CODEX_CARD_NEWS_ROLLOUT_PERCENT` | 정보형 카드뉴스 배경 canary 비율 `0`~`100`. 기본 `0` |
+| `MEDIA_ASSET_BUCKET` | 영구 미디어 Storage bucket. 기본 `media-assets` |
+| `MEDIA_LEGACY_PEXELS_FALLBACK` | `true`이고 호출부도 명시 opt-in일 때만 Pexels 복구 경로 허용. 기본 비활성 |
+| `PEXELS_API_KEY` | 관광지 사진과 명시적 legacy 복구용. 블로그·카드뉴스 정상 자동 fallback에는 사용하지 않음 |
+| `GEMINI_API_KEY` | 기존 Gemini 연동용. 신규 공용 미디어 생성에는 사용하지 않음 |
+| `AI_IMAGE_GEN_ENABLED` | 레거시 API 이미지 토글. 구독형 공용 미디어에는 사용하지 않음 |
+| `BLOG_IMAGE_MODEL` | 레거시 API 이미지 모델. 구독형 공용 미디어에는 사용하지 않음 |
 | `ANTHROPIC_API_KEY` | Claude API (IR 파이프라인용) |
 | `CLOBE_MCP_URL` | Clobe MCP 엔드포인트. 미설정 시 `https://api.clobe.ai/mcp`. 인증은 `/admin/settings/integrations`의 Clobe OAuth 로그인으로 저장 |
 | `CLOBE_MCP_TRANSACTIONS_TOOL` | 거래 조회 도구 이름을 자동 탐색할 수 없을 때 지정하는 선택값 |
@@ -380,7 +390,9 @@ New DB migrations that must be applied for full persistence:
 | `SOLAPI_*` 없음 | 알림톡 발송 실패, DB 로그만 남음 |
 | `KAKAO_TEMPLATE_REVIEW_REQUEST` 없음 | 리뷰 요청 알림톡 skip. 콘솔 경고만 |
 | `AUTO_APPROVE_LEARNING=false` | 자기학습 수동 승인 필요 (권장 모드) |
-| `PEXELS_API_KEY` 없음 | 이미지 없이 블로그 생성 (품질 저하) |
+| `MEDIA_CODEX_WORKER_TOKEN` 없음 | 로컬 Codex 워커 내부 API 인증 실패. 발행물은 코드형 브랜드 커버로 정상 유지 |
+| `MEDIA_CODEX_ENABLED` 없음/false | 구독형 작업 enqueue/claim을 중지하고 코드형 브랜드 카드·기존 검증 이미지 유지 |
+| `PEXELS_API_KEY` 없음 | 관광지 사진 동기화와 명시적 legacy 복구만 사용할 수 없음. 블로그 정상 생성에는 영향 없음 |
 | `NEXT_PUBLIC_CONSULT_PHONE` 없음 | QA 채팅 에스컬레이션에서 **전화** 버튼 미표시 (카카오톡만) |
 | `*_APPLY_*` 토글 미설정 | 광고/발행 자동화가 dry-run 중심으로 동작(안전 모드) |
 

@@ -11,6 +11,7 @@ import {
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
 import { BLOG_PUBLIC_ANGLES, BLOG_PUBLIC_ANGLE_META } from '@/lib/blog-public-taxonomy';
+import { isGeneratedBlogImageUrl } from '@/lib/blog-image-gen';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 import {
@@ -224,6 +225,11 @@ export default async function AngleBlogPage({ params }: { params: Promise<{ angl
                           </div>
                         }
                       />
+                      {isGeneratedBlogImageUrl(post.og_image_url) ? (
+                        <span className="absolute left-2 top-2 z-10 rounded-full bg-black/60 px-2 py-1 text-[10px] font-medium text-white/90 backdrop-blur-sm">
+                          AI 생성 참고 이미지
+                        </span>
+                      ) : null}
                     </div>
                     <div className="p-5">
                       {post.destination && (

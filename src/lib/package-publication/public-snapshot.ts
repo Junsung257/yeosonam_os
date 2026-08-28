@@ -423,6 +423,10 @@ function addPublicImageCandidate(
 ) {
   const media = publicMediaFromLegacyUrl({ url: rawUrl, source, alt });
   if (!media || seen.has(media.url)) return;
+  // Product media is documentary evidence. Conceptual AI and code-rendered
+  // campaign assets are valid elsewhere, but never enter images_public.
+  if (/\/storage\/v1\/object\/public\/media-assets\/(?:openai_generated|code_rendered)\//i.test(media.url)) return;
+  if (/\/storage\/v1\/object\/public\/blog-assets\/generated\/blog\//i.test(media.url)) return;
   seen.add(media.url);
   candidates.push(media);
 }
@@ -514,6 +518,8 @@ function collectPublicImages(pkg: AnyRecord): PublicPackageMedia[] {
     for (const item of pkg.images_public) {
       const media = normalizePublicPackageMedia(item, asString(title) ?? '여행 이미지');
       if (!media || seen.has(media.url)) continue;
+      if (/\/storage\/v1\/object\/public\/media-assets\/(?:openai_generated|code_rendered)\//i.test(media.url)) continue;
+      if (/\/storage\/v1\/object\/public\/blog-assets\/generated\/blog\//i.test(media.url)) continue;
       seen.add(media.url);
       candidates.push(media);
     }

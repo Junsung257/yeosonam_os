@@ -12,7 +12,7 @@ import type { HeroSlide } from '@/components/customer/HeroBanner';
 import RankingSection from '@/components/customer/RankingSection';
 import type { RankingItem } from '@/components/customer/RankingSection';
 import { getConsultTelHref } from '@/lib/consult-escalation';
-import { getDeterministicPexelsPhoto, destToEnKeyword } from '@/lib/pexels';
+import { getLatestApprovedMediaAsset } from '@/lib/media-generation/persistence';
 import { getDestinationUrl } from '@/lib/regions';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { runOptionalSupabaseQuery } from '@/lib/supabase-query-guard';
@@ -173,7 +173,7 @@ export default async function HomePage() {
   const skipPublicDbReads = shouldSkipPublicDbReadsForResourceSaver();
 
   // 5개 쿼리 동시 실행 (ratingAgg를 합쳐 총 왕복 1회로 절감)
-  const [publicCatalog, attrResult] = isSupabaseConfigured && !skipPublicDbReads ? await Promise.all([
+  const [publicCatalog, attrResult, approvedCampaignHero] = isSupabaseConfigured && !skipPublicDbReads ? await Promise.all([
     listCurrentPublicPackageCardSnapshots(sb, { limit: 2_000 }).catch((error) => {
       console.warn('[home] pointer-only package catalog unavailable; hiding package-derived sections', error);
       return [];
@@ -188,7 +188,15 @@ export default async function HomePage() {
       emptyResult,
       { label: 'home.attraction.photos', timeoutMs: 1500 },
     ),
-  ]) : [[], emptyResult];
+    getLatestApprovedMediaAsset({
+      ownerType: 'home',
+      ownerId: 'homepage',
+      purpose: 'home_campaign_hero',
+    }).catch((error) => {
+      console.warn('[home] approved campaign media lookup failed', error);
+      return null;
+    }),
+  ]) : [[], emptyResult, null];
 
   const allPkgs = publicCatalog as unknown as AggPkgRow[];
   const attractions = ((attrResult.data ?? []) as AttractionRow[])
@@ -323,54 +331,8 @@ export default async function HomePage() {
     hasPillar: pillarSet.has(d.destination),
   }));
 
-  // Pexels 폴백 — 여행지 카테고리/그리드 빈 슬롯 채우기 (패키지 카드는 제외)
-  // 2026-05-19 박제 (PR #155 단계적 fix — / 를 SSG 로 복귀시키기 위한 누적 변경):
-  //   1) `getRandomPexelsPhoto`(Math.random) → `getDeterministicPexelsPhoto`
-  //   2) `await import('@/lib/pexels')` dynamic import → top-level static import
-  //   3) `getSecret('PEXELS_API_KEY')` (process.env[key] 동적 인덱싱) → `process.env.PEXELS_API_KEY` 정적 참조
-  // 비교 근거: /destinations(○), /packages/[id](●), /things-to-do/[region](●) 모두
-  //   getSecret() 호출 0건이며 Static/SSG. /(ƒ Dynamic) 에만 호출 1건이었음.
-  let pexelsByDest: Record<string, { large2x: string | null; large: string | null }> = {};
-  if (process.env.PEXELS_API_KEY?.trim()) {
-    // 추천여행지 + 인기여행지 중 이미지 없는 목적지만 수집
-    const missingDests = [...new Set([
-      ...topDests.filter(d => !d.image).map(d => d.destination),
-      ...destsWithImages.filter(d => !d.image).map(d => d.destination),
-    ])];
-
-    if (missingDests.length > 0) {
-      const filled = await Promise.all(
-        missingDests.map(async dest => {
-          try {
-            const photo = await getDeterministicPexelsPhoto(destToEnKeyword(dest));
-            return { dest, large2x: photo?.src.large2x ?? null, large: photo?.src.large ?? null };
-          } catch {
-            return { dest, large2x: null, large: null };
-          }
-        })
-      );
-
-      pexelsByDest = {};
-      filled.forEach(({ dest, large2x, large }) => {
-        if (large2x || large) pexelsByDest[dest] = { large2x, large };
-      });
-
-      // 추천여행지 — large2x 우선 (히어로 배너에도 사용되므로 고해상도)
-      topDests.forEach(d => {
-        if (!d.image && pexelsByDest[d.destination]) {
-          d.image = pexelsByDest[d.destination].large2x ?? pexelsByDest[d.destination].large ?? null;
-        }
-      });
-      // 인기여행지 그리드 — large (카드 크기에 충분)
-      destsWithImages.forEach(d => {
-        if (!d.image && pexelsByDest[d.destination]) {
-          d.image = pexelsByDest[d.destination].large ?? pexelsByDest[d.destination].large2x ?? undefined;
-        }
-      });
-    }
-  }
-
-  // HeroBanner 슬라이드 — Pexels 폴백 이후에 생성해야 빈 슬롯이 채워진 topDests를 사용
+  // HeroBanner: 목적지/상품은 검증된 실사만 사용하고, 승인된 캠페인
+  // 이미지는 브랜드 콘셉트 자산으로만 명시해 사용한다.
   // display_title / hero_tagline 이 있는 대표 패키지를 목적지별로 먼저 찾아 타이틀 품질 향상
   const bestPkgByDest: Record<string, { display_title?: string; hero_tagline?: string; title?: string }> = {};
   (rankingPkgs as RankingPkg[]).forEach(p => {
@@ -384,7 +346,7 @@ export default async function HomePage() {
     }
   });
 
-  const heroSlides: HeroSlide[] = topDests
+  const destinationHeroSlides: HeroSlide[] = topDests
     .filter(d => d.image)
     .slice(0, 5)
     .map(d => {
@@ -399,44 +361,31 @@ export default async function HomePage() {
         href: `/packages?destination=${encodeURIComponent(d.destination)}`,
       };
     });
+  const brandFallbackHero: HeroSlide = {
+    image: '',
+    destination: 'YEOSONAM',
+    title: '믿고 떠나는 여행의 시작',
+    tagline: '검증된 패키지와 여행 정보를 한곳에서 만나보세요',
+    href: '/packages',
+  };
+  const heroSlides: HeroSlide[] = approvedCampaignHero
+    ? [
+        {
+          image: approvedCampaignHero.url,
+          destination: 'YEOSONAM',
+          title: '여행의 시작을 더 선명하게',
+          tagline: '검증된 상품과 여행 정보를 한곳에서 만나보세요',
+          href: '/packages',
+          disclosure: approvedCampaignHero.disclosure || 'AI 생성 콘셉트 이미지',
+        },
+        ...destinationHeroSlides,
+      ].slice(0, 5)
+    : destinationHeroSlides.length > 0
+      ? destinationHeroSlides
+      : [brandFallbackHero];
 
   const overseas: RankingItem[] = buildRankingItemsUnique(rankingPkgs, attractions, today, true, new Set());
   const domestic: RankingItem[] = buildRankingItemsUnique(rankingPkgs, attractions, today, false, new Set());
-
-  // 랭킹 카드 — 이미지 없는 항목 Pexels 폴백 (기존 pexelsByDest 우선, 없으면 직접 조회)
-  if (process.env.PEXELS_API_KEY?.trim()) {
-    const noImgRankingDests = [...new Set([
-      ...overseas.filter(i => !i.image && i.destination).map(i => i.destination!),
-      ...domestic.filter(i => !i.image && i.destination).map(i => i.destination!),
-    ])].filter(d => !pexelsByDest[d]);
-
-    if (noImgRankingDests.length > 0) {
-      const rankingFilled = await Promise.all(
-        noImgRankingDests.map(async dest => {
-          try {
-            const photo = await getDeterministicPexelsPhoto(destToEnKeyword(dest));
-            return { dest, url: photo?.src.large ?? photo?.src.large2x ?? null };
-          } catch {
-            return { dest, url: null };
-          }
-        })
-      );
-      for (const { dest, url } of rankingFilled) {
-        if (url) pexelsByDest[dest] = { large: url, large2x: url };
-      }
-    }
-
-    const fillRankingImage = (item: RankingItem): RankingItem => {
-      if (item.image || !item.destination) return item;
-      const fallback = pexelsByDest[item.destination];
-      if (fallback) {
-        return { ...item, image: fallback.large ?? fallback.large2x ?? null };
-      }
-      return item;
-    };
-    for (let i = 0; i < overseas.length; i++) overseas[i] = fillRankingImage(overseas[i]);
-    for (let i = 0; i < domestic.length; i++) domestic[i] = fillRankingImage(domestic[i]);
-  }
 
   /** 메인 랭킹 카드 소셜 프루프(초기 트래픽: 임계값 미만이면 미노출) */
   const RANK_BOOKING_MIN = 3;

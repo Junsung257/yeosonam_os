@@ -43,6 +43,15 @@ Information Engine V2 CTA setup, high-risk approval, fixture evaluation, existin
 
 ## Daily Operating Standard
 
+### Codex subscription cover worker
+
+- Blog publication is never blocked by image generation. A deterministic managed cover is public first, and successful Codex work upgrades it later.
+- The local Codex automation invokes `$blog-media-worker` at KST 09:15, 12:15, 15:15, 18:15, 21:15, and 22:00. One run claims at most one job.
+- The worker uses signed-in built-in ImageGen allowance. It must not use `OPENAI_API_KEY`, the image API/CLI fallback, Pexels, or direct Supabase writes.
+- The Codex app and the selected PC must be available at execution time. Missed runs are safe: the deterministic cover remains public and the durable job waits for a later run.
+- Verify a run with `npm run media:codex-worker -- verify --job-id <uuid>` and confirm `approved` or `pending_review`, an HTTPS URL, provenance `codex_builtin`, and the public disclosure.
+- Allowance exhaustion or missing artifacts must be recorded through the worker failure endpoint. Never change providers inside the same run.
+
 A day is healthy only when all of these are true:
 
 - `npm run audit:blog-public-customer-quality -- --base=https://www.yeosonam.com --limit=500 --min-score=95 --strict` completes the entire sitemap/API corpus with the hybrid public renderer. Review `categoryScores`: each category uses its minimum public score, so one weak article keeps that category below 95.

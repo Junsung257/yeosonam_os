@@ -18,6 +18,7 @@ import {
   submitBlogInformationReviewDecision,
 } from '@/lib/blog-information-review-repository';
 import { readReviewedPublishedBlogReplacement } from '@/lib/blog-private-regeneration';
+import { enqueuePublishedBlogCover } from '@/lib/blog-media-jobs';
 
 export const dynamic = 'force-dynamic';
 
@@ -144,6 +145,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       qualityGate: prepared.report.qualityGate,
     });
     if (!result.handled) return apiResponse({ error: 'Information review case not found' }, { status: 404 });
+    await enqueuePublishedBlogCover(publishCreativeId).catch(() => undefined);
     revalidatePublicBlogCache(result.slug ?? null, creative.destination);
     return apiResponse({ ok: true, status: 'published', ...result });
   } catch (error) {

@@ -947,6 +947,15 @@ export async function middleware(request: NextRequest) {
     );
   }
 
+  // The Codex subscription media worker owns a dedicated Bearer token and
+  // validates it with timing-safe comparison inside the route handler.
+  if (
+    pathname.startsWith('/api/internal/media/codex/jobs/')
+    && request.headers.get('authorization')
+  ) {
+    return response || NextResponse.next();
+  }
+
   // These two generation routes are called by already guarded cron handlers.
   // The route handler repeats this verification before any service-role access.
   if (BLOG_CRON_BRIDGE_PATHS.has(pathname) && request.headers.get('authorization')) {

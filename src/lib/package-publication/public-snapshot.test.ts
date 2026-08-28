@@ -1452,6 +1452,17 @@ describe('public package snapshot gate', () => {
     expect(snapshot.lp_projection.hero_media).toEqual(media);
   });
 
+  it('never promotes conceptual generated media into documentary package images', () => {
+    const generatedUrl = 'https://project.supabase.co/storage/v1/object/public/media-assets/openai_generated/blog/cover.webp';
+    const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
+      hero_image_url: generatedUrl,
+      images_public: [{ url: generatedUrl, source: 'content_og' }],
+    }));
+
+    expect(snapshot.images_public.some((media) => media.url === generatedUrl)).toBe(false);
+    expect(snapshot.package.hero_image_url).not.toBe(generatedUrl);
+  });
+
   it('invalidates mobile proof when the expected public snapshot hash differs', () => {
     const result = evaluateCustomerMobileProof({
       auditReport: {
