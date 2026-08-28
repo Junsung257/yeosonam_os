@@ -1,6 +1,6 @@
 # 여소남 미디어 생성 현재 SSOT
 
-> 상태: 2026-08-28 코드·운영 migration·전용 토큰·로컬 스킬·구독형 실 canary 완료. Vercel 플래그는 비활성으로 준비했고 예약 작업은 생성 후 일시정지했다. 948개 혼합 변경이 있는 현재 worktree를 그대로 배포할 수 없어 앱 코드 배포·블로그 자동 부착 canary만 남았다.
+> 상태: 2026-08-28 `main`(`c8c30b2`)과 Vercel Production 배포 완료. 운영 플래그가 활성이고 로컬 구독형 워커 2건이 ACTIVE다. 구독형 `social_og` 실 canary는 `pending_review`, 현재 생성 대기 큐는 0건이며 다음 자연 발행 블로그가 자동 부착 canary가 된다.
 
 ## 1. 결론
 
@@ -66,14 +66,15 @@ Pexels 자동 fallback은 정상 경로에서 비활성이다. 장애 복구가 
 
 권장 예약 시각은 KST 09:15, 12:15, 15:15, 18:15, 21:15와 보충 22:00이다. 예약이 실패하거나 PC가 꺼져 있어도 발행물은 코드형 fallback으로 정상 공개되고, 대기 작업은 다음 실행에서 처리된다.
 
-## 6. 공개 전 게이트
+## 6. 운영 게이트
 
-- [x] 두 migration과 Storage bucket 운영 적용
+- [x] 세 migration과 Storage bucket 운영 적용
 - [x] Vercel/Windows 전용 토큰 동일 설정과 토큰 비노출
 - [x] `OPENAI_API_KEY` 없이 claim → built-in 생성 → complete → verify 실제 `social_og` canary
 - [x] live 원장·공개 URL 감사 14개 통과
-- [ ] 앱 코드를 안전한 clean release로 Vercel에 배포
-- [ ] 배포 후 `MEDIA_CODEX_ENABLED=true`, 예약 작업 활성화, 블로그 canary 한 건 확인
+- [x] clean release PR #1165를 `main`에 병합하고 Vercel Production에 배포
+- [x] `MEDIA_CODEX_ENABLED=true` 재배포와 정규·보충 예약 작업 활성화
+- [ ] 다음 자연 발행 블로그에서 자동 커버 부착 canary 한 건 확인
 - 공개 alt/caption 고지와 상품 실사 경계 확인
 - 자동 블로그 교체가 관리 fallback만 덮어쓰는지 확인
 - 재시도 2회, lease 만료 회수, 일일 상한, 빈 큐 동작 확인
