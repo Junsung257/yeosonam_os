@@ -3,7 +3,7 @@ import { apiResponse } from '@/lib/api-response';
 import { classifyProbeMessageStatus, upsertTenantAdAccountProbe } from '@/lib/ad-os-tenant-ad-accounts';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
-import { resolveOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
+import { resolvePlatformOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
 import { getSecret } from '@/lib/secret-registry';
 import { getGoogleAdsConfigStatus } from '@/lib/search-ads-api';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
@@ -48,7 +48,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       sample_count: 0,
     };
   } else {
-    const token = await resolveOAuthToken('', 'google_ads');
+    const token = await resolvePlatformOAuthToken('google_ads');
     if (!token?.accessToken) {
       probe = {
         platform: 'google',

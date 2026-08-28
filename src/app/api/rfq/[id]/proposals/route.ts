@@ -6,9 +6,13 @@ import {
   getRfqProposals,
 } from '@/lib/supabase';
 import { sensitiveBackendUnavailable } from '@/lib/sensitive-api-fail-closed';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 
 export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const authError = await requireAdminRequest(_request);
+  if (authError) return authError;
+
   const params = await props.params;
   const { id: rfqId } = params;
 
@@ -18,7 +22,10 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ id: 
 
   try {
     const proposals = await getRfqProposals(rfqId);
-    return apiResponse({ proposals, count: proposals.length });
+    return apiResponse(
+      { proposals, count: proposals.length },
+      { headers: { 'Cache-Control': 'private, no-store' } },
+    );
   } catch (error) {
     console.error('[rfq/proposals] failed:', sanitizeDbError(error));
     return apiResponse(

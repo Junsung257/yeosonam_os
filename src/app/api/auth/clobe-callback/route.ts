@@ -8,6 +8,12 @@ import {
   getClobeSiteUrl,
   unsealClobeOAuthState,
 } from '@/lib/clobe-oauth';
+import { consumeOpaqueOAuthState } from '@/lib/oauth-state';
+import {
+  isTenantPortalAuthError,
+  requireTenantAdminRole,
+  requireTenantPortalRequest,
+} from '@/lib/tenant-portal-auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -31,6 +37,13 @@ export async function GET(request: NextRequest) {
   if (!state) {
     return apiResponse({ error: 'state verification failed' }, { status: 400 });
   }
+  const authorization = await requireTenantPortalRequest(request, state.tenant_id);
+  if (isTenantPortalAuthError(authorization)) return authorization;
+  const roleError = requireTenantAdminRole(authorization);
+  if (roleError) return roleError;
+  if (!await consumeOpaqueOAuthState(stateRaw, 'clobe', Date.now(), authorization.userId)) {
+    return apiResponse({ error: 'state verification failed' }, { status: 400 });
+  }
 
   const siteUrl = getClobeSiteUrl();
   if (!siteUrl) {
@@ -48,7 +61,7 @@ export async function GET(request: NextRequest) {
       resource: state.resource,
     });
 
-    await saveOAuthToken(state.tenant_id, 'clobe', {
+    await saveOAuthToken(authorization.tenantId, 'clobe', {
       accessToken: tokenJson.access_token!,
       refreshToken: tokenJson.refresh_token,
       expiresIn: tokenJson.expires_in,

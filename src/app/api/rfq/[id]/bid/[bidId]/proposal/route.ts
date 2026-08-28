@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   isSupabaseConfigured,
-  getGroupRfq,
-  getRfqProposal,
-  getRfqProposals,
-  createRfqProposal,
-  updateRfqProposal,
-  updateRfqBid,
-  updateGroupRfq,
+  isSupabaseAdminConfigured,
   ProposalChecklist,
   RfqProposal,
 } from '@/lib/supabase';
 import { reviewProposal, generateFactBombingReport } from '@/lib/rfq-ai';
+import {
+  getAuthorizedRfqBid,
+  getAuthorizedRfqProposal,
+  createAuthorizedRfqProposal,
+  updateAuthorizedRfqBid,
+  updateAuthorizedRfqProposal,
+  getServerGroupRfq,
+  getServerRfqProposals,
+  updateServerGroupRfq,
+  updateServerRfqProposal,
+} from '@/lib/db/rfq-server';
+import { isTenantPortalAuthError, requireTenantPortalRequest } from '@/lib/tenant-portal-auth';
 
 const REQUIRED_CHECKLIST_ITEMS: (keyof ProposalChecklist)[] = [
   'guide_fee',
@@ -38,8 +44,11 @@ export async function GET(
 ) {
   const params = await props.params;
   const { id: rfqId, bidId } = params;
+  const tenantId = new URL(_request.url).searchParams.get('tenant_id') ?? '';
+  const authorization = await requireTenantPortalRequest(_request, tenantId);
+  if (isTenantPortalAuthError(authorization)) return authorization;
 
-  if (!isSupabaseConfigured) {
+  if (!isSupabaseAdminConfigured) {
     return NextResponse.json(
       { error: 'Supabase가 설정되지 않았습니다.' },
       { status: 500 }
@@ -47,8 +56,7 @@ export async function GET(
   }
 
   try {
-    const proposals = await getRfqProposals(rfqId);
-    const proposal = proposals.find(p => p.bid_id === bidId) ?? null;
+    const proposal = await getAuthorizedRfqProposal(rfqId, bidId, authorization.tenantId);
     if (!proposal) {
       return NextResponse.json({ error: '제안서를 찾을 수 없습니다.' }, { status: 404 });
     }
@@ -69,25 +77,33 @@ export async function POST(
   const params = await props.params;
   const { id: rfqId, bidId } = params;
 
-  if (!isSupabaseConfigured) {
+  if (!isSupabaseConfigured || !isSupabaseAdminConfigured) {
     return NextResponse.json(
       { error: 'Supabase가 설정되지 않았습니다.' },
-      { status: 500 }
+      { status: 503, headers: { 'Cache-Control': 'private, no-store' } },
     );
   }
 
+  const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+  const requestedTenantId = typeof body.tenant_id === 'string' ? body.tenant_id : '';
+  const authorization = await requireTenantPortalRequest(request, requestedTenantId);
+  if (isTenantPortalAuthError(authorization)) return authorization;
+
   try {
-    const body = await request.json();
     const {
       proposal_title,
       itinerary_summary,
       total_cost,
       total_selling_price,
       checklist,
-      tenant_id,
     } = body;
 
-    if (total_cost === undefined || total_selling_price === undefined) {
+    if (
+      typeof total_cost !== 'number'
+      || !Number.isFinite(total_cost)
+      || typeof total_selling_price !== 'number'
+      || !Number.isFinite(total_selling_price)
+    ) {
       return NextResponse.json(
         { error: 'total_cost와 total_selling_price는 필수입니다.' },
         { status: 400 }
@@ -95,7 +111,10 @@ export async function POST(
     }
 
     // 체크리스트 검증
-    const missingItems = validateChecklist(checklist ?? {});
+    const checklistValue = checklist && typeof checklist === 'object' && !Array.isArray(checklist)
+      ? checklist as Partial<ProposalChecklist>
+      : {};
+    const missingItems = validateChecklist(checklistValue);
     if (missingItems.length > 0) {
       return NextResponse.json(
         {
@@ -109,27 +128,32 @@ export async function POST(
     const checklistCompleted = missingItems.length === 0;
 
     // 제안서 생성
-    const proposal = await createRfqProposal({
+    const bid = await getAuthorizedRfqBid(rfqId, bidId, authorization.tenantId);
+    if (!bid) {
+      return NextResponse.json({ error: '해당 테넌트의 입찰을 찾을 수 없습니다.' }, { status: 404 });
+    }
+
+    const proposal = await createAuthorizedRfqProposal({
       rfq_id: rfqId,
       bid_id: bidId,
-      tenant_id: tenant_id ?? '',
-      proposal_title,
-      itinerary_summary,
+      tenant_id: authorization.tenantId,
+      proposal_title: typeof proposal_title === 'string' ? proposal_title : undefined,
+      itinerary_summary: typeof itinerary_summary === 'string' ? itinerary_summary : undefined,
       total_cost,
       total_selling_price,
       hidden_cost_estimate: 0,
-      checklist: checklist ?? {},
+      checklist: checklistValue,
       checklist_completed: checklistCompleted,
       status: 'submitted',
       submitted_at: new Date().toISOString(),
-    });
+    }, authorization.tenantId);
 
     if (!proposal) {
       return NextResponse.json({ error: '제안서 생성에 실패했습니다.' }, { status: 500 });
     }
 
     // 입찰 상태 업데이트
-    await updateRfqBid(bidId, {
+    await updateAuthorizedRfqBid(rfqId, bidId, authorization.tenantId, {
       status: 'submitted',
       submitted_at: new Date().toISOString(),
     });
@@ -137,11 +161,11 @@ export async function POST(
     // 비동기: AI 검수
     (async () => {
       try {
-        const rfq = await getGroupRfq(rfqId);
+        const rfq = await getServerGroupRfq(rfqId);
         if (!rfq) return;
 
         const review = await reviewProposal(rfq, proposal);
-        await updateRfqProposal(proposal.id, {
+        await updateServerRfqProposal(proposal.id, {
           ai_review: review,
           ai_reviewed_at: new Date().toISOString(),
           hidden_cost_estimate: review.hidden_cost_estimate,
@@ -150,7 +174,7 @@ export async function POST(
         });
 
         // 승인된 제안서가 3개 이상이면 팩트 폭격 분석 실행
-        const allProposals = await getRfqProposals(rfqId);
+        const allProposals = await getServerRfqProposals(rfqId);
         const approvedProposals = allProposals.filter(
           p => p.status === 'approved' || p.status === 'submitted'
         );
@@ -162,13 +186,13 @@ export async function POST(
           for (let i = 0; i < factResult.ranked.length; i++) {
             const rankedProposal = factResult.ranked[i];
             if (rankedProposal?.id) {
-              await updateRfqProposal(rankedProposal.id, { rank: i + 1 });
+              await updateServerRfqProposal(rankedProposal.id, { rank: i + 1 });
             }
           }
 
           // RFQ 상태를 awaiting_selection으로 전환
           if (rfq.status !== 'awaiting_selection') {
-            await updateGroupRfq(rfqId, { status: 'awaiting_selection' });
+            await updateServerGroupRfq(rfqId, { status: 'awaiting_selection' });
           }
         }
       } catch (aiError) {
@@ -193,7 +217,11 @@ export async function PATCH(
   const params = await props.params;
   const { id: rfqId, bidId } = params;
 
-  if (!isSupabaseConfigured) {
+  const requestedTenantId = new URL(request.url).searchParams.get('tenant_id') ?? '';
+  const authorization = await requireTenantPortalRequest(request, requestedTenantId);
+  if (isTenantPortalAuthError(authorization)) return authorization;
+
+  if (!isSupabaseAdminConfigured) {
     return NextResponse.json(
       { error: 'Supabase가 설정되지 않았습니다.' },
       { status: 500 }
@@ -201,7 +229,7 @@ export async function PATCH(
   }
 
   try {
-    const body = await request.json();
+    const body = await request.json() as Record<string, unknown>;
     const {
       proposal_title,
       itinerary_summary,
@@ -211,28 +239,56 @@ export async function PATCH(
     } = body;
 
     // 제안서 찾기
-    const proposals = await getRfqProposals(rfqId);
-    const existing = proposals.find(p => p.bid_id === bidId);
+    const existing = await getAuthorizedRfqProposal(rfqId, bidId, authorization.tenantId);
     if (!existing) {
       return NextResponse.json({ error: '제안서를 찾을 수 없습니다.' }, { status: 404 });
     }
 
+    const checklistValue = checklist && typeof checklist === 'object' && !Array.isArray(checklist)
+      ? checklist as Partial<ProposalChecklist>
+      : {};
     const mergedChecklist: Partial<ProposalChecklist> = {
       ...(existing.checklist ?? {}),
-      ...(checklist ?? {}),
+      ...checklistValue,
     };
 
     const missingItems = validateChecklist(mergedChecklist);
     const checklistCompleted = missingItems.length === 0;
 
     const patch: Partial<RfqProposal> = { checklist_completed: checklistCompleted };
-    if (proposal_title !== undefined) patch.proposal_title = proposal_title;
-    if (itinerary_summary !== undefined) patch.itinerary_summary = itinerary_summary;
-    if (total_cost !== undefined) patch.total_cost = total_cost;
-    if (total_selling_price !== undefined) patch.total_selling_price = total_selling_price;
+    if (proposal_title !== undefined) {
+      if (typeof proposal_title !== 'string') {
+        return NextResponse.json({ error: 'proposal_title 형식이 올바르지 않습니다.' }, { status: 400 });
+      }
+      patch.proposal_title = proposal_title;
+    }
+    if (itinerary_summary !== undefined) {
+      if (typeof itinerary_summary !== 'string') {
+        return NextResponse.json({ error: 'itinerary_summary 형식이 올바르지 않습니다.' }, { status: 400 });
+      }
+      patch.itinerary_summary = itinerary_summary;
+    }
+    if (total_cost !== undefined) {
+      if (typeof total_cost !== 'number' || !Number.isFinite(total_cost)) {
+        return NextResponse.json({ error: 'total_cost 형식이 올바르지 않습니다.' }, { status: 400 });
+      }
+      patch.total_cost = total_cost;
+    }
+    if (total_selling_price !== undefined) {
+      if (typeof total_selling_price !== 'number' || !Number.isFinite(total_selling_price)) {
+        return NextResponse.json({ error: 'total_selling_price 형식이 올바르지 않습니다.' }, { status: 400 });
+      }
+      patch.total_selling_price = total_selling_price;
+    }
     if (checklist !== undefined) patch.checklist = mergedChecklist;
 
-    const updated = await updateRfqProposal(existing.id, patch);
+    const updated = await updateAuthorizedRfqProposal(
+      rfqId,
+      bidId,
+      authorization.tenantId,
+      existing.id,
+      patch,
+    );
     if (!updated) {
       return NextResponse.json({ error: '제안서 업데이트에 실패했습니다.' }, { status: 500 });
     }

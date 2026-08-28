@@ -9,7 +9,7 @@ import {
   getGoogleAdsConfigStatus,
   getNaverAdsConfigStatus,
 } from '@/lib/search-ads-api';
-import { resolveOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
+import { resolvePlatformOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -85,7 +85,7 @@ async function probeGoogle(hint: string) {
     };
   }
 
-  const token = await resolveOAuthToken('', 'google_ads');
+  const token = await resolvePlatformOAuthToken('google_ads');
   if (!token?.accessToken) {
     return {
       platform: 'google',

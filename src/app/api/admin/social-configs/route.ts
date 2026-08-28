@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { isAdminRequest } from '@/lib/admin-guard';
+import { isAdminRequest, requireHumanAdminActor, resolveAdminActorId } from '@/lib/admin-guard';
 import { getSecret } from '@/lib/secret-registry';
-import { createHmac } from 'crypto';
+import { createOAuthState, registerOAuthState } from '@/lib/oauth-state';
 
 // ── GET /api/admin/social-configs ────────────────────────────────────────────
 // 소셜 플랫폼 config 목록 조회
@@ -29,7 +29,9 @@ export async function GET(request: NextRequest) {
 // ── POST /api/admin/social-configs ───────────────────────────────────────────
 // Threads OAuth URL 생성
 export async function POST(request: NextRequest) {
-  if (!(await isAdminRequest(request))) return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
+  const interactiveAuthError = await requireHumanAdminActor(request);
+  if (interactiveAuthError) return interactiveAuthError;
+  const actorUserId = await resolveAdminActorId(request);
 
   const body = await request.json().catch(() => ({}));
   const platform = body.platform as string;
@@ -43,15 +45,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'META_APP_ID 미설정' }, { status: 503 });
   }
 
-  // state 생성 (CSRF 방지)
-  const stateSecret = getSecret('OAUTH_STATE_SECRET') ?? 'dev';
-  const payload = Buffer.from(JSON.stringify({
-    tenant_id: '00000000-0000-0000-0000-000000000000', // 단일 테넌트
-    ts: Date.now(),
-    platform,
-  })).toString('base64url');
-  const sig = createHmac('sha256', stateSecret).update(payload).digest('hex').slice(0, 16);
-  const state = `${payload}.${sig}`;
+  let state: string;
+  try {
+    state = createOAuthState({ provider: 'threads', scope: 'platform' });
+    await registerOAuthState({
+      rawState: state,
+      provider: 'threads',
+      actorUserId: actorUserId ?? undefined,
+    });
+  } catch (error) {
+    console.error('[admin/social-configs] state registration failed', error);
+    return NextResponse.json({ error: 'OAuth state storage is unavailable' }, { status: 503 });
+  }
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com';
   const redirectUri = `${siteUrl}/api/auth/meta-callback`;
@@ -64,7 +69,10 @@ export async function POST(request: NextRequest) {
   oauthUrl.searchParams.set('scope', 'threads_basic,threads_content_publish');
   oauthUrl.searchParams.set('response_type', 'code');
 
-  return NextResponse.json({ oauth_url: oauthUrl.toString(), platform });
+  return NextResponse.json(
+    { oauth_url: oauthUrl.toString(), platform },
+    { headers: { 'Cache-Control': 'private, no-store' } },
+  );
 }
 
 // ── PATCH /api/admin/social-configs ──────────────────────────────────────────

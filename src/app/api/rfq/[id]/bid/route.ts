@@ -2,14 +2,23 @@ import { type NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import {
-  isSupabaseConfigured,
   getGroupRfq,
-  getTenant,
   getRfqBids,
-  claimRfqBid,
-  updateGroupRfq,
+  isSupabaseConfigured,
+  isSupabaseAdminConfigured,
 } from '@/lib/supabase';
 import { sensitiveBackendUnavailable } from '@/lib/sensitive-api-fail-closed';
+import {
+  getTenantPortalTenant,
+  isTenantPortalAuthError,
+  requireTenantPortalRequest,
+} from '@/lib/tenant-portal-auth';
+import {
+  claimAuthorizedRfqBid,
+  getServerGroupRfq,
+  getServerRfqBids,
+  updateServerGroupRfq,
+} from '@/lib/db/rfq-server';
 
 export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -38,15 +47,17 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   if (!isSupabaseConfigured) {
     return sensitiveBackendUnavailable('rfq_bid');
   }
+  if (!isSupabaseAdminConfigured) {
+    return sensitiveBackendUnavailable('rfq_bid');
+  }
+
+  const body = await request.json().catch(() => ({})) as { tenant_id?: unknown };
+  const requestedTenantId = typeof body.tenant_id === 'string' ? body.tenant_id : '';
+  const authorization = await requireTenantPortalRequest(request, requestedTenantId);
+  if (isTenantPortalAuthError(authorization)) return authorization;
 
   try {
-    const { tenant_id } = await request.json();
-
-    if (!tenant_id) {
-      return apiResponse({ error: 'tenant_id가 필요합니다.' }, { status: 400 });
-    }
-
-    const rfq = await getGroupRfq(rfqId);
+    const rfq = await getServerGroupRfq(rfqId);
     if (!rfq) {
       return apiResponse({ error: 'RFQ를 찾을 수 없습니다.' }, { status: 404 });
     }
@@ -57,7 +68,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       );
     }
 
-    const tenant = await getTenant(tenant_id);
+    const tenant = await getTenantPortalTenant(authorization.tenantId);
     if (!tenant) {
       return apiResponse({ error: '테넌트를 찾을 수 없습니다.' }, { status: 404 });
     }
@@ -84,13 +95,23 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       return apiResponse({ error: '입찰 마감' }, { status: 410 });
     }
 
-    const existingBids = await getRfqBids(rfqId);
+    const existingBids = await getServerRfqBids(rfqId);
     const activeBids = existingBids.filter(b => b.status === 'locked' || b.status === 'submitted');
     if (activeBids.length >= rfq.max_proposals) {
       return apiResponse({ error: '마감' }, { status: 410 });
     }
 
-    const bid = await claimRfqBid(rfqId, tenant_id);
+    const existingTenantBid = existingBids.find(
+      (candidate) => candidate.tenant_id === authorization.tenantId,
+    );
+    if (existingTenantBid) {
+      return apiResponse(
+        { error: '이미 입찰에 참여했거나 입찰 처리에 실패했습니다.' },
+        { status: 409 },
+      );
+    }
+
+    const bid = await claimAuthorizedRfqBid(rfqId, authorization.tenantId);
     if (!bid) {
       return apiResponse(
         { error: '이미 입찰에 참여했거나 입찰 처리에 실패했습니다.' },
@@ -98,7 +119,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       );
     }
 
-    await updateGroupRfq(rfqId, { status: 'bidding' });
+    await updateServerGroupRfq(rfqId, { status: 'bidding' });
 
     return apiResponse({ bid }, { status: 201 });
   } catch (error) {
