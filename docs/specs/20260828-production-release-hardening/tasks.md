@@ -25,7 +25,7 @@
 ## 배포 전 승인/수동 확인
 
 - [x] live Supabase schema·grant·RLS·tenant membership probe (pre/post migration validation complete)
-- [x] 세 forward migration을 production Supabase에 적용 및 단계별 검증
+- [x] 네 forward/reconciliation migration을 production Supabase에 적용 및 단계별 검증
 - [x] production `OAUTH_STATE_SECRET` 설정 확인 및 rotation 기록 유지 (64자, 기존 값 변경 없음)
 - [ ] tenant별 verified social target account metadata provision
 - [x] `NEXT_PUBLIC_DEFAULT_TENANT_ID`를 실제 platform tenant UUID로 Production provision 및 비노출 검증

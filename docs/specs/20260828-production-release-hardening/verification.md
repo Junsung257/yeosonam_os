@@ -33,8 +33,9 @@
 
 ## Production migration 적용 결과
 
-- Supabase active project `ixaxnvbmhzjvupissmly`에 세 migration을 순서대로 적용했다.
+- Supabase active project `ixaxnvbmhzjvupissmly`에 네 migration을 순서대로 적용했다.
 - 원격 migration history에는 `oauth_states_and_tenant_memberships`, `social_publishing_hardening`, `sensitive_marketing_access_hardening`이 기록됐다.
+- 후속 `oauth_states_service_role_policy` migration도 적용했고, `oauth_states`에 `service_role` 전용 `FOR ALL` RLS policy가 확인됐다.
 - post-migration probe에서 `oauth_states`, `tenant_memberships`, publish claim 컬럼, `needs_reconcile`, Twitter provider 제약, claim index가 모두 확인됐다.
 - 대상 내부 테이블 5개는 RLS가 활성화됐고 `content_distributions`, `social_platform_configs`, `tenant_api_tokens`에는 anon/authenticated grant와 browser-role policy가 없으며 service-role policy만 유지된다.
 - Supabase security advisor는 저장소 전체의 기존 INFO/WARN/ERROR 항목을 반환했다. 이번 migration 대상에 새로 발생한 browser-access finding은 확인되지 않았다.
@@ -55,4 +56,4 @@
 
 ## 배포 상태
 
-코드 후보 구현, 로컬 검증, production DB migration 3건, 필수 runtime env provision은 완료했다. 아직 production deploy와 push/PR/merge, tenant별 verified social target metadata provision, preview 시나리오 검증은 남아 있다.
+코드 후보 구현, 로컬 검증, production DB migration 4건, 필수 runtime env provision은 완료했다. 아직 production deploy와 push/PR/merge, tenant별 verified social target metadata provision, preview 시나리오 검증은 남아 있다.
