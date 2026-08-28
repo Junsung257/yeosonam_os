@@ -1,6 +1,24 @@
 {
   "version": 1,
   "approvals": {
+    "20260828090056_media_codex_worker_v1.sql": {
+      "sha256": "9efe577d156995d04c5383963b0c788c7225a1027308376ebcc9e7c634a6e3c1",
+      "status": "A",
+      "rationale": "This exact migration and both replay-safe partial claim indexes are already applied on production. The new media ledger contained only the deployment canary while the indexes were created, and fresh databases apply this migration immediately after creating the table before serving traffic. Supabase remote migrations run transactionally and therefore cannot use CREATE INDEX CONCURRENTLY.",
+      "evidence": "docs/media-generation-current-ssot.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 2
+      }
+    },
+    "20260828103551_media_assets_rls_and_fk_hardening.sql": {
+      "sha256": "96963982a03314a4f86ef6a780bb0556576651bccb93e97c41bcc5274d6e0acb",
+      "status": "A",
+      "rationale": "This forward-only hardening migration adds the missing self-referential foreign-key index to the production media ledger, which contained only the deployment canary at verification time. Fresh databases already create the same index in media_assets_v1, so IF NOT EXISTS makes this step a no-op there. Supabase remote migrations run transactionally and therefore cannot use CREATE INDEX CONCURRENTLY.",
+      "evidence": "docs/media-generation-current-ssot.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 1
+      }
+    },
     "20260824221515_harden_clobe_sync_reconciliation_and_finalization.sql": {
       "sha256": "3d473abb9b8fd924dd0b098d0ae903a210443fff66a429012826ae03c503c9cd",
       "status": "A",

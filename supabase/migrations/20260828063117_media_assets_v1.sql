@@ -71,10 +71,21 @@ CREATE INDEX IF NOT EXISTS media_assets_provider_cost_idx
 CREATE INDEX IF NOT EXISTS media_assets_sha256_idx
   ON public.media_assets (sha256)
   WHERE sha256 IS NOT NULL;
+CREATE INDEX IF NOT EXISTS media_assets_superseded_by_idx
+  ON public.media_assets (superseded_by)
+  WHERE superseded_by IS NOT NULL;
 
 ALTER TABLE public.media_assets ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.media_assets FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.media_assets TO service_role;
+
+DROP POLICY IF EXISTS media_assets_service_role_all ON public.media_assets;
+CREATE POLICY media_assets_service_role_all
+  ON public.media_assets
+  FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
 
 INSERT INTO storage.buckets (
   id,

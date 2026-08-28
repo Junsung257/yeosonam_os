@@ -58,7 +58,7 @@ Pexels 자동 fallback은 정상 경로에서 비활성이다. 장애 복구가 
 
 정확한 변수는 `docs/env-variables-reference.md`가 SSOT다.
 
-1. `20260828063117_media_assets_v1.sql`, `20260828090056_media_codex_worker_v1.sql`을 순서대로 적용한다.
+1. `20260828063117_media_assets_v1.sql`, `20260828090056_media_codex_worker_v1.sql`, `20260828103551_media_assets_rls_and_fk_hardening.sql`을 순서대로 적용한다. 마지막 마이그레이션은 선행 버전이 이미 적용된 환경에 명시적 service-role 정책과 self-FK 인덱스를 전진 보강한다.
 2. Vercel 서버와 Windows 사용자 환경에 같은 `MEDIA_CODEX_WORKER_TOKEN`을 설정한다. 토큰은 채팅·파일·로그에 출력하지 않는다.
 3. Vercel에 `MEDIA_CODEX_ENABLED=true`, 낮은 blog rollout, 일일 상한을 설정한다.
 4. 로컬 Codex 예약 작업이 `$blog-media-worker`를 호출해 회당 한 작업만 처리하도록 한다. Codex 앱이 로그인돼 있고 해당 PC가 실행 가능한 상태여야 한다.
