@@ -29,13 +29,14 @@ describe('blog trend destination support', () => {
     expect(isSupportedBlogTrendDestination('호찌민 시내', supported)).toBe(true);
   });
 
-  it('turns a generic travel trend into an explicit publishable preparation intent', () => {
+  it('turns a generic travel trend into a reviewed-source-backed next-month weather intent', () => {
     const topic = buildBlogTrendCandidateTopic({
       keyword: '발리 여행',
       destination: '발리',
+      now: new Date('2026-08-29T17:00:00.000Z'),
     });
 
-    expect(topic).toBe('발리 여행 준비물 체크리스트와 출발 전 확인사항');
+    expect(topic).toBe('발리 9월 날씨와 옷차림 준비물 체크리스트');
     expect(buildBlogInformationContract({
       topic,
       primaryKeyword: '발리 여행',
@@ -43,8 +44,16 @@ describe('blog trend destination support', () => {
       category: 'travel_tips',
     }).passed).toBe(true);
     expect(buildBlogTrendCandidateMeta(topic)).toEqual({
-      expected_slug: 'bali-preparation',
-      micro_angle: 'preparation',
+      expected_slug: 'bali-9-weather-preparation',
+      micro_angle: 'weather_packing',
     });
+  });
+
+  it('preserves an explicit trend month instead of replacing it with the next month', () => {
+    expect(buildBlogTrendCandidateTopic({
+      keyword: '방콕 11월 날씨',
+      destination: '방콕',
+      now: new Date('2026-08-29T17:00:00.000Z'),
+    })).toBe('방콕 11월 날씨와 옷차림 준비물 체크리스트');
   });
 });

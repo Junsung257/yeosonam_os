@@ -1,3 +1,5 @@
+import { slugifyTopic } from './slug-utils';
+
 function normalizeDestination(value: string | null | undefined): string | null {
   const normalized = String(value ?? '').normalize('NFKC').replace(/\s+/g, ' ').trim();
   return normalized || null;
@@ -25,27 +27,31 @@ export function isSupportedBlogTrendDestination(
 export function buildBlogTrendCandidateTopic(input: {
   keyword: string;
   destination: string;
+  now?: Date;
 }): string {
   const keyword = input.keyword.normalize('NFKC').replace(/\s+/g, ' ').trim();
   const destination = input.destination.normalize('NFKC').replace(/\s+/g, ' ').trim();
 
-  // Generic "destination travel" queries do not map to a publishable evidence
-  // contract by themselves. Turn the live demand into the explicit preparation
-  // intent supported by the information writer instead of an internal trend
-  // analysis article that customers did not ask for.
-  if (/여행(?:\s|$)/i.test(keyword)) {
-    return `${keyword} 준비물 체크리스트와 출발 전 확인사항`;
-  }
-  return `${destination} ${keyword} 준비물 체크리스트와 최신 정보`;
+  // Generic destination trends do not have a reviewed preparation-source
+  // registry. Convert them into the nearest planning question backed by the
+  // destination's reviewed WMO monthly-weather documents. Prefer an explicit
+  // month in the keyword; otherwise help readers planning the next KST month.
+  const explicitMonth = keyword.match(/(?:^|\s)(1[0-2]|[1-9])월(?:\s|$)/)?.[1];
+  const month = explicitMonth
+    ? Number(explicitMonth)
+    : (Number(new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Seoul',
+        month: 'numeric',
+      }).format(input.now ?? new Date())) % 12) + 1;
+  return `${destination} ${month}월 날씨와 옷차림 준비물 체크리스트`;
 }
 
 export function buildBlogTrendCandidateMeta(topic: string): {
   expected_slug: string;
-  micro_angle: 'preparation';
+  micro_angle: 'weather_packing';
 } {
   return {
     expected_slug: slugifyTopic(topic),
-    micro_angle: 'preparation',
+    micro_angle: 'weather_packing',
   };
 }
-import { slugifyTopic } from './slug-utils';
