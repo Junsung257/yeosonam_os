@@ -8,6 +8,7 @@ import { normalizeBlogTopicQueueRow } from '@/lib/blog-queue-normalize';
 import { filterTopicFitPassed } from '@/lib/blog-topic-fit-gate';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import {
+  buildBlogTrendCandidateTopic,
   buildSupportedBlogTrendDestinations,
   isSupportedBlogTrendDestination,
 } from '@/lib/blog-trend-destination';
@@ -123,6 +124,7 @@ async function runTrendMiner(request: NextRequest) {
     .from('blog_topic_queue')
     .select('primary_keyword, destination')
     .gte('created_at', since.toISOString())
+    .in('status', ['queued', 'generating', 'pending_review', 'published'])
     .in('source', ['trend', 'seasonal']);
   const recentKeys = new Set(
     ((recent || []) as Array<{ primary_keyword: string | null; destination: string | null }>)
@@ -146,10 +148,10 @@ async function runTrendMiner(request: NextRequest) {
     if (recentKeys.has(key)) continue;
 
     const tier = classifyKeywordTier(c.keyword, c.search_volume);
-    // 토픽 생성: "{destination} {trend keyword} 여행 가이드"
-    const topic = c.keyword.includes('여행')
-      ? `지금 뜨는 ${c.keyword} — 검색량 급등 분석`
-      : `${dest} ${c.keyword} — 최신 트렌드 가이드`;
+    const topic = buildBlogTrendCandidateTopic({
+      keyword: c.keyword,
+      destination: dest,
+    });
 
     poolRowsPending.push({
       keyword: c.keyword,
