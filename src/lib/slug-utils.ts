@@ -179,3 +179,20 @@ export function slugifyTopic(topic: string): string {
     .substring(0, 80)
     .replace(/-+$/, '');
 }
+
+/**
+ * Normalize a caller-provided blog slug without inventing a collision suffix.
+ * Duplicate ownership is decided by the blog-generation dedup gate and the
+ * database unique constraint, not by silently creating `-2`/`-3` URLs.
+ */
+export function sanitizeBlogSlug(slug: string, maxLength = 180): string {
+  return slug
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[^a-z0-9가-힣-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .substring(0, maxLength)
+    .replace(/-+$/g, '')
+    || 'article';
+}

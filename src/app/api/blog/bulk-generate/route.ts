@@ -17,6 +17,8 @@ import { destToEnKeyword, getRandomPexelsPhoto, isPexelsConfigured } from '@/lib
 import { finalizeBlogPost } from '@/lib/blog-post-finalizer';
 import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
 import { requireAdminRequest } from '@/lib/admin-guard';
+import { sanitizeBlogSlug } from '@/lib/slug-utils';
+import { insertBlogCreativeWithDedup } from '@/lib/blog-generation-dedup-repository';
 
 export const maxDuration = 60;
 
@@ -284,7 +286,7 @@ ${baseBlog.substring(0, 3000)}
         // SEO 메타 생성 (서브 키워드 반영)
         const baseSeo = generateBlogSeo(pkg, angle);
         const slugWithKeyword = `${baseSeo.slug}-${keyword.replace(/\s+/g, '')}-${idx+1}`;
-        const finalSlug = await ensureUniqueSlug(slugWithKeyword);
+        const finalSlug = sanitizeBlogSlug(slugWithKeyword);
 
         const dest = pkg.destination || '여행';
         const nightsVal2 = pkg.nights ?? (pkg.duration ? pkg.duration - 1 : 0);
@@ -346,6 +348,8 @@ ${baseBlog.substring(0, 3000)}
           description: seoDesc,
           seo_title: seoTitle,
           seo_description: seoDesc,
+          destination: pkg.destination || null,
+          content_type: 'package_intro',
           // 자가발전용 메타데이터
           prompt_version: BLOG_PROMPT_VERSION,
           ai_model: BLOG_AI_MODEL,
@@ -366,13 +370,10 @@ ${baseBlog.substring(0, 3000)}
         };
         if (finalized.ogImageUrl) insertData.og_image_url = finalized.ogImageUrl;
 
-        const { data: creative, error } = await supabaseAdmin
-          .from('content_creatives')
-          .insert(insertData)
-          .select()
-          .single();
-
-        if (error) throw error;
+        const { data: creative } = await insertBlogCreativeWithDedup({
+          row: insertData,
+          claimOwner: `bulk-blog:${product_id}:${angle}:${keyword}`,
+        });
 
         return {
           id: creative?.id,
@@ -400,23 +401,4 @@ ${baseBlog.substring(0, 3000)}
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : '생성 실패' }, { status: 500 });
   }
-}
-
-async function ensureUniqueSlug(baseSlug: string): Promise<string> {
-  const sanitized = baseSlug.toLowerCase()
-    .replace(/[^a-z0-9가-힣-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
-    .substring(0, 180);
-
-  const { data } = await supabaseAdmin
-    .from('content_creatives')
-    .select('slug')
-    .like('slug', `${sanitized}%`)
-    .not('slug', 'is', null);
-
-  const existing = new Set((data || []).map((r: { slug: string }) => r.slug));
-  if (!existing.has(sanitized)) return sanitized;
-
-  let i = 2;
-  while (existing.has(`${sanitized}-${i}`)) i++;
-  return `${sanitized}-${i}`;
 }

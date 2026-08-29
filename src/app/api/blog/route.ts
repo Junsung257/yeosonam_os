@@ -31,6 +31,11 @@ import {
 } from '@/lib/blog-information-representative';
 import { publishBlogInformationAtomically } from '@/lib/blog-information-atomic-publication';
 import { createBlogInformationContentFingerprint } from '@/lib/blog-information-review-workflow';
+import {
+  findBlogGenerationDuplicateReport,
+  insertBlogCreativeWithDedup,
+  isBlogGenerationDedupError,
+} from '@/lib/blog-generation-dedup-repository';
 
 type AbortableQuery<T> = {
   abortSignal: (signal: AbortSignal) => PromiseLike<T>;
@@ -408,18 +413,33 @@ export async function POST(request: NextRequest) {
       angle_type: angle_type || 'value',
       status: status === 'published' ? 'draft' : status,
       category: category || (product_id ? 'product_intro' : null),
+      content_type: product_id ? 'package_intro' : 'guide',
+      destination: destinationForQa,
       ...(informationGenerationMeta ? { generation_meta: informationGenerationMeta } : {}),
     };
 
     if (product_id) insertData.product_id = product_id;
     if (qaReport) applyBlogPublishQualityToUpdate(insertData, qaReport);
 
-    const { data, error } = await supabaseAdmin
-      .from('content_creatives')
-      .insert(insertData)
-      .select();
-
-    if (error) throw error;
+    let data: Record<string, unknown>[];
+    try {
+      const inserted = await insertBlogCreativeWithDedup({
+        row: insertData,
+        claimOwner: `api-blog-post:${cleanSlug}`,
+        allowReviewDraft: status !== 'published',
+      });
+      data = [inserted.data];
+    } catch (error) {
+      if (isBlogGenerationDedupError(error)) {
+        return apiResponse({
+          error: error.report.action === 'review'
+            ? '유사한 블로그 제목이 있어 검수 후 생성할 수 있습니다.'
+            : '동일한 블로그 제목 또는 슬러그가 이미 존재합니다.',
+          blog_generation_dedup: error.report,
+        }, { status: error.statusCode });
+      }
+      throw error;
+    }
 
     if (status === 'published') {
       const contentCreativeId = (data?.[0] as { id?: string } | undefined)?.id ?? null;
@@ -663,6 +683,25 @@ export async function PATCH(request: NextRequest) {
 
         if (!finalHtml || !finalSlug) {
           return apiResponse({ error: 'Blog quality gate input missing' }, { status: 400 });
+        }
+
+        const generationDedup = await findBlogGenerationDuplicateReport({
+          candidate: {
+            title: finalTitle || finalSlug,
+            slug: finalSlug,
+            destination,
+            productId: row?.product_id ?? null,
+            contentKind: row?.product_id ? 'product' : 'information',
+            allowExistingCreativeId: id,
+          },
+        });
+        if (generationDedup.action !== 'allow') {
+          return apiResponse({
+            error: generationDedup.action === 'review'
+              ? '유사한 블로그 제목이 있어 검수 후 발행할 수 있습니다.'
+              : '동일한 블로그 제목 또는 슬러그가 이미 존재합니다.',
+            blog_generation_dedup: generationDedup,
+          }, { status: generationDedup.action === 'review' ? 422 : 409 });
         }
 
         const prepared = await prepareBlogForPublish({

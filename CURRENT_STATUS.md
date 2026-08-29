@@ -1,4 +1,11 @@
-# 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-08-28 기준)
+# 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-08-29 기준)
+
+## 2026-08-29 미래 블로그 생성 중복 방지 시스템
+
+- 신규 블로그 생성·콘텐츠 허브·카드뉴스·랭킹·Creative Factory·자동발행·수동 승인 경로에 `blog-generation-dedup-v1` 게이트를 연결했다. 제목/슬러그의 결정론적 정규화와 동일 목적지·콘텐츠 종류의 유사도 검사를 통해 완전 중복은 차단하고, 유사 글은 비공개 검수 대기로 보낸다. 서로 다른 목적지의 실제 별도 글은 정상 경로를 계속 사용할 수 있다.
+- 동시 생성 경합은 `blog_generation_dedup_claims`와 service-role 전용 원자 RPC가 맡는다. 생성 중 `reserved` lease, 저장 후 creative 연결, 실패 시 해제를 기록하며, 동일 creative의 승인된 교체만 자기 ID를 명시해 재사용할 수 있다.
+- 기존 글은 자동 수정·삭제·병합·리다이렉트·제목 suffix backfill을 하지 않았다. 기존 중복은 기존 dry-run/운영 검수 대상으로 남긴다. 블로그 이미지는 이번 중복 계약의 범위에서 제외했다.
+- 운영 반영 전 `supabase/migrations/20260829093545_blog_generation_dedup_claims.sql`을 적용해야 하며, 상세 계약은 `docs/blog-autopublish-contract.md`, 운영 대응은 `docs/blog-ops-runbook.md`에 기록했다.
 
 ## 2026-08-28 ChatGPT 구독형 공용 미디어 파이프라인
 
