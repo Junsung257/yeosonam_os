@@ -372,6 +372,87 @@
         "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 8
       }
     },
+    "20260818154500_product_registration_backfill_claim_lookup_index.sql": {
+      "sha256": "5825276bbdff8ce2a36bae7d164d3f09b9a232ac12c80fa8eb7a95bc160a0bf5",
+      "status": "A",
+      "rationale": "This exact replay-safe upload-job lookup index was applied successfully in the isolated product-registration rehearsal while publication remained frozen. This approval only records the transactional Supabase lock-risk exception; production application remains prohibited until target row counts, lock timing, and a maintenance window are approved.",
+      "evidence": "docs/audits/2026-08-29-product-publication-authority-rebuild.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 1
+      }
+    },
+    "20260819235152_product_registration_v61_workflow.sql": {
+      "sha256": "8d00313b0709a636c930d91c51c22063b529376bdc7a514b49e0ee1e775f33af",
+      "status": "A",
+      "rationale": "This exact V6.1 workflow migration and its five queue/stage indexes were applied successfully in the isolated rehearsal under publication freeze. The exception is not production authorization; production still requires table-size evidence, bounded lock timing, and an approved maintenance window.",
+      "evidence": "docs/audits/2026-08-29-product-publication-authority-rebuild.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 5
+      }
+    },
+    "20260819235155_product_registration_v61_surface_lineage.sql": {
+      "sha256": "abb661cc08f1d6c4c96e6959bf3bfdb72fb60dd6bd9ddd28e5aba6ef2af31540",
+      "status": "A",
+      "rationale": "This exact surface-lineage migration and three compatibility indexes were applied successfully in the isolated rehearsal while customer publication was frozen. The approval acknowledges only the transactional migration constraint and does not permit an unmeasured production index build.",
+      "evidence": "docs/audits/2026-08-29-product-publication-authority-rebuild.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 3
+      }
+    },
+    "20260820100000_product_registration_v61_knowledge_ledger.sql": {
+      "sha256": "52128437c40eb2a6d52ca0fc99a613d32cd72af3f3b86ef6096accac6675f9c7",
+      "status": "A",
+      "rationale": "This exact knowledge-ledger migration and two departure-ledger indexes were applied successfully in the isolated rehearsal with publication freeze active. Production application remains a separate NO-GO gate until row counts and lock duration are captured and approved.",
+      "evidence": "docs/audits/2026-08-29-product-publication-authority-rebuild.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 2
+      }
+    },
+    "20260824074811_product_registration_publication_guardrails.sql": {
+      "sha256": "d6dfa411c450e8e74296f8d701e1dc49dc49cfcfdda64401fc1f47e6aff16935",
+      "status": "A",
+      "rationale": "This exact publication-guardrails migration was rehearsed successfully on the isolated project and immediately forces publication_freeze=true before adding the convergence lookup index. This hash approval is not permission to apply the index to production without preflight evidence and a controlled window.",
+      "evidence": "docs/audits/2026-08-29-product-publication-authority-rebuild.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 1
+      }
+    },
+    "20260824101000_product_registration_customer_copy_v2.sql": {
+      "sha256": "98553e9dd7c9494a62b90bd7241f5474d4466c7f43250b10eb02959fb3b312d9",
+      "status": "A",
+      "rationale": "This exact customer-copy migration and exact-facts-policy index were applied successfully in the isolated rehearsal while publication stayed frozen. Production application remains blocked until existing copy volume and index lock timing are recorded.",
+      "evidence": "docs/audits/2026-08-29-product-publication-authority-rebuild.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 1
+      }
+    },
+    "20260824135814_product_registration_departure_price_rule_index.sql": {
+      "sha256": "729d3a2b9412c67a7aa4f5609e70e5bd043b811cf382ce25ae77785fac836ce2",
+      "status": "A",
+      "rationale": "This exact replay-safe departure price-rule index uses a five-second lock timeout and five-minute statement timeout because Supabase migrations are transactional. It passed the isolated rehearsal; production remains blocked pending current row counts and a maintenance-window decision.",
+      "evidence": "docs/audits/2026-08-29-product-publication-authority-rebuild.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 1
+      }
+    },
+    "20260824135931_product_registration_v61_fk_indexes.sql": {
+      "sha256": "74c2f62a7af71cea2ef6ba25cec7a896b24ba8485c9047ad50b81a24ee0e9bd0",
+      "status": "A",
+      "rationale": "These 21 exact replay-safe authority FK indexes use bounded lock and statement timeouts and passed the isolated rehearsal before the baseline data run. This exception documents transactional Supabase behavior only; it does not authorize production application without per-table counts and controlled rollout evidence.",
+      "evidence": "docs/audits/2026-08-29-product-publication-authority-rebuild.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 21
+      }
+    },
+    "20260829152734_product_registration_missing_fk_indexes.sql": {
+      "sha256": "a7c9992b37cbeb5540aa77e713a8a749774ca9dd99f9e82efd325c71397caa46",
+      "status": "A",
+      "rationale": "The two forward-only immutable price-lineage FK indexes were applied and verified on the isolated rehearsal at 55 rows with authority mode shadow and publication_freeze=true. The migration bounds lock waiting to five seconds; production application remains prohibited until live row counts and a maintenance window are approved.",
+      "evidence": "docs/audits/2026-08-29-product-publication-authority-rebuild.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 2
+      }
+    },
     "20260828120000_oauth_states_and_tenant_memberships.sql": {
       "sha256": "81f7b718b614aa8d621f051ee2a5f35e144dd3c2762c87af6cc65370e12f4423",
       "status": "A",

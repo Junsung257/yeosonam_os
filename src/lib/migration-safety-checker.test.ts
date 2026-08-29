@@ -69,6 +69,39 @@ describe('migration safety checker', () => {
       .not.toContainEqual(expect.objectContaining({ type: 'foreign-key-index' }));
   });
 
+  it('recognizes indexes created with a schema-qualified table in the same migration', () => {
+    const migration = `
+      CREATE TABLE internal_product_registration.child_rows (
+        id uuid PRIMARY KEY,
+        parent_id uuid NOT NULL REFERENCES internal_product_registration.parent_rows(id)
+      );
+      ALTER TABLE internal_product_registration.child_rows ENABLE ROW LEVEL SECURITY;
+      CREATE POLICY child_rows_service ON internal_product_registration.child_rows
+        FOR ALL TO service_role USING (true);
+      CREATE INDEX idx_internal_child_parent
+        ON internal_product_registration.child_rows(parent_id);
+    `;
+
+    expect(new checker.MigrationChecker('20260101000000_internal_child.sql', migration).run())
+      .not.toContainEqual(expect.objectContaining({ type: 'lock-heavy' }));
+  });
+
+  it('does not carry an ALTER TABLE foreign key across a prior semicolon boundary', () => {
+    const migration = `
+      ALTER TABLE public.legacy_rows
+        ADD COLUMN IF NOT EXISTS unrelated text;
+      ALTER TABLE internal_product_registration.package_availability_overlays
+        ADD CONSTRAINT overlays_manifest_item_fkey
+        FOREIGN KEY (visibility_manifest_item_id)
+        REFERENCES internal_product_registration.publication_freeze_manifest_items(id);
+      CREATE INDEX CONCURRENTLY idx_overlays_manifest_item
+        ON internal_product_registration.package_availability_overlays(visibility_manifest_item_id);
+    `;
+
+    expect(new checker.MigrationChecker('20260101000000_overlay_fk.sql', migration).run())
+      .not.toContainEqual(expect.objectContaining({ type: 'foreign-key-index' }));
+  });
+
   it('returns nonzero for HIGH and CRITICAL findings', () => {
     expect(checker.determineExitCode({ files: [{ issues: [{ severity: 'high' }] }] })).toBe(1);
     expect(checker.determineExitCode({ files: [{ issues: [{ severity: 'critical' }] }] })).toBe(1);
