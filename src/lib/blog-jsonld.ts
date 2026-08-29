@@ -170,7 +170,7 @@ export function buildBlogPostPageJsonLd(input: BlogPostPageJsonLdInput): BlogPos
     : null;
 
   const product = pkg?.isCurrentlyAvailable === true && pkg.price != null ? ({
-    '@context': 'https://schema.org', '@type': 'Product', name: pkg.title, description,
+    '@context': 'https://schema.org', '@type': 'Product', name: pkg.title, description: description,
     category: pkg.destination,
     offers: {
       '@type': 'Offer', price: pkg.price, priceCurrency: 'KRW', availability: 'https://schema.org/InStock',
