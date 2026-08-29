@@ -7,6 +7,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { sanitizeBlogSlug } from '@/lib/slug-utils';
+import {
+  insertBlogCreativeWithDedup,
+  isBlogGenerationDedupError,
+} from '@/lib/blog-generation-dedup-repository';
 import { llmCall } from '@/lib/llm-gateway';
 import { mrtProvider, buildMylinkUrl } from '@/lib/travel-providers/mrt';
 import { getPrompt } from '@/lib/prompt-loader';
@@ -33,23 +38,6 @@ function slugPart(value: string): string {
     .replace(/[^\p{Letter}\p{Number}]+/gu, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
-}
-
-async function ensureUniqueSlug(slug: string): Promise<string> {
-  if (!isSupabaseConfigured) return slug;
-  const { data } = await supabaseAdmin
-    .from('content_creatives')
-    .select('slug')
-    .like('slug', `${slug}%`)
-    .limit(10);
-  if (!data || data.length === 0) return slug;
-  const existing = new Set(data.map((r: { slug: string }) => r.slug));
-  if (!existing.has(slug)) return slug;
-  for (let i = 2; i <= 20; i++) {
-    const candidate = `${slug}-${i}`;
-    if (!existing.has(candidate)) return candidate;
-  }
-  return `${slug}-${Date.now()}`;
 }
 
 export async function POST(request: NextRequest) {
@@ -178,7 +166,7 @@ ${filtered.map((hotel, i) => {
     }
 
     const slugBase = `${slugPart(city)}-${slugPart(tierLabel)}-hotel-top${topN}-${year}`;
-    const finalSlug = await ensureUniqueSlug(slugBase);
+    const finalSlug = sanitizeBlogSlug(slugBase);
     const seoTitle = `${city} ${tierLabel} 호텔 TOP ${topN} ${year}년 최신`.slice(0, 60);
     const seoDesc = `${city} ${tierLabel} 호텔 ${topN}곳을 평점, 가격, 위치 기준으로 비교했습니다. MyRealTrip 실시간 호텔 데이터를 바탕으로 예약 링크까지 정리했습니다.`.slice(0, 160);
 
@@ -189,9 +177,12 @@ ${filtered.map((hotel, i) => {
       status: 'draft',
       category: 'hotel_ranking',
       slug: finalSlug,
+      title: seoTitle,
+      description: seoDesc,
       seo_title: seoTitle,
       seo_description: seoDesc,
       destination: city,
+      content_type: 'guide',
       topic_source: 'mrt_hotel',
       published_at: null,
       generation_params: {
@@ -202,13 +193,23 @@ ${filtered.map((hotel, i) => {
         ai_model: result.model ?? 'gemini-2.5-flash',
       },
     };
-    const { data: creative, error } = await supabaseAdmin
-      .from('content_creatives')
-      .insert(insertData)
-      .select('id, slug')
-      .single();
-
-    if (error) throw error;
+    let creative: { id?: string; slug?: string } | null = null;
+    try {
+      creative = (await insertBlogCreativeWithDedup({
+        row: insertData,
+        claimOwner: `mrt-hotel-blog:${city}:${tier}:${topN}`,
+      })).data as { id?: string; slug?: string };
+    } catch (error) {
+      if (isBlogGenerationDedupError(error)) {
+        return NextResponse.json({
+          error: error.report.action === 'review'
+            ? '유사한 블로그 제목이 있어 검수 후 생성할 수 있습니다.'
+            : '동일한 블로그 제목 또는 슬러그가 이미 존재합니다.',
+          blog_generation_dedup: error.report,
+        }, { status: error.statusCode });
+      }
+      throw error;
+    }
 
     return NextResponse.json({
       ok: true,

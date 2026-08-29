@@ -14,7 +14,7 @@
 
 > 2026-08-17 itinerary-research addendum: 출처 다양성은 정규화한 기관 호스트 기준으로 계산한다. `www.example.com`과 `example.com`은 한 기관이며 두 출처로 계산하지 않는다. 일정 연구 패킷은 명소와 실제 구간 이동시간 외에 운영시간·예약·입장·출입통제·계단/엘리베이터 같은 일정 결정 제약을 최소 1개 포함해야 한다. 높이·길이·면적 같은 물리 치수는 이 제약을 대신할 수 없으며, 조건을 충족하지 못한 후보는 모델 작성 전에 보류한다.
 
-Last updated: 2026-07-29
+Last updated: 2026-08-29
 
 This document defines the required contract for automatic blog generation, publishing, and indexing. Publishing and indexing must be treated as separate responsibilities. It exists because one-off repairs to already published rows do not prevent the same defect from recurring in live autopublishing.
 
@@ -314,6 +314,39 @@ For `food_budget`, the research preflight accepts current reputable price aggreg
 Customs, entry/visa, insurance, and policy claims require both an official source authority and `review_status='approved'`. Missing evidence, unsupported status, expired/revoked evidence, non-official high-risk sources, or missing human approval keeps the article private in draft/review. The same `evaluateBlogInformationClaimPublishGate()` runs for automatic publishing, direct blog POST/PATCH, content-hub publication, content-queue approval, force reindexing, and zero-click body replacement. Product-backed content exits this information-only gate unchanged.
 
 ## Informational Representative And Canonical Contract
+
+## Future Generation Deduplication Contract (blog-generation-dedup-v1)
+
+This gate applies to every newly generated blog row before it is inserted into
+`content_creatives`, including direct generation, content-hub generation,
+card-news generation, ranking generation, creative-factory generation, and the
+automatic publisher. It is a future-generation guard only: it does not rewrite,
+merge, redirect, delete, or backfill legacy articles. Image assets are outside
+this contract.
+
+- The candidate title is normalized deterministically with Unicode NFKC, case
+  folding, whitespace/punctuation cleanup, and removal of non-intent year and
+  format words. The resulting `blog-generation-dedup-v1` key is claimed in the
+  service-only `blog_generation_dedup_claims` ledger before persistence.
+- An exact slug, exact title, or exact normalized title collision with an
+  active/draft generation is `BLOCK`. The route must not create a new creative
+  row or public URL and returns a duplicate conflict for direct callers.
+- A near title collision (similarity `>= 0.78`) within the same destination and
+  content kind is `REVIEW`. It may be saved as private review inventory, but it
+  must never be auto-published. A near match for a different destination is not
+  blocked by this title gate; the normal evidence, representative, and quality
+  gates still apply.
+- The claim is a short-lived `reserved` lease during generation. Successful
+  persistence binds it to the creative as `bound` (or `review`); failed writes
+  release it. The database unique key and atomic RPC are the concurrency
+  backstop for two simultaneous generation requests.
+- Re-generating the same existing creative is allowed only when the caller
+  supplies that creative ID. This prevents an in-place approved replacement
+  from blocking itself while still rejecting a second creative.
+
+Existing duplicate inventory remains read-only and operator-reviewed through
+the existing dry-run tools. Do not solve historical duplicates by appending
+numeric title suffixes or by silently changing canonical URLs.
 
 Every new information article has one stable representative key: `destination_id + intent + audience + locale`. Title year, slug year, campaign wording, and publication date are deliberately absent from the key. `blog_information_representatives` owns the unique reservation and canonical creative/slug for that key.
 

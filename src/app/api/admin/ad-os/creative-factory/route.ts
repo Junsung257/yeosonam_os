@@ -5,6 +5,10 @@ import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
+import {
+  insertBlogCreativeWithDedup,
+  isBlogGenerationDedupError,
+} from '@/lib/blog-generation-dedup-repository';
 
 export const dynamic = 'force-dynamic';
 
@@ -104,11 +108,34 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     };
   });
 
-  let inserted: Array<{ id: string }> = [];
+  const inserted: Array<{ id: string }> = [];
+  const dedupSkipped: Array<{ title: string; reason: string }> = [];
   if (apply && rows.length > 0) {
-    const { data, error } = await supabaseAdmin.from('content_creatives').insert(rows).select('id');
-    if (error) return apiResponse({ ok: false, error: sanitizeDbError(error) }, { status: 500 });
-    inserted = data || [];
+    const nonBlogRows = rows.filter((row) => row.channel !== 'naver_blog');
+    if (nonBlogRows.length > 0) {
+      const { data, error } = await supabaseAdmin.from('content_creatives').insert(nonBlogRows).select('id');
+      if (error) return apiResponse({ ok: false, error: sanitizeDbError(error) }, { status: 500 });
+      inserted.push(...(data || []));
+    }
+    for (const [index, row] of rows.entries()) {
+      if (row.channel !== 'naver_blog') continue;
+      try {
+        const result = await insertBlogCreativeWithDedup({
+          row,
+          claimOwner: `ad-os-creative-factory:${publicPackage.id}:${index}`,
+        });
+        if (typeof result.data.id === 'string') inserted.push({ id: result.data.id });
+      } catch (error) {
+        if (isBlogGenerationDedupError(error)) {
+          dedupSkipped.push({
+            title: row.seo_title,
+            reason: error.report.reason,
+          });
+          continue;
+        }
+        return apiResponse({ ok: false, error: sanitizeDbError(error) }, { status: 500 });
+      }
+    }
   }
 
   return apiResponse({
@@ -117,6 +144,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     package: { id: publicPackage.id, title: publicPackage.title, destination: publicPackage.destination },
     prepared_drafts: rows.length,
     inserted_drafts: inserted.length,
+    dedup_skipped: dedupSkipped,
     drafts: rows,
     inserted,
     safety: {

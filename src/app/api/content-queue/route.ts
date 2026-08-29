@@ -21,6 +21,7 @@ import {
 } from '@/lib/blog-information-representative';
 import { publishBlogInformationAtomically } from '@/lib/blog-information-atomic-publication';
 import { createBlogInformationContentFingerprint } from '@/lib/blog-information-review-workflow';
+import { findBlogGenerationDuplicateReport } from '@/lib/blog-generation-dedup-repository';
 
 const BLOG_SELECT = 'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, status, tracking_id, tone, created_at, updated_at, published_at, product_id, destination, review_status, category, content_type, topic_source, generation_meta, travel_packages(id, title, destination)';
 
@@ -139,6 +140,24 @@ const postHandler = async (request: NextRequest) => {
       const finalTitle = seo_title ?? row.seo_title ?? null;
       const finalDescription = seo_description ?? row.seo_description ?? null;
       const destination = resolveBlogDestination(row);
+      const generationDedup = await findBlogGenerationDuplicateReport({
+        candidate: {
+          title: finalTitle ?? slug,
+          slug,
+          destination,
+          productId: row.product_id ?? null,
+          contentKind: row.product_id ? 'product' : 'information',
+          allowExistingCreativeId: creative_id,
+        },
+      });
+      if (generationDedup.action !== 'allow') {
+        return NextResponse.json({
+          error: generationDedup.action === 'review'
+            ? '유사한 블로그 제목이 있어 검수 후 발행할 수 있습니다.'
+            : '동일한 블로그 제목 또는 슬러그가 이미 존재합니다.',
+          blog_generation_dedup: generationDedup,
+        }, { status: generationDedup.action === 'review' ? 422 : 409 });
+      }
       const prepared = await prepareBlogForPublish({
         id: creative_id,
         blog_html: row.blog_html,

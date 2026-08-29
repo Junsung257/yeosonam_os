@@ -12,22 +12,11 @@ import { BLOG_PROMPT_VERSION, BLOG_AI_MODEL, BLOG_AI_TEMPERATURE } from '@/lib/p
 import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
 import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
 import { requireAdminRequest } from '@/lib/admin-guard';
-
-/** slug 중복 방지: 동일 slug 존재 시 -2, -3 접미사 자동 부여 */
-async function ensureUniqueSlug(baseSlug: string): Promise<string> {
-  const { data } = await supabaseAdmin
-    .from('content_creatives')
-    .select('slug')
-    .like('slug', `${baseSlug}%`)
-    .not('slug', 'is', null);
-
-  const existing = new Set((data || []).map((r: { slug: string }) => r.slug));
-  if (!existing.has(baseSlug)) return baseSlug;
-
-  let i = 2;
-  while (existing.has(`${baseSlug}-${i}`)) i++;
-  return `${baseSlug}-${i}`;
-}
+import { sanitizeBlogSlug } from '@/lib/slug-utils';
+import {
+  insertBlogCreativeWithDedup,
+  isBlogGenerationDedupError,
+} from '@/lib/blog-generation-dedup-repository';
 
 export async function POST(request: NextRequest) {
   const authError = await requireAdminRequest(request);
@@ -243,12 +232,15 @@ ${baseBlog.substring(0, 3000)}
     if (channel === 'naver_blog') {
       const rawSlug = slugOverride || autoSeo?.slug || '';
       if (rawSlug) {
-        // slug sanitizer + 중복 방지
-        const sanitized = rawSlug.toLowerCase().replace(/[^a-z0-9가-힣-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').substring(0, 80);
-        insertData.slug = await ensureUniqueSlug(sanitized);
+        // slug sanitizer만 적용한다. 충돌은 공용 dedup claim이 차단한다.
+        insertData.slug = sanitizeBlogSlug(rawSlug, 80);
       }
       insertData.seo_title = seo_title || autoSeo?.seoTitle || null;
       insertData.seo_description = seo_description || autoSeo?.seoDescription || null;
+      insertData.title = insertData.seo_title;
+      insertData.description = insertData.seo_description;
+      insertData.destination = pkg.destination || null;
+      insertData.content_type = 'package_intro';
 
       // OG 이미지 자동: 수동 override > 관광지 첫 사진
       if (og_image_url) {
@@ -261,13 +253,33 @@ ${baseBlog.substring(0, 3000)}
       }
     }
 
-    const { data: creative, error } = await supabaseAdmin
-      .from('content_creatives')
-      .insert(insertData)
-      .select()
-      .single();
-
-    if (error) throw error;
+    let creative: Record<string, unknown> | null = null;
+    if (channel === 'naver_blog') {
+      try {
+        creative = (await insertBlogCreativeWithDedup({
+          row: insertData,
+          claimOwner: `content-hub-blog:${product_id}:${angle}`,
+        })).data;
+      } catch (error) {
+        if (isBlogGenerationDedupError(error)) {
+          return NextResponse.json({
+            error: error.report.action === 'review'
+              ? '유사한 블로그 제목이 있어 검수 후 생성할 수 있습니다.'
+              : '동일한 블로그 제목 또는 슬러그가 이미 존재합니다.',
+            blog_generation_dedup: error.report,
+          }, { status: error.statusCode });
+        }
+        throw error;
+      }
+    } else {
+      const { data, error } = await supabaseAdmin
+        .from('content_creatives')
+        .insert(insertData)
+        .select()
+        .single();
+      if (error) throw error;
+      creative = data as Record<string, unknown>;
+    }
 
     return NextResponse.json({ creative, seo_score: seoScore }, { status: 201 });
   } catch (err) {

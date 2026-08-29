@@ -18,6 +18,11 @@ import { filterReachableImageUrls } from '@/lib/card-news-slide-urls';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
 import { requireAdminRequest } from '@/lib/admin-guard';
+import { sanitizeBlogSlug } from '@/lib/slug-utils';
+import {
+  insertBlogCreativeWithDedup,
+  isBlogGenerationDedupError,
+} from '@/lib/blog-generation-dedup-repository';
 
 /** blog-publisher가 내부 fetch로 호출할 때 Brief+본문 생성이 60초를 넘기면 잘리므로, 상위 크론(300s) 안에서 여유 있게 실행 */
 export const maxDuration = 240;
@@ -225,8 +230,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // slug 중복 방지
-    const finalSlug = await ensureUniqueSlug(slug);
+    // 충돌 suffix를 발명하지 않고 공용 dedup gate에 판단을 위임한다.
+    const finalSlug = sanitizeBlogSlug(slug);
 
     // OG 이미지: 카드뉴스 첫 번째 PNG (우선) > 배경 이미지
     const bgImageCandidate = (cn.slides as Array<Record<string, unknown>> | null | undefined)?.[0]?.bg_image_url;
@@ -285,8 +290,12 @@ export async function POST(request: NextRequest) {
       blog_html: blogHtml,
       status: 'draft',
       slug: finalSlug,
+      title: seoTitle,
+      description: seoDesc,
       seo_title: seoTitle,
       seo_description: seoDesc,
+      destination: productData?.destination ?? null,
+      content_type: productId ? 'package_intro' : 'guide',
       og_image_url: finalized.ogImageUrl,
       prompt_version: BLOG_PROMPT_VERSION,
       ai_model: BLOG_AI_MODEL,
@@ -301,18 +310,29 @@ export async function POST(request: NextRequest) {
     };
     if (productId) insertData.product_id = productId;
 
-    const { data: creative, error: creativeError } = await supabaseAdmin
-      .from('content_creatives')
-      .insert(insertData)
-      .select()
-      .single();
-    if (creativeError) throw creativeError;
+    let creative: Record<string, unknown>;
+    try {
+      creative = (await insertBlogCreativeWithDedup({
+        row: insertData,
+        claimOwner: `card-news-blog:${card_news_id}`,
+      })).data;
+    } catch (error) {
+      if (isBlogGenerationDedupError(error)) {
+        return NextResponse.json({
+          error: error.report.action === 'review'
+            ? '유사한 블로그 제목이 있어 검수 후 생성할 수 있습니다.'
+            : '동일한 블로그 제목 또는 슬러그가 이미 존재합니다.',
+          blog_generation_dedup: error.report,
+        }, { status: error.statusCode });
+      }
+      throw error;
+    }
 
     // 카드뉴스에 linked_blog_id 연결 + 이미지 URL 저장
     await supabaseAdmin
       .from('card_news')
       .update({
-        linked_blog_id: (creative as Record<string, unknown>).id as string,
+        linked_blog_id: creative.id as string,
         slide_image_urls: cardNewsImages,
         updated_at: new Date().toISOString(),
       })
@@ -326,7 +346,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         blog: creative,
-        blog_id: (creative as { id: string }).id,
+        blog_id: creative.id as string,
         blog_html: blogHtml,
         slug: finalSlug,
         seo_title: seoTitle,
@@ -618,27 +638,4 @@ ${lastImage && lastImage !== h1Image ? `![${topic} 여소남](${lastImage})` : '
   if (lastImage && lastImage !== h1Image) sections.push(`![${topic} 여소남](${lastImage})`);
   sections.push(`여소남에서 여행 준비를 시작하세요.\n[👉 여소남에서 여행 준비하기](${baseUrl})`);
   return sections.join('\n');
-}
-
-// slug 중복 방지
-async function ensureUniqueSlug(baseSlug: string): Promise<string> {
-  const sanitized = baseSlug.toLowerCase()
-    .replace(/[^a-z0-9가-힣-]/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .substring(0, 180) || 'article';
-
-  const { data } = await supabaseAdmin
-    .from('content_creatives')
-    .select('slug')
-    .like('slug', `${sanitized}%`)
-    .not('slug', 'is', null)
-    .limit(1000);
-
-  const existing = new Set((data || []).map((r: { slug: string }) => r.slug));
-  if (!existing.has(sanitized)) return sanitized;
-
-  let i = 2;
-  while (existing.has(`${sanitized}-${i}`) && i < 1000) i++;
-  return `${sanitized}-${i}`;
 }

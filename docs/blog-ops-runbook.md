@@ -6,11 +6,43 @@
 
 > 2026-08-13 V3 override: `backfill:blog-quality:write` was removed. The legacy backfill creates article text, so `--write` and `--apply` now fail before any database mutation. Commands below that include the old write flag are historical verification records only.
 
-Last updated: 2026-07-28
+Last updated: 2026-08-29
 
 This runbook defines how operators decide whether the Yeosonam blog automation is healthy. The durable publish contract remains `docs/blog-autopublish-contract.md`; this file explains the daily operating workflow shown in `/admin/blog`.
 
 Information Engine V2 CTA setup, high-risk approval, fixture evaluation, existing-post dry-run, staging order, and rollback are handed off in `docs/blog-informational-engine-v2-owner-runbook.md`.
+
+## Future Blog Generation Duplicate Gate
+
+As of 2026-08-29, all new blog-generation entry points use the
+`blog-generation-dedup-v1` gate before inserting `content_creatives`. This is a
+forward-only control; it does not mutate existing articles, and image handling
+is intentionally unrelated.
+
+- `BLOCK` means the normalized title, exact title, or slug is already claimed
+  by an active generation/content row. Direct APIs return `409`; the automatic
+  publisher records a non-retryable duplicate disposition. Do not retry the
+  same payload unchanged.
+- `REVIEW` means a same-destination, same-kind near-title collision. It may
+  remain private review inventory, but it cannot be automatically published.
+  Resolve it by changing the editorial intent or explicitly approving a
+  genuinely distinct article; do not add a meaningless year/number suffix.
+- A different destination can reuse general wording when its destination and
+  evidence are genuinely different. It still must pass the information
+  representative, research, quality, and SEO gates.
+- The claim ledger uses a one-hour reservation lease. If a worker dies, the
+  lease can be reclaimed; if content was persisted, the claim is bound to that
+  creative. A failed insert releases the reservation. Concurrent attempts are
+  settled by the database RPC, not by a best-effort application pre-check.
+- Existing duplicate rows are only reported by the existing dry-run/audit
+  tooling. No automatic rewrite, redirect, merge, deletion, or title suffixing
+  is permitted as part of this rollout.
+
+When diagnosing a new duplicate skip, inspect the generation metadata key
+`generation_meta.blog_generation_dedup`, the route response reason, and the
+claim owner before retrying. A stuck `reserved` claim older than its lease is
+recoverable; an active `bound`/`review` claim should be resolved against its
+linked creative rather than force-deleted.
 
 ## 2026-07-28 Root-Cause Controls
 

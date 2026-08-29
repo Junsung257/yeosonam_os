@@ -152,6 +152,14 @@ import {
 } from '@/lib/blog-information-representative-repository';
 import { publishBlogInformationAtomically } from '@/lib/blog-information-atomic-publication';
 import { createBlogInformationContentFingerprint } from '@/lib/blog-information-review-workflow';
+import {
+  buildBlogGenerationDedupMetadata,
+} from '@/lib/blog-generation-dedup';
+import {
+  bindBlogGenerationDedup,
+  claimBlogGenerationDedup,
+  releaseBlogGenerationDedup,
+} from '@/lib/blog-generation-dedup-repository';
 import { createBlogInformationEvidenceWorkflowStore } from '@/lib/blog-information-review-repository';
 import {
   evaluateBlogAutopublishDecisionV3,
@@ -3657,6 +3665,56 @@ async function processQueueItem(
         };
       }
     }
+    const generationDedupClaim = await claimBlogGenerationDedup({
+      candidate: {
+        title: generated.seo_title,
+        slug: reviewedReplacementDraftSlug ?? automatedReplacementDraftSlug ?? generated.slug,
+        destination: item.destination ?? null,
+        productId: item.product_id ?? null,
+        contentKind: blogType === 'info' ? 'information' : 'product',
+        allowExistingCreativeId: privateRegenerationRequest?.contentCreativeId ?? promoteDraftId,
+      },
+      claimOwner: representativeOwner,
+      claimReview: false,
+    });
+    if (!generationDedupClaim.claimed) {
+      const dedupMeta = buildBlogGenerationDedupMetadata({
+        report: generationDedupClaim.report,
+        claimOwner: generationDedupClaim.claimOwner,
+      });
+      const reason = `blog_generation_dedup:${generationDedupClaim.report.reason}`;
+      if (generationDedupClaim.report.action === 'review') {
+        await supabaseAdmin.from('blog_topic_queue').update({
+          status: 'pending_review',
+          last_error: reason,
+          meta: {
+            ...(item.meta || {}),
+            blog_generation_dedup: dedupMeta,
+            duplicate_review_required: true,
+          },
+        }).eq('id', item.id);
+        return {
+          id: item.id,
+          topic: item.topic,
+          status: 'duplicate_review',
+          reason,
+        };
+      }
+      const failureStatus = await handleFailure(item, reason, qa, false, {
+        blog_generation_dedup: dedupMeta,
+        skipped_duplicate: true,
+      });
+      return {
+        id: item.id,
+        topic: item.topic,
+        status: failureStatus === 'skipped' ? 'skipped_duplicate' : failureStatus,
+        reason,
+      };
+    }
+    generationMeta.blog_generation_dedup = buildBlogGenerationDedupMetadata({
+      report: generationDedupClaim.report,
+      claimOwner: generationDedupClaim.claimOwner,
+    });
     const publicationTimestamp = publishedAtomicUpgrade && originalPublishedAt
       ? originalPublishedAt
       : now;
@@ -3711,6 +3769,10 @@ async function processQueueItem(
         .eq('id', promoteDraftId);
 
       if (upErr) {
+        await releaseBlogGenerationDedup({
+          dedupKey: generationDedupClaim.report.dedupKey,
+          claimOwner: generationDedupClaim.claimOwner,
+        }).catch((releaseError) => logWarning('[cron/blog-publisher] dedup claim release failed', releaseError));
         await handleFailure(item, `DB update(초안승격) 실패: ${upErr.message}`, qa);
         return { id: item.id, topic: item.topic, status: 'update_failed', reason: upErr.message };
       }
@@ -3723,12 +3785,22 @@ async function processQueueItem(
         .limit(1);
 
       if (insErr) {
+        await releaseBlogGenerationDedup({
+          dedupKey: generationDedupClaim.report.dedupKey,
+          claimOwner: generationDedupClaim.claimOwner,
+        }).catch((releaseError) => logWarning('[cron/blog-publisher] dedup claim release failed', releaseError));
         await handleFailure(item, `DB insert 실패: ${insErr.message}`, qa);
         return { id: item.id, topic: item.topic, status: 'insert_failed', reason: insErr.message };
       }
 
       creativeId = inserted?.[0]?.id as string;
     }
+    await bindBlogGenerationDedup({
+      dedupKey: generationDedupClaim.report.dedupKey,
+      claimOwner: generationDedupClaim.claimOwner,
+      creativeId,
+      action: generationDedupClaim.report.action,
+    });
 
     const decisionReasons = [
       ...autopublishDecision.reasons,
