@@ -1,6 +1,6 @@
 import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import type { Metadata } from 'next';
 import { fetchLpPackageUncached, loadLpPackageForPage } from '@/lib/load-lp-package';
 import { resolveTermsForPackage, formatCancellationDates, type NoticeBlock } from '@/lib/standard-terms';
@@ -11,6 +11,7 @@ import { ProductReviewNotice } from '@/components/product-review-notice';
 import { resolveCustomerRouteState } from '@/lib/package-publication/customer-route-state';
 import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { PRODUCT_REGISTRATION_V6_PROOF_COOKIE } from '@/lib/product-registration-v6/proof-token';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -86,7 +87,8 @@ async function proofLoadOptions(
   const resolved = searchParams ? await searchParams : {};
   const snapshotId = getRouteParam(resolved.__proof_snapshot);
   const incomingHeaders = await headers();
-  const proofToken = incomingHeaders.get('x-product-registration-v6-proof-token');
+  const proofToken = incomingHeaders.get('x-product-registration-v6-proof-token')
+    || (await cookies()).get(PRODUCT_REGISTRATION_V6_PROOF_COOKIE)?.value;
   if (snapshotId && proofToken) return { proofSnapshotId: snapshotId, proofToken };
   return {};
 }

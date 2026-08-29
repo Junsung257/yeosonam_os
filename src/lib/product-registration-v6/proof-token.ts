@@ -10,6 +10,30 @@ export type ProductRegistrationV6ProofClaims = {
   locale: string;
 };
 
+export const PRODUCT_REGISTRATION_V6_PROOF_COOKIE = 'yeosonam_pr_v6_proof';
+
+export type ProductRegistrationV6ProofSurface = 'packages' | 'lp';
+
+export function productRegistrationV6ProofCookieOptions(
+  claims: ProductRegistrationV6ProofClaims,
+  surface: ProductRegistrationV6ProofSurface,
+  nowMs = Date.now(),
+) {
+  const remainingSeconds = Math.max(
+    0,
+    Math.min(900, claims.expiresAt - Math.floor(nowMs / 1000)),
+  );
+
+  return {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'strict' as const,
+    path: `/${surface}/${encodeURIComponent(claims.packageId)}`,
+    expires: new Date(claims.expiresAt * 1000),
+    maxAge: remainingSeconds,
+  };
+}
+
 function secret(): string {
   const value = getSecret('PRODUCT_REGISTRATION_PROOF_SECRET')
     || getSecret('REVALIDATE_SECRET')

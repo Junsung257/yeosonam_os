@@ -1,7 +1,7 @@
 ﻿import type React from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabase, getSupabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import DetailClient from './DetailClient';
@@ -30,7 +30,10 @@ import {
   resolveCurrentPublicPackage,
 } from '@/lib/package-publication/repository';
 import { ProductReviewNotice } from '@/components/product-review-notice';
-import { verifyProductRegistrationV6ProofToken } from '@/lib/product-registration-v6/proof-token';
+import {
+  PRODUCT_REGISTRATION_V6_PROOF_COOKIE,
+  verifyProductRegistrationV6ProofToken,
+} from '@/lib/product-registration-v6/proof-token';
 import { currentProductRegistrationRendererBuildId } from '@/lib/product-registration-v6/renderer-build';
 import {
   getPublicCatalogDetail,
@@ -85,7 +88,8 @@ async function loadV6ProofSnapshot(
   snapshotId: string | null,
 ) {
   if (!snapshotId) return null;
-  const token = (await headers()).get('x-product-registration-v6-proof-token');
+  const token = (await headers()).get('x-product-registration-v6-proof-token')
+    || (await cookies()).get(PRODUCT_REGISTRATION_V6_PROOF_COOKIE)?.value;
   if (!token) return null;
   const snapshot = await fetchPublicPackageSnapshotById(sb, snapshotId, { allowProofCopyIssues: true }).catch(() => null);
   if (!snapshot || snapshot.row.package_id !== packageId) return null;
