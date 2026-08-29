@@ -253,6 +253,7 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain("reason: item.product_id\n            ? 'target_queue_item_must_be_informational'");
     expect(source).toContain('targetedCanaryPublication: true');
     expect(source).toContain('const result = await processQueueItem(item, new Map(), { startedAtMs: startTime, deferPublication });');
+    expect(source).toContain("result.status === 'approved_for_slot'");
   });
 
   it('uses a lower-variance writer temperature for private regeneration', () => {
