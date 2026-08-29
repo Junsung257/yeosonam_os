@@ -74,6 +74,14 @@ export function googleInspectionToIndexStatus(evidence: GoogleInspectionEvidence
   const verdict = String(evidence.verdict || '').toUpperCase();
   const coverage = String(evidence.coverage_state || '').toLowerCase();
   const fetchState = String(evidence.page_fetch_state || '').toLowerCase();
+  const explicitlyNotIndexed =
+    coverage.includes('not on google') ||
+    coverage.includes('not indexed') ||
+    coverage.includes('색인이 생성되지') ||
+    coverage.includes('색인 생성되지') ||
+    coverage.includes('색인되지') ||
+    coverage.includes('아직 알려지지 않은') ||
+    coverage.includes('unknown to google');
 
   if (
     coverage.includes('robots') ||
@@ -84,17 +92,15 @@ export function googleInspectionToIndexStatus(evidence: GoogleInspectionEvidence
     return 'blocked';
   }
 
-  if (verdict === 'PASS' && !coverage.includes('not on google') && !coverage.includes('not indexed')) {
+  // Coverage evidence is allowed to fail a stale/inconsistent PASS verdict closed.
+  if (verdict === 'PASS' && !explicitlyNotIndexed) {
     return 'indexed';
   }
 
   if (
     verdict === 'FAIL' ||
     verdict === 'NEUTRAL' ||
-    coverage.includes('not on google') ||
-    coverage.includes('not indexed') ||
-    coverage.includes('아직 알려지지 않은') ||
-    coverage.includes('unknown to google')
+    explicitlyNotIndexed
   ) {
     return 'not_indexed';
   }

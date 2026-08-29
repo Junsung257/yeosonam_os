@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 
 import { getSecret } from '@/lib/secret-registry';
+import { isValidNaverIndexNowKey, NAVER_INDEXNOW_KEY_PATTERN } from '@/lib/indexnow-key';
 
 export const dynamic = 'force-dynamic';
 
-const INDEXNOW_KEY_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
-const INDEXNOW_TXT_RE = /^([A-Za-z0-9_-]{8,128})\.txt$/;
+const INDEXNOW_TXT_RE = new RegExp(`^(${NAVER_INDEXNOW_KEY_PATTERN.source.slice(1, -1)})\\.txt$`);
 
 export async function GET(
   _request: Request,
@@ -18,7 +18,7 @@ export async function GET(
   const requested = requestedPath.match(INDEXNOW_TXT_RE)?.[1] ?? '';
   const configured = getSecret('INDEXNOW_KEY')?.trim() ?? '';
 
-  if (!configured || !INDEXNOW_KEY_PATTERN.test(configured) || requested !== configured) {
+  if (!isValidNaverIndexNowKey(configured) || requested !== configured) {
     return new NextResponse('Not Found', {
       status: 404,
       headers: {
