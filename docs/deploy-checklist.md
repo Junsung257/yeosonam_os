@@ -4,9 +4,9 @@
 
 ---
 
-## 0. Open Gate Snapshot (2026-06-06)
+## 0. Open Gate Snapshot (2026-08-29)
 
-Current production can accept traffic for the verified customer -> affiliate -> lead/booking flow, but the full "complete open" gate is not closed until Supabase Auth leaked password protection is enabled and verified.
+Current production can accept traffic for the verified customer -> affiliate -> lead/booking flow, and the Supabase Auth leaked-password protection gate is now enabled and verified.
 
 Verified on production:
 
@@ -18,25 +18,17 @@ Verified on production:
 - [x] Test bookings `BK-0085` through `BK-0090` were cancelled and voided after verification.
 - [x] Supabase Auth `site_url` is `https://www.yeosonam.com`.
 - [x] Supabase Auth password policy is hardened to minimum 10 characters with lowercase, uppercase, and digit requirements.
-- [x] Latest production deployment `dpl_BLcTXokQtLurGnuRbgd2Y2mZyT7T` has no recent Vercel error/fatal logs after the blog runtime fix.
+- [x] Latest production deployment `dpl_GvnFdjCrUPeTQeGeqaXcDo7FoStu` passed the public HTTP smoke and sitemap/indexability checks.
+- [x] Supabase Auth `password_hibp_enabled=true` is enabled and verified on the Pro project.
 
-Hard remaining gate:
+The Supabase Auth open gate is closed for the current production project:
 
-- [ ] Supabase Auth `password_hibp_enabled=true`.
+- [x] Supabase Auth leaked-password protection is enabled.
+- [x] Password minimum length is 10 characters.
+- [x] Password policy requires lowercase, uppercase, and numeric characters.
+- [x] Password re-authentication is required for security updates.
 
-Supabase currently rejects this setting on the active project plan:
-
-```text
-Configuring leaked password protection via HaveIBeenPwned.org is available on Pro Plans and up.
-```
-
-After upgrading the Supabase project to Pro or higher, run:
-
-```bash
-npm run supabase:auth-open-gate:enable
-```
-
-For a read-only gate check that tolerates the known plan blocker, run:
+Verify the gate without changing configuration:
 
 ```bash
 npm run supabase:auth-open-gate
@@ -48,6 +40,16 @@ For the full production readiness check, run:
 npm run open:readiness
 npm run open:readiness:strict
 ```
+
+For the read-only public browser contract (desktop + Pixel 7 mobile), run:
+
+```bash
+E2E_BASE_URL=https://www.yeosonam.com npm run test:e2e:public
+```
+
+The browser contract checks core public routes, the health endpoint, sitemap
+destination indexability, and published article image alt text. It does not
+perform authenticated admin actions or write production data.
 
 For marketing-only release readiness, run the single gate:
 
@@ -92,9 +94,9 @@ Exit code meanings:
 
 - `0`: all checked gates pass.
 - `1`: a runtime or local verification failed.
-- `2`: functionality checks pass, but a known hard gate is blocked. As of 2026-06-06 this means Supabase HIBP is still disabled by plan limits.
+- `2`: functionality checks pass, but a configured hard gate is blocked. The current production Supabase Auth gate is no longer plan-blocked.
 
-The goal is only fully complete when `supabase:auth-open-gate:enable` exits successfully and the Supabase security advisor no longer reports `auth_leaked_password_protection` as WARN.
+The Supabase Auth portion is complete when `supabase:auth-open-gate:enable` exits successfully and a subsequent read-only check reports `open_gate_passed=true`.
 
 Detailed runbook: [`docs/supabase-auth-open-gate.md`](./supabase-auth-open-gate.md)
 

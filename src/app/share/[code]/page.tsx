@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { formatKstDate } from '@/lib/kst-date';
 
 interface CartItem {
   product_id:       string;
@@ -206,7 +207,7 @@ export default function SharePage() {
           setShared(normalizedShared);
           // FIXED: 재고 조회
           if (normalizedShared.share_type === 'FIXED' && normalizedShared.product_id) {
-            const today = new Date().toISOString().slice(0, 10);
+            const today = formatKstDate();
             fetch(`/api/packages/${encodeURIComponent(normalizedShared.product_id)}/inventory?from=${today}`, {
               signal: controller.signal,
             })

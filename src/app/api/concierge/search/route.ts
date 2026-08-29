@@ -12,6 +12,7 @@ import { getPrompt } from '@/lib/prompt-loader';
 import { rateLimitAI } from '@/lib/rate-limiter';
 import { logAndSanitize } from '@/lib/error-sanitizer';
 import { sanitizeConciergeItemsForPublic } from '@/lib/concierge-public-payload';
+import { formatKstDate } from '@/lib/kst-date';
 
 interface ConciergeSearchResult {
   product_id: string;
@@ -80,7 +81,7 @@ async function callGemini(
   apiKey: string,
   query: string
 ): Promise<ConciergeSearchResult[]> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = formatKstDate();
   const CONCIERGE_SYSTEM_FALLBACK = `당신은 여행 플랫폼 AI 컨시어지입니다. 사용자의 자연어 여행 요청을 분석해서 적절한 검색 도구를 호출하세요.
 오늘 날짜: {{today}}
 - 패키지/투어/종합여행 요청 → search_tenant_products (마진 높은 입점 상품 우선)

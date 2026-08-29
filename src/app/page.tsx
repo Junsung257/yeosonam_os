@@ -20,6 +20,11 @@ import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
+import {
+  getUpcomingPublicDepartureDates,
+  hasUpcomingPublicDepartureDate,
+} from '@/lib/package-public-eligibility';
+import { formatKstDate } from '@/lib/kst-date';
 
 /** 목적지 카드에 상품 개수 숫자를 노출할 최소치(그 미만이면 '상품 적음' 인상 완화 — 인지 부하·역효과 방지) */
 const PKG_COUNT_DISCLOSE_MIN = 6;
@@ -98,8 +103,7 @@ interface RankingPkg extends AggPkgRow {
 }
 
 function computeRankingMinPrice(p: RankingPkg, today: string): number {
-  const pd = p.price_dates ?? [];
-  const futurePd = pd.filter((d): d is { date: string; price?: number } => !!d?.date && d.date >= today);
+  const futurePd = getUpcomingPublicDepartureDates(p.price_dates, today);
   if (futurePd.length > 0) {
     const prices = futurePd.map((d) => d.price).filter((v): v is number => v != null);
     if (prices.length > 0) return Math.min(...prices);
@@ -168,7 +172,7 @@ function buildRankingItemsUnique(
 
 export default async function HomePage() {
   const sb = supabaseAdmin;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = formatKstDate();
   const emptyResult = { data: [] };
   const skipPublicDbReads = shouldSkipPublicDbReadsForResourceSaver();
 
@@ -208,9 +212,7 @@ export default async function HomePage() {
   cutoffTeaser.setDate(cutoffTeaser.getDate() + 14);
   const cutoffTeaserStr = cutoffTeaser.toISOString().slice(0, 10);
   function pkgAliveForTeaser(p: RankingPkg) {
-    const pd = p.price_dates ?? [];
-    if (!pd.length) return true;
-    return pd.some((d): d is { date: string; price?: number } => !!d?.date && d.date >= today);
+    return hasUpcomingPublicDepartureDate(p, today);
   }
   function pkgUrgentForTeaser(p: RankingPkg) {
     if (p.product_type === 'urgency') return true;
@@ -237,10 +239,8 @@ export default async function HomePage() {
   allPkgs.forEach((p: AggPkgRow) => {
     const dest = p.destination;
     if (!dest) return;
-    const pd = p.price_dates ?? [];
-    const futurePd = pd.filter((d): d is { date: string; price?: number } => !!d?.date && d.date >= today);
-    const isAlive = pd.length === 0 || futurePd.length > 0;
-    if (!isAlive) return;
+    if (!hasUpcomingPublicDepartureDate(p, today)) return;
+    const futurePd = getUpcomingPublicDepartureDates(p.price_dates, today);
     if (!destMap[dest]) destMap[dest] = { count: 0, minPrice: Infinity, country: p.country || '' };
     destMap[dest].count++;
     let min = Infinity;

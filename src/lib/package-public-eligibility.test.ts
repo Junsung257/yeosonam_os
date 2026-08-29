@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   classifyOptionalTourForPublicEligibility,
   collectBrokenAttractionIds,
+  getUpcomingPublicDepartureDates,
   getPackagePublicEligibilityBlockers,
   hasOptionalTourDisplayPollution,
+  hasUpcomingPublicDepartureDate,
   isCustomerPubliclyOpenable,
   sanitizeBrokenAttractionIdsForPublicEligibility,
   sanitizeOptionalToursForPublicEligibility,
@@ -19,6 +21,31 @@ const passingContract = {
 };
 
 describe('package public eligibility', () => {
+  it('shares a KST-safe public departure-date rule across customer surfaces', () => {
+    const today = '2026-08-29';
+
+    expect(hasUpcomingPublicDepartureDate({ price_dates: [] }, today)).toBe(true);
+    expect(hasUpcomingPublicDepartureDate({}, today)).toBe(true);
+    expect(hasUpcomingPublicDepartureDate({ price_dates: null }, today)).toBe(true);
+    expect(hasUpcomingPublicDepartureDate({ price_dates: '2026-08-30' }, today)).toBe(false);
+    expect(hasUpcomingPublicDepartureDate({ price_dates: { date: '2026-08-30' } }, today)).toBe(false);
+    expect(hasUpcomingPublicDepartureDate({ price_dates: [{ date: '2026-08-29' }] }, today)).toBe(true);
+    expect(hasUpcomingPublicDepartureDate({ price_dates: [{ date: '2026-08-30' }] }, today)).toBe(true);
+    expect(hasUpcomingPublicDepartureDate({ price_dates: [{ date: '2026-08-28' }] }, today)).toBe(false);
+    expect(hasUpcomingPublicDepartureDate({ price_dates: [{ date: '2026-02-30' }] }, today)).toBe(false);
+    expect(hasUpcomingPublicDepartureDate({ price_dates: [{ date: 'not-a-date' }] }, today)).toBe(false);
+
+    expect(getUpcomingPublicDepartureDates([
+      { date: '2026-08-28' },
+      { date: '2026-08-29', price: 100 },
+      { date: '2026-09-01', price: 200 },
+      { date: '2026-02-30' },
+    ], today)).toEqual([
+      { date: '2026-08-29', price: 100 },
+      { date: '2026-09-01', price: 200 },
+    ]);
+  });
+
   it('fails closed when customer_open_contract is missing, even for active clean packages', () => {
     const blockers = getPackagePublicEligibilityBlockers({
       status: 'active',
@@ -28,6 +55,23 @@ describe('package public eligibility', () => {
 
     expect(blockers.map((b) => b.code)).toContain('customer_open_contract_missing');
     expect(isCustomerPubliclyOpenable({ status: 'active', audit_status: 'clean', audit_report: {} })).toBe(false);
+  });
+
+  it('blocks expired or malformed departure-date arrays in the canonical public gate', () => {
+    const blockers = getPackagePublicEligibilityBlockers({
+      status: 'active',
+      audit_status: 'clean',
+      audit_report: passingContract,
+      price_dates: [{ date: '2026-08-28' }],
+    });
+
+    expect(blockers.map((blocker) => blocker.code)).toContain('all_departure_dates_expired');
+    expect(isCustomerPubliclyOpenable({
+      status: 'active',
+      audit_status: 'clean',
+      audit_report: passingContract,
+      price_dates: [{ date: '2026-08-28' }],
+    })).toBe(false);
   });
 
   it('allows only customer-visible packages with a passing contract and clean public fields', () => {

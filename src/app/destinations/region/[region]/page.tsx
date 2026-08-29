@@ -18,6 +18,7 @@ import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
+import { hasUpcomingPublicDepartureDate } from '@/lib/package-public-eligibility';
 
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
@@ -168,7 +169,6 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
   });
 
   // 도시·패키지·블로그 3종을 병렬 — 각자 dests 만 의존하므로 round-trip 1회로 합침.
-  const today = new Date().toISOString().slice(0, 10);
   const emptyResult = { data: null } as { data: null };
   const [metaRes, attrsRes, pkgsRes, blogRes] = await Promise.all([
     queryNames.length > 0
@@ -226,12 +226,7 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
 
   // 출발일 살아있는 상품만 + Supabase 의 products 배열을 단일 객체로 정규화
   const currentPublicPackageRows = pkgs
-  const alivePackageRows = pkgs
-    .filter(p => {
-      const pd = (p.price_dates ?? []) as Array<{ date?: string }>;
-      if (pd.length === 0) return true;
-      return pd.some(d => d.date && d.date >= today);
-    });
+  const alivePackageRows = pkgs.filter((p) => hasUpcomingPublicDepartureDate(p));
   const publicCardRows = alivePackageRows;
   const alivePkgs = publicCardRows
     .map(p => ({

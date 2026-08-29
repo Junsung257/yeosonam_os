@@ -62,6 +62,7 @@
     "test": "vitest run",
     "test:unit": "vitest run",
     "test:e2e": "playwright test -c playwright.e2e.config.ts",
+    "test:e2e:public": "playwright test -c playwright.public.config.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:visual": "playwright test tests/visual",

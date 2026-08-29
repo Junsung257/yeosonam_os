@@ -42,7 +42,8 @@ import {
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { hasUpcomingPublicDepartureDate, isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { formatKstDate } from '@/lib/kst-date';
 import {
   fetchAndMergeCurrentPublicPackageCardSnapshots,
   listCurrentPublicPackageCardSnapshots,
@@ -624,7 +625,7 @@ async function getRelatedProducts(
 ): Promise<RelatedProductLite[]> {
   if (!isSupabaseConfigured || !destination) return [];
   if (shouldSkipPublicDbReadsForResourceSaver()) return [];
-  const today = new Date().toISOString().slice(0, 10);
+  const today = formatKstDate();
   const scoreResult = await runBlogDetailQuery(
     'relatedProductScores',
     supabaseAdmin
@@ -882,8 +883,6 @@ async function getCurationProductsForInfo(destination: string) {
   if (!isSupabaseConfigured) return [];
   const scored = await getRelatedProducts(null, destination, 'info_curation');
   if (scored.length > 0) return scored.slice(0, 3);
-  const today = new Date().toISOString().split('T')[0];
-
   interface CurationPackage {
     id: string;
     title: string | null;
@@ -914,11 +913,7 @@ async function getCurationProductsForInfo(destination: string) {
   if (data.length === 0) return [];
 
   // 미래 출발일 있는 상품만 필터
-  const alive = (data as unknown as CurationPackage[]).filter((p) => {
-      const pd = (p.price_dates || []) as Array<{ date?: string }>;
-      if (pd.length === 0) return true; // 날짜 데이터 없으면 살아있다고 간주
-      return pd.some((d) => d.date && d.date >= today);
-    });
+  const alive = (data as unknown as CurationPackage[]).filter((p) => hasUpcomingPublicDepartureDate(p));
 
   const publicAlive = alive;
 

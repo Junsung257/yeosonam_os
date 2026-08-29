@@ -25,7 +25,7 @@ import { successResponse, listResponse, ApiErrors } from '@/lib/api-response';
 import { isAdminRequest, requireAdminRequest } from '@/lib/admin-guard';
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
 import { CUSTOMER_VISIBLE_STATUSES, isCustomerVisibleStatus } from '@/lib/visibility-status';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { hasUpcomingPublicDepartureDate, isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { fetchLatestPublicPackageSnapshot, getCurrentPublicPackage } from '@/lib/package-publication/repository';
 import {
   fetchAndMergeCurrentPublicPackageCardSnapshots,
@@ -357,10 +357,10 @@ export async function GET(request: NextRequest) {
       const aggregateRows = isAdmin
         ? allPkgs
         : pointerOnly
-          ? allPkgs
+          ? allPkgs.filter((p) => hasUpcomingPublicDepartureDate(p))
           : await fetchAndMergeCurrentPublicPackageCardSnapshots(
             supabaseAdmin,
-            allPkgs.filter((p: any) => isCustomerPublicSnapshotCandidate(p)),
+            allPkgs.filter((p: any) => isCustomerPublicSnapshotCandidate(p) && hasUpcomingPublicDepartureDate(p)),
           );
       aggregateRows.forEach((p: any) => {
         const dest = p.destination;
@@ -468,7 +468,8 @@ export async function GET(request: NextRequest) {
     // count: 'planned' — pg_stat 기반 추정 (수만 행 테이블에서 'exact' 보다 100배+ 빠름).
     //   페이지 네비게이션 UI 목적에는 추정치로 충분. 정확도 필요 시 ?countMode=exact 명시.
     if (pointerOnly) {
-      let publicRows = await listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: 5_000 });
+      let publicRows = (await listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: 5_000 }))
+        .filter((row) => hasUpcomingPublicDepartureDate(row));
       if (status && !['all', 'selling', 'approved', 'active', 'published'].includes(status)) publicRows = [];
       if (category) publicRows = publicRows.filter(row => row.category === category);
       if (destFilter) publicRows = publicRows.filter(row => row.destination === destFilter);

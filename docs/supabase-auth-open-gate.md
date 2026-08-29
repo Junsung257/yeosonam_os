@@ -1,13 +1,13 @@
 # Supabase Auth Open Gate
 
-Last updated: 2026-06-06
+Last updated: 2026-08-29
 
 ## Current State
 
-The customer booking and affiliate attribution flow is production-ready, but the final security gate remains open:
+The customer booking and affiliate attribution flow is production-ready and the final Supabase Auth security gate is closed:
 
-- `password_hibp_enabled` must be `true`.
-- Supabase currently rejects enabling it on the active plan because leaked password protection via HaveIBeenPwned requires Pro or higher.
+- `password_hibp_enabled=true` is enabled and verified.
+- The project is on the Pro plan required by HaveIBeenPwned leaked-password protection.
 
 The project has been hardened as far as the current plan allows:
 
@@ -19,19 +19,19 @@ The project has been hardened as far as the current plan allows:
 
 ## Commands
 
-Read-only check that tolerates the known plan blocker:
+Read-only check:
 
 ```bash
 npm run supabase:auth-open-gate
 ```
 
-After upgrading Supabase to Pro or higher, enable HIBP and verify:
+Enable HIBP and verify (safe to rerun; the script only applies the requested Auth settings):
 
 ```bash
 npm run supabase:auth-open-gate:enable
 ```
 
-The enable command must exit successfully before the "complete open" goal can be closed.
+The enable command has exited successfully for project `ixaxnvbmhzjvupissmly`.
 
 ## Authentication
 
@@ -51,7 +51,10 @@ SUPABASE_PROJECT_REF=ixaxnvbmhzjvupissmly npm run supabase:auth-open-gate
 
 ## Completion Evidence
 
-Completion requires both:
+Completion evidence:
 
 1. `npm run supabase:auth-open-gate:enable` exits with `open_gate_passed: true`.
-2. Supabase security advisor no longer reports `auth_leaked_password_protection` as WARN.
+2. A subsequent read-only check reports `open_gate_passed: true` and `password_hibp_enabled: true`.
+
+Run a fresh Supabase security-advisor review after any future Auth configuration
+change; do not treat this document as a substitute for that check.

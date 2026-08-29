@@ -40,6 +40,10 @@ const BLOG_AUDIT_LIMIT = Number(argValue('--blog-audit-limit', process.env.OPEN_
 const BLOG_AUDIT_SITE_LIMIT = Number(argValue('--blog-audit-site-limit', process.env.OPEN_CHECK_BLOG_AUDIT_SITE_LIMIT || '50'));
 const BLOG_AUDIT_TIMEOUT_MS = Number(argValue('--blog-audit-timeout-ms', process.env.OPEN_CHECK_BLOG_AUDIT_TIMEOUT_MS || '15000'));
 const BLOG_AUDIT_HARD_TIMEOUT_MS = Number(argValue('--blog-audit-hard-timeout-ms', process.env.OPEN_CHECK_BLOG_AUDIT_HARD_TIMEOUT_MS || '180000'));
+const BLOG_AUDIT_RETRIES = Math.max(
+  0,
+  Number(argValue('--blog-audit-retries', process.env.OPEN_CHECK_BLOG_AUDIT_RETRIES || '1')) || 0,
+);
 const PUBLIC_AUDIT_HARD_TIMEOUT_MS = Number(
   argValue('--public-audit-hard-timeout-ms', process.env.OPEN_CHECK_PUBLIC_AUDIT_HARD_TIMEOUT_MS || '90000'),
 );
@@ -50,7 +54,7 @@ const IS_LOCAL_BASE = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(BASE_
 const LOCAL_MODE = hasFlag('--local') || process.env.OPEN_CHECK_LOCAL === '1' || IS_LOCAL_BASE;
 const SKIP_EXTERNAL = hasFlag('--skip-external') || process.env.OPEN_CHECK_SKIP_EXTERNAL === '1' || LOCAL_MODE;
 const ALLOW_LOCAL_MISSING_DATA = hasFlag('--allow-local-missing-data') || process.env.OPEN_CHECK_ALLOW_LOCAL_MISSING_DATA === '1' || LOCAL_MODE;
-const LOCAL_DATA_UNAVAILABLE_PATTERN = /no_posts_found|no blog links found|collectionError|Blog database is not configured|local blog data unavailable|production\/staging data is required|db_unavailable_page|silent_zero_posts|blog_api_db_timeout|db_timeout|surface_timeout|operation was aborted|abort|fetch failed|ECONNREFUSED|ECONNRESET|UND_ERR_SOCKET|terminated|command_failed|runtime_errors/i;
+const LOCAL_DATA_UNAVAILABLE_PATTERN = /no_posts_found|no blog links found|collectionError|Blog database is not configured|local blog data unavailable|production\/staging data is required|db_unavailable_page|silent_zero_posts|blog_api_db_timeout|db_timeout|surface_timeout|operation was aborted|abort|fetch failed|ECONNREFUSED|ECONNRESET|UND_ERR_SOCKET|terminated|runtime_errors/i;
 const PACKAGE_NOT_FOUND_PATTERN = /NOT_FOUND|패키지를 찾을 수 없습니다|패키지가 존재하지 않거나 삭제되었습니다/i;
 const TRANSIENT_BLOG_DATA_PATTERN = /no_posts_found|no blog links found|collectionError|Blog database is not configured|db_unavailable_page|silent_zero_posts|blog_api_db_timeout|db_timeout|surface_timeout|operation was aborted|abort|timeout|timed out|fetch failed|ECONNREFUSED|ECONNRESET|UND_ERR_SOCKET|terminated|블로그 데이터를|데이터를 불러올 수 없습니다/i;
 const INCLUDE_MARKETING_RUNTIME = hasFlag('--include-marketing-runtime') || process.env.OPEN_CHECK_INCLUDE_MARKETING_RUNTIME === '1';
@@ -249,7 +253,7 @@ async function sleep(ms) {
 async function fetchUrl(name, path, options = {}) {
   const url = path.startsWith('http') ? path : `${BASE_URL}${path}`;
   const started = Date.now();
-  const attempts = Number(options.attempts ?? (LOCAL_MODE ? 2 : 1));
+  const attempts = Number(options.attempts ?? (options.method && options.method !== 'GET' ? 1 : 2));
   const retryDelayMs = Number(options.retryDelayMs ?? 1000);
   let lastError = '';
 
@@ -582,7 +586,7 @@ function checkVercelLogs(level) {
   const output = `${result.stdout || ''}\n${result.stderr || ''}`;
   if (
     !result.ok &&
-    /login|auth|token|unauthorized|forbidden|No existing credentials|do not have access|specified account|scope-not-accessible/i.test(
+    /login|auth|token|unauthorized|forbidden|No existing credentials|do not have access|specified account|scope-not-accessible|user not found|not able to load user|cannot create tokens/i.test(
       output || result.message,
     )
   ) {
@@ -849,6 +853,7 @@ function checkBlogSearchQualityReadiness() {
     `--site-limit=${BLOG_AUDIT_SITE_LIMIT}`,
     `--timeout-ms=${BLOG_AUDIT_TIMEOUT_MS}`,
     `--hard-timeout-ms=${BLOG_AUDIT_HARD_TIMEOUT_MS}`,
+    `--retries=${BLOG_AUDIT_RETRIES}`,
   ];
   const result = run('npm', args, { timeout: Math.max(BLOG_AUDIT_HARD_TIMEOUT_MS + 30000, 240000) });
 

@@ -5,6 +5,8 @@ import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { loadPublicBlogCatalog } from '@/lib/blog-public-catalog';
 import { isBlogSlugRedirectTombstone } from '@/lib/blog-slug-redirects';
+import { formatKstDate } from '@/lib/kst-date';
+import { hasUpcomingPublicDepartureDate } from '@/lib/package-public-eligibility';
 
 const BASE_URL = resolveBlogCanonicalOrigin();
 const PACKAGE_LIMIT = 1000;
@@ -56,17 +58,6 @@ function getSafeSitemapDestination(row: ActiveDestinationSitemapRow): string | n
   return destination;
 }
 
-function hasOpenDepartureDate(row: PublicPackageDestinationSitemapRow, today: string): boolean {
-  const priceDates = Array.isArray(row.price_dates) ? row.price_dates : [];
-  if (priceDates.length === 0) return true;
-
-  return priceDates.some((item) => {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
-    const date = (item as { date?: unknown }).date;
-    return typeof date === 'string' && date.trim() >= today;
-  });
-}
-
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const routes: MetadataRoute.Sitemap = [
     { url: BASE_URL, lastModified: new Date(), changeFrequency: 'daily', priority: 1.0 },
@@ -97,13 +88,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ]);
 
   const snapshotDestinations = packageDestinations;
-  const today = new Date().toISOString().split('T')[0];
+  const today = formatKstDate();
   const publicDestinations = new Map<string, ActiveDestinationSitemapRow>();
   for (const pkg of snapshotDestinations) {
     // Keep sitemap destinations aligned with the destination page's public
     // package filter. Expired-only packages render as not-found/noindex and
     // must not remain discoverable from the sitemap.
-    if (!hasOpenDepartureDate(pkg, today)) continue;
+    if (!hasUpcomingPublicDepartureDate(pkg, today)) continue;
     const destination = pkg.destination?.trim();
     if (!destination) continue;
     const current = publicDestinations.get(destination) ?? { destination, package_count: 0 };
