@@ -1627,7 +1627,11 @@ export function augmentGuamFoodBudgetPayload(
   const coffeeEvidenceKey = 'chin-fe-snack-coffee';
   const hasExactBreakfast = (payload.claims ?? []).some((claim) =>
     /chin\s*fe/i.test(clean(claim.claimText))
-    && /(?:조식|아침|breakfast)/i.test(clean(claim.claimText))
+    // The downstream food-budget contract deliberately uses one canonical
+    // Korean label (`아침`). A model-supplied `조식`/`breakfast` claim may be
+    // factually valid, but it must not suppress the deterministic canonical
+    // claim below or semantic coverage will fail closed.
+    && /아침/.test(clean(claim.claimText))
     && /14(?:\.50)?/.test(clean(claim.normalizedValue)));
   const hasExactCoffee = (payload.claims ?? []).some((claim) =>
     /chin\s*fe/i.test(clean(claim.claimText))
