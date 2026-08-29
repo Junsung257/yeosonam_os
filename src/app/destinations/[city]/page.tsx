@@ -26,6 +26,11 @@ import { serializeJsonLdForScript } from '@/lib/json-ld';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 export const revalidate = 300;
+// The route reads live Supabase-backed publication snapshots and metadata.
+// Keep dynamic params on the request path so Next.js does not attempt a
+// static/ISR render and surface DYNAMIC_SERVER_USAGE as a 500 for uncached
+// destination slugs.
+export const dynamic = 'force-dynamic';
 export const dynamicParams = true;
 const DESTINATION_STATIC_PRERENDER_LIMIT = Math.max(
   0,

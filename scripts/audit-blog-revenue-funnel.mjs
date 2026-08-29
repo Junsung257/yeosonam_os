@@ -121,8 +121,8 @@ const checks = [
       /calculateBlogPublishSlotQuota/.test(source.publisher) &&
       /remainingDueNow/.test(source.publisher) &&
       /claim_queue_items/.test(source.publisher) &&
-      /publishedThisRun\s*>=\s*remainingDueNow/.test(source.publisher) &&
-      /remainingAfterRun:\s*Math\.max\(0,\s*remainingDueNow\s*-\s*publishedCount\)/.test(source.publisher) &&
+      /(?:publishedThisRun|slotCompletionsThisRun)\s*>=\s*remainingDueNow/.test(source.publisher) &&
+      /remainingAfterRun:\s*Math\.max\(0,\s*remainingDueNow\s*-\s*(?:publishedCount|quotaCompletedCount)\)/.test(source.publisher) &&
       /MAX_CANDIDATE_POOL/.test(source.publisher),
     evidence: files.publisher,
     remediation: 'Limit each run to the cumulative KST slot quota and report both due-now and daily remainder.',
@@ -131,7 +131,7 @@ const checks = [
     id: 'daily_summary_alerts_when_under_configured_target',
     weight: 6,
     passed: /normalizeDailyPostTarget/.test(source.dailySummary) &&
-      /under_daily_target:\s*\(pubRes\.count\s*\|\|\s*0\)\s*<\s*dailyTarget/.test(source.dailySummary) &&
+      /under_daily_target:\s*\(pubRes\.count\s*\|\|\s*0\)\s*<\s*(?:dailyTarget|publicDailyTarget)/.test(source.dailySummary) &&
       /if\s*\(summary\.under_daily_target\)/.test(source.dailySummary),
     evidence: files.dailySummary,
     remediation: 'Alert and trigger recovery whenever the configured V3-capped daily target is missed.',
