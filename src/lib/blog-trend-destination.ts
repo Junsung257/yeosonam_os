@@ -24,26 +24,36 @@ export function isSupportedBlogTrendDestination(
   return normalized != null && supportedDestinations.has(normalized);
 }
 
+export function buildClaimedMonthlyWeatherTrendDestinations(
+  rows: Array<{
+    destination_id?: string | null;
+    intent?: string | null;
+    audience?: string | null;
+    locale?: string | null;
+    status?: string | null;
+  }>,
+): Set<string> {
+  return new Set(rows
+    .filter((row) => row.intent === 'monthly_weather'
+      && row.audience === 'general'
+      && row.locale === 'ko-KR'
+      && row.status === 'active')
+    .map((row) => normalizeDestination(row.destination_id))
+    .filter((destination): destination is string => Boolean(destination)));
+}
+
 export function buildBlogTrendCandidateTopic(input: {
   keyword: string;
   destination: string;
   now?: Date;
 }): string {
-  const keyword = input.keyword.normalize('NFKC').replace(/\s+/g, ' ').trim();
   const destination = input.destination.normalize('NFKC').replace(/\s+/g, ' ').trim();
 
   // Generic destination trends do not have a reviewed preparation-source
-  // registry. Convert them into the nearest planning question backed by the
-  // destination's reviewed WMO monthly-weather documents. Prefer an explicit
-  // month in the keyword; otherwise help readers planning the next KST month.
-  const explicitMonth = keyword.match(/(?:^|\s)(1[0-2]|[1-9])월(?:\s|$)/)?.[1];
-  const month = explicitMonth
-    ? Number(explicitMonth)
-    : (Number(new Intl.DateTimeFormat('en-US', {
-        timeZone: 'Asia/Seoul',
-        month: 'numeric',
-      }).format(input.now ?? new Date())) % 12) + 1;
-  return `${destination} ${month}월 날씨와 옷차림 준비물 체크리스트`;
+  // registry. Convert them into the one canonical 1-12 month weather guide
+  // allowed by the informational representative contract. Seasonal wording
+  // belongs inside that representative; it must not create a second URL.
+  return `${destination} 월별 날씨와 옷차림 준비물 체크리스트`;
 }
 
 export function buildBlogTrendCandidateMeta(topic: string): {

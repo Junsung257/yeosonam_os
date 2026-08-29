@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildBlogInformationContract } from './blog-information-contract';
 import {
+  buildClaimedMonthlyWeatherTrendDestinations,
   buildBlogTrendCandidateMeta,
   buildBlogTrendCandidateTopic,
   buildSupportedBlogTrendDestinations,
@@ -29,31 +30,40 @@ describe('blog trend destination support', () => {
     expect(isSupportedBlogTrendDestination('호찌민 시내', supported)).toBe(true);
   });
 
-  it('turns a generic travel trend into a reviewed-source-backed next-month weather intent', () => {
+  it('turns a generic travel trend into the one reviewed-source-backed monthly weather representative', () => {
     const topic = buildBlogTrendCandidateTopic({
       keyword: '발리 여행',
       destination: '발리',
       now: new Date('2026-08-29T17:00:00.000Z'),
     });
 
-    expect(topic).toBe('발리 9월 날씨와 옷차림 준비물 체크리스트');
+    expect(topic).toBe('발리 월별 날씨와 옷차림 준비물 체크리스트');
     expect(buildBlogInformationContract({
       topic,
-      primaryKeyword: '발리 여행',
+      primaryKeyword: '발리 월별 날씨와 옷차림',
       destination: '발리',
       category: 'travel_tips',
     }).passed).toBe(true);
     expect(buildBlogTrendCandidateMeta(topic)).toEqual({
-      expected_slug: 'bali-9-weather-preparation',
+      expected_slug: 'bali-weather-preparation',
       micro_angle: 'weather_packing',
     });
   });
 
-  it('preserves an explicit trend month instead of replacing it with the next month', () => {
+  it('does not let an explicit trend month create a second weather representative', () => {
     expect(buildBlogTrendCandidateTopic({
       keyword: '방콕 11월 날씨',
       destination: '방콕',
       now: new Date('2026-08-29T17:00:00.000Z'),
-    })).toBe('방콕 11월 날씨와 옷차림 준비물 체크리스트');
+    })).toBe('방콕 월별 날씨와 옷차림 준비물 체크리스트');
+  });
+
+  it('normalizes only active general Korean monthly-weather representatives as claimed', () => {
+    expect([...buildClaimedMonthlyWeatherTrendDestinations([
+      { destination_id: ' 발리 ', intent: 'monthly_weather', audience: 'general', locale: 'ko-KR', status: 'active' },
+      { destination_id: '방콕', intent: 'airport_transport', audience: 'general', locale: 'ko-KR', status: 'active' },
+      { destination_id: '괌', intent: 'monthly_weather', audience: 'family', locale: 'ko-KR', status: 'active' },
+      { destination_id: '도쿄', intent: 'monthly_weather', audience: 'general', locale: 'ko-KR', status: 'reserved' },
+    ])]).toEqual(['발리']);
   });
 });
