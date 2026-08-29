@@ -32,4 +32,10 @@ describe('destination public package data boundary', () => {
     expect(text.slice(departureIndex, departureIndex + 450)).toContain('alivePackageRows');
     expect(helperIndex).toBeGreaterThan(0);
   });
+
+  it('renders live city routes dynamically to avoid DYNAMIC_SERVER_USAGE 500s', () => {
+    const text = source('src/app/destinations/[city]/page.tsx');
+
+    expect(text).toContain("export const dynamic = 'force-dynamic';");
+  });
 });
