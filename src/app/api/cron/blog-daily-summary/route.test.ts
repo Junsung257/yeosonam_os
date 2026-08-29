@@ -31,6 +31,23 @@ describe('blog daily summary report day', () => {
     expect(searchIssueBlock).not.toContain('errors.push(message)');
   });
 
+  it('uses the shared fail-closed Google inspection classifier in ingestion and summary', () => {
+    const summarySource = readFileSync(
+      join(process.cwd(), 'src/app/api/cron/blog-daily-summary/route.ts'),
+      'utf8',
+    );
+    const inspectionSource = readFileSync(
+      join(process.cwd(), 'src/app/api/cron/gsc-index-rank/route.ts'),
+      'utf8',
+    );
+
+    expect(summarySource).toContain('googleInspectionToIndexStatus({');
+    expect(inspectionSource).toContain('googleInspectionToIndexStatus({');
+    expect(summarySource).not.toContain("report?.google_status === 'indexed'");
+    expect(summarySource).not.toContain("coverage.includes('색인이 생성')");
+    expect(inspectionSource).not.toContain("coverage.includes('색인이 생성')");
+  });
+
   it('does not create a public-publish SLA while draft_only is active', () => {
     const source = readFileSync(join(process.cwd(), 'src/app/api/cron/blog-daily-summary/route.ts'), 'utf8');
 

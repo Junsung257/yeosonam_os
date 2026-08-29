@@ -251,7 +251,7 @@ LLM trace는 원문 prompt/response를 속성에 저장하지 않고 `gen_ai.ope
 
 | 키 | 용도 |
 |---|---|
-| `INDEXNOW_KEY` | Bing/Yandex/Seznam IndexNow 키 (색인 요청). `indexing.ts` 참조 |
+| `INDEXNOW_KEY` | 글로벌 + 네이버 IndexNow 공용 키. 네이버 호환을 위해 8~128자의 16진수/하이픈만 사용하며 값은 문서·로그에 기록하지 않는다. `indexing.ts` 참조 |
 | `INDEXNOW_RECENT_TTL_MS` | 같은 런타임에서 최근 제출한 URL을 다시 IndexNow로 보내지 않는 캐시 시간. 기본 10분 |
 | `INDEXNOW_PROVIDER_MIN_INTERVAL_MS` | IndexNow 제공자별 요청 사이 최소 간격. 기본 250ms |
 | `INDEXNOW_MAX_URLS_PER_REQUEST` | IndexNow 한 요청에 담을 최대 URL 수. 기본 10,000 |
