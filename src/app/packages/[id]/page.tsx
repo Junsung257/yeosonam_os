@@ -33,6 +33,7 @@ import {
 } from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { formatKstDate, isUpcomingKstDate } from '@/lib/kst-date';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 
@@ -628,9 +629,9 @@ export default async function PackageDetailPage({
     for (const t of pt) for (const d of (t.departure_dates ?? [])) if (d) dates.push(d);
     if (dates.length > 0) {
       const r = pickRepresentativeMonths(dates);
-      const today = new Date().toISOString().slice(0, 10);
+      const today = formatKstDate();
       const nextDeparture = [...new Set(dates)]
-        .filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= today)
+        .filter(date => isUpcomingKstDate(date, today))
         .sort()[0]
         ?? [...new Set(dates)].filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date)).sort()[0];
       representativeMonth = nextDeparture ? Number(nextDeparture.slice(5, 7)) : r.primary;
@@ -744,7 +745,7 @@ export default async function PackageDetailPage({
   if (!allowInternalProof && pkg?.destination && !skipNonCriticalDbReads) {
     const since30d = new Date(Date.now() - 30 * 86400000).toISOString();
     const since24h = new Date(Date.now() - 86400000).toISOString();
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = formatKstDate();
 
     // 2026-05-18 諛뺤젣 (ERR-social-proof-eq-mismatch):
     //   湲곗〈 raw `.eq('destination', pkg.destination)` ??"?ㅻ궘" ?⑦궎吏媛 "?ㅻ궘/?몄씠?? ?⑦궎吏瑜?紐?遊?
@@ -768,7 +769,7 @@ export default async function PackageDetailPage({
     const allDates: string[] = [];
     for (const d of pd) if (d?.date) allDates.push(d.date);
     for (const t of pt) for (const d of (t.departure_dates ?? [])) if (d) allDates.push(d);
-    const nextDate = allDates.filter(d => d >= todayStr).sort()[0] ?? null;
+    const nextDate = allDates.filter(d => isUpcomingKstDate(d, todayStr)).sort()[0] ?? null;
 
     const [bk, sg, tv, nb] = await Promise.all([
       // 30???덉빟 (destination ?⑥쐞)

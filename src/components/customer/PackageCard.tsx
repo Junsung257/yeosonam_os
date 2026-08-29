@@ -16,6 +16,8 @@ import {
   shouldBypassImageOptimization,
 } from '@/lib/package-publication/public-media';
 import type { PublicPackageMedia } from '@/lib/package-publication/types';
+import { getUpcomingPublicDepartureDates } from '@/lib/package-public-eligibility';
+import { formatKstDate, isUpcomingKstDate } from '@/lib/kst-date';
 
 export interface PackageCardData {
   id: string;
@@ -82,7 +84,8 @@ interface Props {
 
 function computeMinPrice(pkg: PackageCardData): number {
   if (pkg.price_dates && pkg.price_dates.length > 0) {
-    const v = getMinPriceFromDates(pkg.price_dates as unknown as Parameters<typeof getMinPriceFromDates>[0]);
+    const futureDates = getUpcomingPublicDepartureDates(pkg.price_dates);
+    const v = getMinPriceFromDates(futureDates as unknown as Parameters<typeof getMinPriceFromDates>[0]);
     if (v && v > 0) return v;
   }
   if (pkg.price_tiers && pkg.price_tiers.length > 0) {
@@ -127,20 +130,13 @@ function formatDuration(pkg: PackageCardData): string | null {
   return null;
 }
 
-function todayKst(): string {
-  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' });
-  return fmt.format(new Date());
-}
-
 function findNextDeparture(pkg: PackageCardData): string | null {
-  const today = todayKst();
+  const today = formatKstDate();
   const dates: string[] = [];
-  if (pkg.price_dates) {
-    for (const d of pkg.price_dates) if (d?.date && d.date >= today) dates.push(d.date);
-  }
+  dates.push(...getUpcomingPublicDepartureDates(pkg.price_dates).map((d) => String(d.date)));
   if (dates.length === 0 && pkg.price_tiers) {
     for (const t of pkg.price_tiers) {
-      for (const d of t.departure_dates || []) if (d && d >= today) dates.push(d);
+      for (const d of t.departure_dates || []) if (isUpcomingKstDate(d, today)) dates.push(d);
     }
   }
   if (dates.length === 0) return null;

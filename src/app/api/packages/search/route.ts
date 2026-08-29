@@ -11,6 +11,7 @@ import { getPersonalizedOverride } from '@/lib/recommendation/personalized';
 import { getActivePolicy } from '@/lib/scoring/policy';
 import { buildRecommendationDisplay, type PackageScoreDisplayRow } from '@/lib/scoring/recommendation-display';
 import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { hasUpcomingPublicDepartureDate } from '@/lib/package-public-eligibility';
 
 // 옵션 4a 패턴 — Page 정적 prerender 를 위해 server-side fetch 를 API 로 이관.
 // 응답에 Cache-Control 헤더 적용 → Vercel Edge CDN 이 query string 별 cache.
@@ -63,13 +64,7 @@ export async function GET(request: NextRequest) {
       .filter((pkg: any) => !safeQuery || `${String(pkg.destination ?? '')} ${String(pkg.title ?? '')} ${String(pkg.display_title ?? '')}`.toLowerCase().includes(safeQuery))
       .slice(0, fetchLimit) as any[];
 
-    const today = new Date().toISOString().slice(0, 10);
-    let aliveRaw = rawPackages
-      .filter((p: any) => {
-        const pd = (p.price_dates || []) as Array<{ date?: string }>;
-        if (pd.length === 0) return true;
-        return pd.some(d => d?.date && d.date >= today);
-      });
+    let aliveRaw = rawPackages.filter((p: any) => hasUpcomingPublicDepartureDate(p));
 
     if (urgencyOn && hub !== 'all') {
       aliveRaw = aliveRaw.filter((p: any) => hubMatchesDepartureAirport(hub, p.departure_airport));

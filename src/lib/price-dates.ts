@@ -7,6 +7,7 @@
 
 import type { PriceTier } from './parser';
 import { hydratePriceTiers } from './period-label-dates';
+import { formatKstDate, isUpcomingKstDate } from '@/lib/kst-date';
 
 // ── 타입 ─────────────────────────────────────────────────
 
@@ -52,7 +53,7 @@ export function getPriceBoundDeparture(
   if (!Number.isFinite(headlinePrice) || (headlinePrice ?? 0) <= 0) return null;
   return dates
     .filter(item => (
-      item.date >= today
+      isUpcomingKstDate(item.date, today)
       && Number.isFinite(item.price)
       && item.price > 0
       && item.price === headlinePrice
@@ -317,8 +318,7 @@ export function getMinPriceFromDates(dates: PriceDate[]): number {
 // ── 5. getNextDepartureFromDates ──
 
 export function getNextDepartureFromDates(dates: PriceDate[]): string | null {
-  const today = new Date();
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  const future = dates.filter(d => d.date >= todayStr).sort((a, b) => a.date.localeCompare(b.date));
+  const today = formatKstDate();
+  const future = dates.filter(d => isUpcomingKstDate(d.date, today)).sort((a, b) => a.date.localeCompare(b.date));
   return future[0]?.date || null;
 }

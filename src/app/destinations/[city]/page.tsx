@@ -24,6 +24,7 @@ import type { SeasonalSignal } from '@/lib/seasonal-signals';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
+import { hasUpcomingPublicDepartureDate } from '@/lib/package-public-eligibility';
 
 export const revalidate = 300;
 // The route reads live Supabase-backed publication snapshots and metadata.
@@ -429,7 +430,6 @@ async function getPillarData(city: string): Promise<PillarData | null> {
     };
   }
 
-  const today = new Date().toISOString().split('T')[0];
   const region = getRegionForCity(city);
   const queryNames = getPublicDestinationQueryNames(city);
 
@@ -488,11 +488,7 @@ async function getPillarData(city: string): Promise<PillarData | null> {
   const alivePackageRows = ((packages as unknown[] | null) ?? [])
     .filter((p): p is Record<string, unknown> => Boolean(p && typeof p === 'object' && !Array.isArray(p)))
     .filter((p) => queryNames.includes(String(p.destination ?? '')))
-    .filter((p) => {
-      const pd = (p.price_dates ?? []) as Array<{ date?: string }>;
-      if (pd.length === 0) return true;
-      return pd.some((d) => d.date && d.date >= today);
-    });
+    .filter((p) => hasUpcomingPublicDepartureDate(p));
   const alivePkgs = alivePackageRows
     .map(normalizePackageRow)
     .filter((p): p is PillarData['packages'][number] => p !== null);

@@ -37,6 +37,7 @@ const hardTimeoutMs = Math.max(
   timeoutMs + 1000,
   Number(argValue('--hard-timeout-ms', process.env.BLOG_AUDIT_HARD_TIMEOUT_MS || String(DEFAULT_HARD_TIMEOUT_MS))) || 0,
 );
+const retries = Math.max(0, Number(argValue('--retries', process.env.BLOG_AUDIT_RETRIES || '1')) || 0);
 const outDir = argValue('--out-dir', '.tmp') || '.tmp';
 const hasSupabaseAdminEnv = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 const editorialSource = argValue('--editorial-source', hasSupabaseAdminEnv ? 'db' : 'web') || (hasSupabaseAdminEnv ? 'db' : 'web');
@@ -285,19 +286,34 @@ function cleanupTimedOutCheck(check) {
   spawnSync('pkill', ['-f', pattern], { encoding: 'utf8', timeout: 5000 });
 }
 
+function isRetryableCheckFailure(result) {
+  const output = [
+    result.error?.message,
+    result.stdout,
+    result.stderr,
+  ].filter(Boolean).join('\n');
+  return /database|db_|timeout|timed out|fetch failed|ECONNREFUSED|ECONNRESET|UND_ERR_SOCKET|terminated|aborted|no posts|no blog links|unavailable/i.test(output);
+}
+
 function runCheck(check) {
   const startedAt = Date.now();
   const command = process.platform === 'win32' ? 'cmd.exe' : npmBin;
   const commandArgs = process.platform === 'win32'
     ? ['/d', '/s', '/c', npmBin, 'run', check.script, '--', ...check.args]
     : ['run', check.script, '--', ...check.args];
-  const result = spawnSync(command, commandArgs, {
-    cwd: process.cwd(),
-    encoding: 'utf8',
-    maxBuffer: 1024 * 1024 * 80,
-    shell: false,
-    timeout: Math.max(10000, hardTimeoutMs + 5000),
-  });
+  let result;
+  let attempts = 0;
+  do {
+    attempts += 1;
+    result = spawnSync(command, commandArgs, {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024 * 80,
+      shell: false,
+      timeout: Math.max(10000, hardTimeoutMs + 5000),
+    });
+    if (result.status === 0 || attempts > retries || !isRetryableCheckFailure(result)) break;
+  } while (true);
   const payload = parseJson(result.stdout);
   if (result.error && result.error.code === 'ETIMEDOUT') {
     cleanupTimedOutCheck(check);
@@ -313,6 +329,7 @@ function runCheck(check) {
     ok,
     exitCode: result.status,
     durationMs: Date.now() - startedAt,
+    attempts,
     score,
     failed,
     errors: errorsFromPayload(payload),

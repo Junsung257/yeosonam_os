@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { trackEngagement } from '@/lib/tracker';
 import { trackAnalyticsEvent } from '@/lib/analytics';
 import { getLowestPriceDisclosure, getMinPriceFromDates, getNextDepartureFromDates } from '@/lib/price-dates';
+import { getUpcomingPublicDepartureDates } from '@/lib/package-public-eligibility';
+import { formatKstDate, isUpcomingKstDate } from '@/lib/kst-date';
 import { DestinationImageFallback } from '@/components/customer/SafeRemoteImage';
 
 interface Package {
@@ -134,7 +136,8 @@ export default function ProductCard({ pkg }: { pkg: Package }) {
 
 function getMinPrice(pkg: Package): number {
   if (pkg.price_dates?.length) {
-    const min = getMinPriceFromDates(pkg.price_dates as unknown as Parameters<typeof getMinPriceFromDates>[0]);
+    const futureDates = getUpcomingPublicDepartureDates(pkg.price_dates);
+    const min = getMinPriceFromDates(futureDates as unknown as Parameters<typeof getMinPriceFromDates>[0]);
     if (min > 0) return min;
   }
   const tierPrices = (pkg.price_tiers || []).map((t) => t.adult_price).filter(Boolean) as number[];
@@ -147,10 +150,10 @@ function getNextDeparture(pkg: Package): string | null {
     const next = getNextDepartureFromDates(pkg.price_dates as unknown as Parameters<typeof getNextDepartureFromDates>[0]);
     if (next) return next;
   }
-  const today = new Date().toISOString().split('T')[0];
+  const today = formatKstDate();
   const allDates = (pkg.price_tiers || [])
     .flatMap((t) => t.departure_dates || [])
-    .filter((d) => d >= today)
+    .filter((d) => isUpcomingKstDate(d, today))
     .sort();
   return allDates[0] || null;
 }

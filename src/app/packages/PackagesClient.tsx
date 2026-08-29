@@ -16,6 +16,8 @@ import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { getSessionId, trackEngagement } from '@/lib/tracker';
 import { trackAnalyticsEvent } from '@/lib/analytics';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
+import { getUpcomingPublicDepartureDates, hasUpcomingPublicDepartureDate } from '@/lib/package-public-eligibility';
+import { formatKstDate } from '@/lib/kst-date';
 import {
   type DepartureHubId,
   DEPARTURE_HUB_OPTIONS,
@@ -184,9 +186,10 @@ interface SearchResponse {
 }
 
 function packageMinPrice(pkg: Package): number {
-  const dates = (pkg.price_dates || []) as Array<{ date: string; price: number }>;
-  const valid = dates.filter(d => d?.price && d.price > 0);
-  if (valid.length > 0) return Math.min(...valid.map(d => d.price));
+  const validPrices = getUpcomingPublicDepartureDates(pkg.price_dates)
+    .map((d) => typeof d.price === 'number' && d.price > 0 ? d.price : null)
+    .filter((price): price is number => price !== null);
+  if (validPrices.length > 0) return Math.min(...validPrices);
   return pkg.price && pkg.price > 0 ? pkg.price : Number.POSITIVE_INFINITY;
 }
 
@@ -403,11 +406,10 @@ export default function PackagesClient() {
   const filteredPackages = useMemo(() => {
     let list = [...initialPackages];
     if (activeFilter !== '전체') list = list.filter(p => matchesFilter(p, activeFilter));
-    const today = new Date().toISOString().slice(0, 10);
+    const today = formatKstDate();
     if (urgency === '1') list = list.filter(p => {
       if (p.product_type === 'urgency') return true;
-      const pd = (p.price_dates || []) as Array<{ date?: string }>;
-      return pd.some(d => d?.date && d.date >= today);
+      return hasUpcomingPublicDepartureDate(p, today);
     });
     if (category) list = list.filter(p => p.product_type?.includes(category) || p.product_tags?.includes(category));
     const sortFn = sortBy === 'price_asc' ? (a: Package, b: Package) => packageMinPrice(a) - packageMinPrice(b)
@@ -479,10 +481,12 @@ export default function PackagesClient() {
   const minPriceByPkgId = useMemo(() => {
     const map = new Map<string, number>();
     for (const p of initialPackages) {
-      const dates = (p.price_dates || []) as Array<{ date: string; price: number }>;
-      if (dates.length > 0) {
-        const valid = dates.filter(d => d?.price && d.price > 0);
-        if (valid.length > 0) { map.set(p.id, Math.min(...valid.map(d => d.price))); continue; }
+      const validPrices = getUpcomingPublicDepartureDates(p.price_dates)
+        .map((d) => typeof d.price === 'number' && d.price > 0 ? d.price : null)
+        .filter((price): price is number => price !== null);
+      if (validPrices.length > 0) {
+        map.set(p.id, Math.min(...validPrices));
+        continue;
       }
       if (p.price && p.price > 0) map.set(p.id, p.price);
     }
@@ -1074,9 +1078,10 @@ function SimpleCompareModal({
   }, [onClose]);
 
   const getPrice = (p: Package) => {
-    const dates = (p.price_dates || []) as Array<{ price: number }>;
-    const valid = dates.filter(d => d?.price > 0);
-    if (valid.length > 0) return Math.min(...valid.map(d => d.price));
+    const validPrices = getUpcomingPublicDepartureDates(p.price_dates)
+      .map((d) => typeof d.price === 'number' && d.price > 0 ? d.price : null)
+      .filter((price): price is number => price !== null);
+    if (validPrices.length > 0) return Math.min(...validPrices);
     return p.price ?? 0;
   };
   const titleA = getCustomerPackageTitle(a);

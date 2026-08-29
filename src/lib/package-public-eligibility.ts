@@ -1,5 +1,6 @@
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { evaluateCustomerMobileProof } from '@/lib/customer-mobile-proof';
+import { formatKstDate, isUpcomingKstDate } from '@/lib/kst-date';
 
 export type PublicEligibilityBlockerCode =
   | 'status_not_customer_visible'
@@ -13,7 +14,8 @@ export type PublicEligibilityBlockerCode =
   | 'attraction_unlinked_registered'
   | 'entity_review_unresolved'
   | 'entity_master_candidate_unresolved'
-  | 'trust_score_blocked';
+  | 'trust_score_blocked'
+  | 'all_departure_dates_expired';
 
 export type PublicEligibilityBlocker = {
   code: PublicEligibilityBlockerCode;
@@ -27,7 +29,37 @@ export type PackagePublicEligibilityRow = {
   updated_at?: string | null;
   optional_tours?: unknown;
   itinerary_data?: unknown;
+  price_dates?: unknown;
 };
+
+/**
+ * Public departure-date contract shared by all customer-facing package surfaces.
+ * An empty/missing price_dates array preserves the legacy meaning of an open
+ * package; a non-empty array is open only when it contains a valid today/future
+ * KST departure date.
+ */
+export function getUpcomingPublicDepartureDates(
+  priceDates: unknown,
+  today: string = formatKstDate(),
+): Array<Record<string, unknown>> {
+  if (!Array.isArray(priceDates)) return [];
+  return priceDates.filter((item): item is Record<string, unknown> => {
+    const record = asRecord(item);
+    const date = record?.date;
+    return typeof date === 'string' && isUpcomingKstDate(date.trim(), today);
+  });
+}
+
+export function hasUpcomingPublicDepartureDate(
+  row: unknown,
+  today: string = formatKstDate(),
+): boolean {
+  const packageRecord = asRecord(row);
+  const priceDates = packageRecord?.price_dates;
+  if (priceDates == null || (Array.isArray(priceDates) && priceDates.length === 0)) return true;
+  if (!Array.isArray(priceDates)) return false;
+  return getUpcomingPublicDepartureDates(priceDates, today).length > 0;
+}
 
 export type CustomerPublicEligibilityOptions = {
   /**
@@ -389,6 +421,13 @@ export function getPackagePublicEligibilityBlockers(
 ): PublicEligibilityBlocker[] {
   const blockers: PublicEligibilityBlocker[] = [];
   const pkg = (asRecord(row) ?? {}) as PackagePublicEligibilityRow;
+
+  if (!hasUpcomingPublicDepartureDate(pkg)) {
+    blockers.push({
+      code: 'all_departure_dates_expired',
+      message: 'price_dates contains no valid today/future KST departure date',
+    });
+  }
 
   if (!isCustomerVisibleStatus(pkg.status)) {
     blockers.push({

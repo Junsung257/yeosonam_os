@@ -49,6 +49,8 @@ import {
 import type { PublicPackageMedia } from '@/lib/package-publication/types';
 import { getAttributionSnapshot } from '@/lib/analytics/attribution';
 import { readLastBlogAssist } from '@/lib/analytics/blog-assist';
+import { getUpcomingPublicDepartureDates } from '@/lib/package-public-eligibility';
+import { formatKstDate, isUpcomingKstDate } from '@/lib/kst-date';
 
 const RecommendationCard = nextDynamic(() => import('@/components/customer/RecommendationCard'), { loading: () => null });
 const TravelFitnessCard = nextDynamic(() => import('@/components/customer/TravelFitnessCard'), { loading: () => null });
@@ -968,19 +970,20 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const minPrice = useMemo(() => {
     if (!pkg) return 0;
     const minTier = tiers.length > 0 ? Math.min(...tiers.map(t => t.adult_price || Infinity)) : Infinity;
-    const minDate = (pkg.price_dates && pkg.price_dates.length > 0)
-      ? Math.min(...pkg.price_dates.map(d => d.price || Infinity))
+    const futurePriceDates = getUpcomingPublicDepartureDates(pkg.price_dates) as unknown as PriceDate[];
+    const minDate = futurePriceDates.length > 0
+      ? Math.min(...futurePriceDates.map(d => d.price || Infinity))
       : Infinity;
     return Math.min(minTier, minDate, pkg.price || Infinity);
   }, [pkg, tiers]);
   const nextConfirmedDate = useMemo(() => {
     if (!pkg?.price_dates) return null;
-    const today = new Date().toISOString().slice(0, 10);
-    const confirmed = pkg.price_dates
-      .filter(d => d.confirmed && d.date >= today)
-      .sort((a, b) => a.date.localeCompare(b.date));
-    if (!confirmed.length) return null;
-    const d = new Date(confirmed[0].date);
+    const confirmedDates = getUpcomingPublicDepartureDates(pkg.price_dates)
+      .map((d) => d.confirmed === true && typeof d.date === 'string' ? d.date : null)
+      .filter((date): date is string => date !== null)
+      .sort();
+    if (!confirmedDates.length) return null;
+    const d = new Date(confirmedDates[0]);
     return `${d.getMonth() + 1}/${d.getDate()} 확정`;
   }, [pkg]);
   const heroMedia = useMemo(() => {
@@ -1076,10 +1079,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     inclusions: pkg.inclusions ?? null,
     optional_tours: pkg.optional_tours ?? null,
   });
-  const todayForDeparture = new Date().toISOString().slice(0, 10);
+  const todayForDeparture = formatKstDate();
   const nextAvailableDepartureLabel = formatCompactDepartureDate(
     allPriceDates
-      .filter(d => d.date >= todayForDeparture)
+      .filter(d => isUpcomingKstDate(d.date, todayForDeparture))
       .sort((a, b) => a.date.localeCompare(b.date))[0]?.date,
   );
   const firstScreenPriceLabel = Number.isFinite(displayPrice) && (displayPrice ?? 0) > 0
@@ -1644,8 +1647,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       {(() => {
         if (scoreRows.length === 0) return null;
         // selectedDate 우선 → 가장 가까운 미래 출발일 폴백
-        const today = new Date().toISOString().slice(0, 10);
-        const future = scoreRows.filter(r => r.departure_date && r.departure_date >= today);
+        const today = formatKstDate();
+        const future = scoreRows.filter(r => isUpcomingKstDate(r.departure_date, today));
         const target = (selectedDate && scoreRows.find(r => r.departure_date === selectedDate))
           || future[0]
           || scoreRows[0];
