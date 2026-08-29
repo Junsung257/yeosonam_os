@@ -8,19 +8,19 @@ describe('IndexNow key route', () => {
   });
 
   it('serves the configured IndexNow key at the root txt path', async () => {
-    vi.stubEnv('INDEXNOW_KEY', '2bf8a3e47c1d9f6e0b5a20260829abcd');
+    vi.stubEnv('INDEXNOW_KEY', 'deadbeef');
 
-    const response = await GET(new Request('https://www.yeosonam.com/2bf8a3e47c1d9f6e0b5a20260829abcd.txt'), {
-      params: Promise.resolve({ indexnowKey: '2bf8a3e47c1d9f6e0b5a20260829abcd.txt' }),
+    const response = await GET(new Request('https://www.yeosonam.com/deadbeef.txt'), {
+      params: Promise.resolve({ indexnowKey: 'deadbeef.txt' }),
     });
 
-    await expect(response.text()).resolves.toBe('2bf8a3e47c1d9f6e0b5a20260829abcd');
+    await expect(response.text()).resolves.toBe('deadbeef');
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('text/plain');
   });
 
   it('does not expose arbitrary txt paths when the key does not match', async () => {
-    vi.stubEnv('INDEXNOW_KEY', '2bf8a3e47c1d9f6e0b5a20260829abcd');
+    vi.stubEnv('INDEXNOW_KEY', 'deadbeef');
 
     const response = await GET(new Request('https://www.yeosonam.com/other.txt'), {
       params: Promise.resolve({ indexnowKey: 'other.txt' }),
@@ -31,10 +31,10 @@ describe('IndexNow key route', () => {
   });
 
   it('does not match root non-txt paths', async () => {
-    vi.stubEnv('INDEXNOW_KEY', '2bf8a3e47c1d9f6e0b5a20260829abcd');
+    vi.stubEnv('INDEXNOW_KEY', 'deadbeef');
 
-    const response = await GET(new Request('https://www.yeosonam.com/2bf8a3e47c1d9f6e0b5a20260829abcd'), {
-      params: Promise.resolve({ indexnowKey: '2bf8a3e47c1d9f6e0b5a20260829abcd' }),
+    const response = await GET(new Request('https://www.yeosonam.com/deadbeef'), {
+      params: Promise.resolve({ indexnowKey: 'deadbeef' }),
     });
 
     expect(response.status).toBe(404);

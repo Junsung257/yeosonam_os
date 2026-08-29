@@ -8,7 +8,7 @@ vi.mock('./gsc-client', () => ({
 }));
 
 describe('notifyIndexingBatch', () => {
-  const validIndexNowKey = '2bf8a3e47c1d9f6e0b5a20260829abcd';
+  const validIndexNowKey = 'deadbeef';
   const originalIndexNowKey = process.env.INDEXNOW_KEY;
   const originalGoogleIndexingFlag = process.env.GOOGLE_INDEXING_API_FOR_BLOGS;
   const originalIndexNowRecentTtl = process.env.INDEXNOW_RECENT_TTL_MS;
