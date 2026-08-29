@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { buildBlogInformationContract } from './blog-information-contract';
 import {
+  buildBlogTrendCandidateTopic,
   buildSupportedBlogTrendDestinations,
   isSupportedBlogTrendDestination,
 } from './blog-trend-destination';
@@ -24,5 +26,20 @@ describe('blog trend destination support', () => {
     });
 
     expect(isSupportedBlogTrendDestination('호찌민 시내', supported)).toBe(true);
+  });
+
+  it('turns a generic travel trend into an explicit publishable preparation intent', () => {
+    const topic = buildBlogTrendCandidateTopic({
+      keyword: '발리 여행',
+      destination: '발리',
+    });
+
+    expect(topic).toBe('발리 여행 준비물 체크리스트와 출발 전 확인사항');
+    expect(buildBlogInformationContract({
+      topic,
+      primaryKeyword: '발리 여행',
+      destination: '발리',
+      category: 'travel_tips',
+    }).passed).toBe(true);
   });
 });

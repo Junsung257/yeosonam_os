@@ -21,3 +21,20 @@ export function isSupportedBlogTrendDestination(
   const normalized = normalizeDestination(destination);
   return normalized != null && supportedDestinations.has(normalized);
 }
+
+export function buildBlogTrendCandidateTopic(input: {
+  keyword: string;
+  destination: string;
+}): string {
+  const keyword = input.keyword.normalize('NFKC').replace(/\s+/g, ' ').trim();
+  const destination = input.destination.normalize('NFKC').replace(/\s+/g, ' ').trim();
+
+  // Generic "destination travel" queries do not map to a publishable evidence
+  // contract by themselves. Turn the live demand into the explicit preparation
+  // intent supported by the information writer instead of an internal trend
+  // analysis article that customers did not ask for.
+  if (/여행(?:\s|$)/i.test(keyword)) {
+    return `${keyword} 준비물 체크리스트와 출발 전 확인사항`;
+  }
+  return `${destination} ${keyword} 준비물 체크리스트와 최신 정보`;
+}
