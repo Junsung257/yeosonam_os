@@ -28,7 +28,7 @@
 
 ### 🔍 Google 색인 (블로그 SEO 핵심)
 - ✅ `NEXT_PUBLIC_BASE_URL` = `https://www.yeosonam.com` — 설정 완료, www 카노니컬 통일 배포
-- ✅ `INDEXNOW_KEY` = `2bf8a3e4yeosonam7c1d9f6e0b5a` — 키 파일 공개 접근 허용, 25개 글 일괄 제출 완료
+- ⚠️ `INDEXNOW_KEY` — 기존 문서화 값은 네이버 현재 키 형식과 맞지 않아 2026-08-29 회전 대상으로 전환. 새 값은 Vercel Production에만 저장하고 문서·로그에는 기록하지 않으며, 루트 검증 파일과 실제 Naver/global 제출 성공으로 완료 판정한다.
 - 👤 Google Indexing API — SA가 Search Console에서 **소유자(Owner)** 권한 없음 → 403 오류. Google Search Console → 설정 → 사용자 및 권한 → SA 이메일 추가 (Owner). 완료 후 `POST /api/blog/bulk-reindex` (Bearer SUPABASE_SERVICE_ROLE_KEY) 재실행
 - 🔑 `GSC_SERVICE_ACCOUNT_JSON` — `/api/cron/gsc-index-rank` 신규 크론 (2026-05-15)이 사용. 미설정 시 `GOOGLE_SERVICE_ACCOUNT_JSON` 으로 자동 fallback. 별도 SA 분리 시에만 신규 키 주입.
 

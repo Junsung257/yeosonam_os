@@ -1,3 +1,5 @@
+import { isValidNaverIndexNowKey } from '../src/lib/indexnow-key';
+
 type CheckResult = {
   passed: boolean;
   origin: string;
@@ -36,7 +38,7 @@ async function checkIndexNowConfig(): Promise<CheckResult> {
   const origin = readCanonicalOrigin();
   const key = process.env.INDEXNOW_KEY?.trim() ?? '';
   const keyConfigured = key.length > 0;
-  const keyValidShape = /^[A-Za-z0-9_-]{8,128}$/.test(key);
+  const keyValidShape = isValidNaverIndexNowKey(key);
   const issues: string[] = [];
 
   let verificationFileStatus: number | null = null;
