@@ -33,4 +33,18 @@ describe('blog corpus diversity v3', () => {
     expect(report.disposition).toBe('queue_reject');
     expect(report.evidence.some((item) => item.metric === 'exact_title')).toBe(true);
   });
+  it('compares first prose paragraphs instead of H1 headings', () => {
+    const report = evaluateBlogCorpusCandidateV3({
+      title: '괌 식비 예산 시나리오',
+      body: '<!-- prompt_version: v2 -->\n# 괌 식비 예산 시나리오\n\n식당 근거를 먼저 고르고 식사 유형을 비교하세요.',
+      destination: '괌',
+    }, [{
+      title: '삿포로 식비 예산 시나리오',
+      body: '# 삿포로 식비 예산 시나리오\n\n숙소 위치를 먼저 정하고 교통 동선을 확인하세요.',
+      destination: '삿포로',
+      source: 'draft',
+    }]);
+
+    expect(report.maxOpeningSimilarity).toBeLessThan(0.25);
+  });
 });

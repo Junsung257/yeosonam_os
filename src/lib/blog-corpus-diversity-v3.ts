@@ -99,8 +99,13 @@ export interface BlogCorpusDiversityEvaluationV3 {
 function firstParagraph(value: string): string {
   return value
     .replace(/^---[\s\S]*?---\s*/u, '')
+    .replace(/<!--[\s\S]*?-->/gu, '')
     .split(/\n\s*\n/u)
-    .map((paragraph) => paragraph.replace(/^#+\s+/u, '').trim())
+    .map((paragraph) => paragraph.trim())
+    // A Markdown heading is document identity/structure, not an opening
+    // paragraph. Comparing H1 text here made ordinary title keywords look
+    // like duplicated prose and could quarantine an otherwise unique post.
+    .filter((paragraph) => !/^#{1,6}\s+/u.test(paragraph))
     .find(Boolean) || '';
 }
 
