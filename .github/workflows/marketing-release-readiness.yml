@@ -43,7 +43,10 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || 'dummy-service-role-key-for-ci' }}
       NEXT_PUBLIC_BASE_URL: 'http://127.0.0.1:3033'
       MARKETING_RELEASE_RUNTIME_PORT: '3033'
-      MARKETING_RELEASE_RUNTIME_MODE: 'dev'
+      # Use the already-built production runtime for the local probe. The dev
+      # compiler can consume several GB while the marketing API surface is
+      # being exercised and is not the deployment artifact we release.
+      MARKETING_RELEASE_RUNTIME_MODE: 'start'
       MARKETING_RELEASE_RUNTIME_READY_TIMEOUT_MS: '180000'
       MARKETING_RELEASE_RUNTIME_TIMEOUT_MS: '300000'
       MARKETING_AUTOMATION_TIMEOUT_MS: '120000'
@@ -81,6 +84,15 @@ jobs:
           cache: 'npm'
 
       - run: npm ci --no-audit --no-fund
+
+      - name: Build production runtime for marketing probe
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co'
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: 'dummy-anon-key-for-ci'
+          SUPABASE_SERVICE_ROLE_KEY: 'dummy-service-role-key-for-ci'
+          NEXT_PUBLIC_BASE_URL: 'http://127.0.0.1:3033'
+          NEXT_BUILD_SKIP_TYPECHECK: '1'
 
       - name: Run marketing release readiness
         run: |
