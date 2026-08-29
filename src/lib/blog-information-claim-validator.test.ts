@@ -365,6 +365,8 @@ describe('blog information claim validator', () => {
       markdown: [
         '괌 여행 식비 예산에 필요한 비용을 여행 방식별로 나누어 비교합니다.',
         '예산에 포함할 항목을 고르고 나면 하루 식비 총액을 정할 수 있습니다.',
+        '이 예산은 확인일 기준으로 수집된 특정 메뉴와 외식 물가 항목만 포함합니다.',
+        '위 가격들은 특정 메뉴와 특정 외식 항목에 한정됩니다.',
       ].join('\n\n'),
       persistedClaims: [],
       claimLedger: [],
