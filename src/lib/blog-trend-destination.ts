@@ -38,3 +38,14 @@ export function buildBlogTrendCandidateTopic(input: {
   }
   return `${destination} ${keyword} 준비물 체크리스트와 최신 정보`;
 }
+
+export function buildBlogTrendCandidateMeta(topic: string): {
+  expected_slug: string;
+  micro_angle: 'preparation';
+} {
+  return {
+    expected_slug: slugifyTopic(topic),
+    micro_angle: 'preparation',
+  };
+}
+import { slugifyTopic } from './slug-utils';

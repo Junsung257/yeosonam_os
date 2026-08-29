@@ -8,6 +8,7 @@ import { normalizeBlogTopicQueueRow } from '@/lib/blog-queue-normalize';
 import { filterTopicFitPassed } from '@/lib/blog-topic-fit-gate';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import {
+  buildBlogTrendCandidateMeta,
   buildBlogTrendCandidateTopic,
   buildSupportedBlogTrendDestinations,
   isSupportedBlogTrendDestination,
@@ -152,6 +153,7 @@ async function runTrendMiner(request: NextRequest) {
       keyword: c.keyword,
       destination: dest,
     });
+    const candidateMeta = buildBlogTrendCandidateMeta(topic);
 
     poolRowsPending.push({
       keyword: c.keyword,
@@ -175,6 +177,7 @@ async function runTrendMiner(request: NextRequest) {
       competition_level: tier === 'head' ? 'high' : tier === 'mid' ? 'medium' : 'low',
       trend_score: c.trend_score ?? null,
       meta: {
+        ...candidateMeta,
         keywords: [c.keyword, dest],
         trend_source: c.source,
         raw: c.raw,

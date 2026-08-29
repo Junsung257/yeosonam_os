@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildBlogInformationContract } from './blog-information-contract';
 import {
+  buildBlogTrendCandidateMeta,
   buildBlogTrendCandidateTopic,
   buildSupportedBlogTrendDestinations,
   isSupportedBlogTrendDestination,
@@ -41,5 +42,9 @@ describe('blog trend destination support', () => {
       destination: '발리',
       category: 'travel_tips',
     }).passed).toBe(true);
+    expect(buildBlogTrendCandidateMeta(topic)).toEqual({
+      expected_slug: 'bali-preparation',
+      micro_angle: 'preparation',
+    });
   });
 });
