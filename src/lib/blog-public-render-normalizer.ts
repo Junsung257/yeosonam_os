@@ -24,6 +24,10 @@ function removeExcessiveHorizontalRules(html: string): string {
 
 const NON_DESCRIPTIVE_IMAGE_ALT_RE = /(?:여행\s*준비(?:\s*장면)?|비용\s*확인(?:\s*장면)?|월별\s*날씨(?:\s*확인)?|10초\s*판단|포함\s*\/\s*불포함|일정\s*체감|예산\s*체크(?:\s*장면)?)$/u;
 
+export interface PublicBlogBodySanitizeOptions {
+  imageAltPrefix?: string | null;
+}
+
 function removeNonDescriptiveImageAlts(html: string): string {
   return html.replace(/<img\b[^>]*>/gi, (tag) => tag.replace(
     /\balt\s*=\s*(["'])(.*?)\1/i,
@@ -33,6 +37,50 @@ function removeNonDescriptiveImageAlts(html: string): string {
         : attribute
     ),
   ));
+}
+
+function normalizeImageAltText(value: string): string {
+  return value
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;|&#160;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function escapeImageAltAttribute(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function lastRenderedHeading(html: string): string {
+  const matches = [...html.matchAll(/<h[2-6]\b[^>]*>([\s\S]*?)<\/h[2-6]>/gi)];
+  return normalizeImageAltText(matches.at(-1)?.[1] ?? '');
+}
+
+function ensureDescriptiveImageAlts(html: string, imageAltPrefix: string | null | undefined): string {
+  const prefix = normalizeImageAltText(imageAltPrefix ?? '');
+  if (!prefix) return html;
+
+  return html.replace(/<img\b[^>]*>/gi, (tag, offset: number, source: string) => {
+    const altMatch = tag.match(/\balt\s*=\s*(["'])(.*?)\1/i);
+    const currentAlt = normalizeImageAltText(altMatch?.[2] ?? '');
+    if (currentAlt) return tag;
+
+    const heading = lastRenderedHeading(source.slice(0, offset));
+    const context = heading && !heading.toLowerCase().includes(prefix.toLowerCase())
+      ? `${prefix} ${heading}`
+      : heading || prefix;
+    const fallbackAlt = `${context} 이미지`.slice(0, 160);
+    const escapedAlt = escapeImageAltAttribute(fallbackAlt);
+    if (altMatch) {
+      return tag.replace(altMatch[0], `alt="${escapedAlt}"`);
+    }
+    return tag.replace(/\s*\/?>$/, (closing) => ` alt="${escapedAlt}"${closing}`);
+  });
 }
 
 function normalizeHeadingTextForCompare(value: string): string {
@@ -64,7 +112,10 @@ export function stripPublicDuplicateBodyTitleHeading(html: string, pageTitle: st
   );
 }
 
-export function sanitizePublicBlogBodyHtml(html: string): string {
+export function sanitizePublicBlogBodyHtml(
+  html: string,
+  options: PublicBlogBodySanitizeOptions = {},
+): string {
   const sanitized = html
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/<\/?(del|s|strike)\b[^>]*>/gi, '')
@@ -77,5 +128,6 @@ export function sanitizePublicBlogBodyHtml(html: string): string {
     .replace(/<h1\b[^>]*>\s*(?:&nbsp;|\u00a0|<br\s*\/?>|\s)*<\/h1>/gi, '')
     .replace(/<h1\b([^>]*)>/gi, '<h2$1>')
     .replace(/<\/h1>/gi, '</h2>');
-  return dedupeExactLongBlocks(removeNonDescriptiveImageAlts(removeExcessiveHorizontalRules(sanitized)));
+  const normalized = removeNonDescriptiveImageAlts(removeExcessiveHorizontalRules(sanitized));
+  return dedupeExactLongBlocks(ensureDescriptiveImageAlts(normalized, options.imageAltPrefix));
 }

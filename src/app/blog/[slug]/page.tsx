@@ -1234,7 +1234,9 @@ async function renderBlogDetail({
     const rendered = await removeUnreachableBlogAssetImages(await renderBlogContentToHtml(post.blog_html));
     const normalizedBody = isInfoBlog ? stripBlogInformationalBodyCtas(rendered) : rendered;
     const sanitized = stripPublicDuplicateBodyTitleHeading(
-      sanitizePublicBlogBodyHtml(normalizedBody),
+      sanitizePublicBlogBodyHtml(normalizedBody, {
+        imageAltPrefix: post.destination?.trim() || post.seo_title?.trim() || '여행 정보',
+      }),
       abTestTitle,
     );
     const result = extractTocAndInjectIds(sanitized);
