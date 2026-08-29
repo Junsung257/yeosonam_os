@@ -243,6 +243,9 @@ if (!skipBuild) {
     // probe process if the OS leaves a child around for a few seconds.
     NEXT_BUILD_ALLOW_ACTIVE_DEV_SERVER: '1',
     BUNDLE_BUDGET_ALLOW_ACTIVE_DEV_SERVER: '1',
+    // TypeScript is already a dedicated gate in this workflow. Avoid a
+    // duplicate Next build type pass exhausting the CI runner heap.
+    NEXT_BUILD_SKIP_TYPECHECK: '1',
   };
   const [buildCommand, buildArgs] = npmRun('build');
   checks.push(run('build', buildCommand, buildArgs, { env: isolatedRuntimeBuildEnv }));

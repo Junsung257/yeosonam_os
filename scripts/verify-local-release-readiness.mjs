@@ -607,6 +607,30 @@ if (!skipOperationalInputs) {
 
 checks.push({ id: 'marketing-automation-readiness', script: 'verify:marketing-automation:ci' });
 
+const productionBuildChecks = [];
+if (!skipBuild) {
+  const isolatedOpenReadinessBuildEnv = skipOpenReadiness
+    ? {}
+    : {
+        // The local open-readiness probe uses NEXT_DIST_DIR=.next-dev-${port},
+        // so a briefly lingering probe cannot rewrite the production .next
+        // directory that these checks inspect.
+        NEXT_BUILD_ALLOW_ACTIVE_DEV_SERVER: '1',
+        BUNDLE_BUDGET_ALLOW_ACTIVE_DEV_SERVER: '1',
+      };
+  // TypeScript is already checked as a dedicated gate above. Skipping the
+  // duplicate Next build type pass keeps the isolated production build within
+  // the memory budget of developer machines and CI runners.
+  isolatedOpenReadinessBuildEnv.NEXT_BUILD_SKIP_TYPECHECK = '1';
+  productionBuildChecks.push({ id: 'production-build', script: 'build', env: isolatedOpenReadinessBuildEnv });
+  productionBuildChecks.push({ id: 'bundle-budget', script: 'check:bundle', env: isolatedOpenReadinessBuildEnv });
+}
+
+// A production start server needs the artifact before it can boot. Keep the
+// existing dev-mode ordering for local runs, but place the production build
+// ahead of the open-readiness probe when CI requests --mode=start.
+if (openMode === 'start') checks.push(...productionBuildChecks);
+
 if (!skipOpenReadiness) {
   checks.push({
     id: 'open-readiness-local-full',
@@ -627,19 +651,7 @@ if (!skipOpenReadiness) {
   });
 }
 
-if (!skipBuild) {
-  const isolatedOpenReadinessBuildEnv = skipOpenReadiness
-    ? {}
-    : {
-        // The local open-readiness probe uses NEXT_DIST_DIR=.next-dev-${port},
-        // so a briefly lingering probe cannot rewrite the production .next
-        // directory that these checks inspect.
-        NEXT_BUILD_ALLOW_ACTIVE_DEV_SERVER: '1',
-        BUNDLE_BUDGET_ALLOW_ACTIVE_DEV_SERVER: '1',
-      };
-  checks.push({ id: 'production-build', script: 'build', env: isolatedOpenReadinessBuildEnv });
-  checks.push({ id: 'bundle-budget', script: 'check:bundle', env: isolatedOpenReadinessBuildEnv });
-}
+if (openMode !== 'start') checks.push(...productionBuildChecks);
 
 const summaries = [];
 

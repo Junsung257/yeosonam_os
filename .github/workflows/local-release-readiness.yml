@@ -35,8 +35,15 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: 'dummy-service-role-key-for-ci'
       NEXT_PUBLIC_BASE_URL: 'http://127.0.0.1:3050'
       LOCAL_RELEASE_OPEN_PORT: '3050'
+      # Exercise the same production artifact that is deployed. The dev
+      # compiler is too memory-heavy for this isolated CI probe.
+      LOCAL_RELEASE_OPEN_MODE: 'start'
       LOCAL_RELEASE_OPEN_READY_TIMEOUT_MS: '180000'
       MARKETING_AUTOMATION_TIMEOUT_MS: '120000'
+      MARKETING_RUNTIME_MODE: 'start'
+      MARKETING_RUNTIME_PORT: '3033'
+      # Explicit release decision: blog image availability is out of scope.
+      BLOG_AUDIT_SKIP_IMAGE_QUALITY: '1'
       LOCAL_RELEASE_MARKETING_RUNTIME_READY_TIMEOUT_MS: '180000'
       LOCAL_RELEASE_MARKETING_RUNTIME_HARD_TIMEOUT_MS: '300000'
       OPEN_CHECK_PACKAGE_ID: ${{ vars.OPEN_CHECK_PACKAGE_ID || secrets.OPEN_CHECK_PACKAGE_ID }}

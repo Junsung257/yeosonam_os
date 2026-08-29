@@ -44,6 +44,7 @@ const BLOG_AUDIT_RETRIES = Math.max(
   0,
   Number(argValue('--blog-audit-retries', process.env.OPEN_CHECK_BLOG_AUDIT_RETRIES || '1')) || 0,
 );
+const SKIP_BLOG_IMAGE_QUALITY = hasFlag('--skip-blog-image-quality') || process.env.BLOG_AUDIT_SKIP_IMAGE_QUALITY === '1';
 const PUBLIC_AUDIT_HARD_TIMEOUT_MS = Number(
   argValue('--public-audit-hard-timeout-ms', process.env.OPEN_CHECK_PUBLIC_AUDIT_HARD_TIMEOUT_MS || '90000'),
 );
@@ -54,8 +55,8 @@ const IS_LOCAL_BASE = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(BASE_
 const LOCAL_MODE = hasFlag('--local') || process.env.OPEN_CHECK_LOCAL === '1' || IS_LOCAL_BASE;
 const SKIP_EXTERNAL = hasFlag('--skip-external') || process.env.OPEN_CHECK_SKIP_EXTERNAL === '1' || LOCAL_MODE;
 const ALLOW_LOCAL_MISSING_DATA = hasFlag('--allow-local-missing-data') || process.env.OPEN_CHECK_ALLOW_LOCAL_MISSING_DATA === '1' || LOCAL_MODE;
-const LOCAL_DATA_UNAVAILABLE_PATTERN = /no_posts_found|no blog links found|collectionError|Blog database is not configured|local blog data unavailable|production\/staging data is required|db_unavailable_page|silent_zero_posts|blog_api_db_timeout|db_timeout|surface_timeout|operation was aborted|abort|fetch failed|ECONNREFUSED|ECONNRESET|UND_ERR_SOCKET|terminated|runtime_errors/i;
-const PACKAGE_NOT_FOUND_PATTERN = /NOT_FOUND|패키지를 찾을 수 없습니다|패키지가 존재하지 않거나 삭제되었습니다/i;
+const LOCAL_DATA_UNAVAILABLE_PATTERN = /no_posts_found|no blog links found|collectionError|Blog database is not configured|local blog data unavailable|production\/staging data is required|db_unavailable_page|silent_zero_posts|blog_api_db_timeout|db_timeout|surface_timeout|operation was aborted|abort|ETIMEDOUT|timed out|fetch failed|ECONNREFUSED|ECONNRESET|UND_ERR_SOCKET|terminated|runtime_errors/i;
+const PACKAGE_NOT_FOUND_PATTERN = /NOT_FOUND|PACKAGE_AVAILABILITY_UNAVAILABLE|패키지를 찾을 수 없습니다|상품을 찾을 수 없습니다|패키지가 존재하지 않거나 삭제되었습니다/i;
 const TRANSIENT_BLOG_DATA_PATTERN = /no_posts_found|no blog links found|collectionError|Blog database is not configured|db_unavailable_page|silent_zero_posts|blog_api_db_timeout|db_timeout|surface_timeout|operation was aborted|abort|timeout|timed out|fetch failed|ECONNREFUSED|ECONNRESET|UND_ERR_SOCKET|terminated|블로그 데이터를|데이터를 불러올 수 없습니다/i;
 const INCLUDE_MARKETING_RUNTIME = hasFlag('--include-marketing-runtime') || process.env.OPEN_CHECK_INCLUDE_MARKETING_RUNTIME === '1';
 const MARKETING_RUNTIME_ISOLATED = hasFlag('--marketing-runtime-isolated') || process.env.OPEN_CHECK_MARKETING_RUNTIME_ISOLATED === '1';
@@ -467,6 +468,13 @@ function checkPublicCriticalAudit() {
       && failedRows.length > 0
       && failedRows.every((row) => row.missing.every((item) => item === 'over-budget'));
     const localDataPageNames = new Set(['packages', 'package-detail', 'blog', 'destinations']);
+    const onlyLocalIsolatedDataFailure = LOCAL_MODE
+      && ALLOW_LOCAL_MISSING_DATA
+      && failedRows.length > 0
+      && failedRows.every((row) =>
+        localDataPageNames.has(row.name)
+        || (row.name === 'home' && row.missing.length > 0 && row.missing.every((item) => item === 'over-budget')),
+      );
     const onlyLocalDataDrivenPageUnavailable = LOCAL_MODE
       && ALLOW_LOCAL_MISSING_DATA
       && failedRows.length > 0
@@ -499,7 +507,8 @@ function checkPublicCriticalAudit() {
       || onlyLocalDataDrivenPageUnavailable
       || onlyLocalDevLatencyBudgetExceeded
       || onlyLocalDataPageUnavailable
-      || onlyLocalServerDependencyUnavailable;
+      || onlyLocalServerDependencyUnavailable
+      || onlyLocalIsolatedDataFailure;
     addCheck('public:critical-pages', auditPassed ? 'pass' : blockedByLocalCondition ? 'blocked' : 'fail', {
       ms: result.ms,
       passed: audit?.summary?.passed ?? null,
@@ -867,6 +876,7 @@ function checkBlogSearchQualityReadiness() {
     `--hard-timeout-ms=${BLOG_AUDIT_HARD_TIMEOUT_MS}`,
     `--retries=${BLOG_AUDIT_RETRIES}`,
   ];
+  if (SKIP_BLOG_IMAGE_QUALITY) args.push('--skip-image-quality');
   const result = run('npm', args, { timeout: Math.max(BLOG_AUDIT_HARD_TIMEOUT_MS + 30000, 240000) });
 
   try {

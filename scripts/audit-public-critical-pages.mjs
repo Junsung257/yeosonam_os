@@ -344,6 +344,14 @@ function analyzeHtml(page, result) {
   if (!h1) missing.push('h1');
   if (page.mustHaveAny && !hasAny(`${h1} ${title} ${text}`, page.mustHaveAny)) missing.push('information-scent');
   if (page.ctaAny && !hasAny(ctaText, page.ctaAny)) missing.push('cta');
+  if (
+    isLocal
+    && /NOT_FOUND|패키지를 찾을 수 없습니다|상품을 찾을 수 없습니다|패키지가 존재하지 않거나 삭제되었습니다|데이터를 불러올 수 없습니다/i.test(
+      `${h1} ${title} ${text}`,
+    )
+  ) {
+    missing.push('local-data-unavailable');
+  }
   if (result.status >= 300 && result.status < 400 && !result.location) missing.push('redirect-location');
   if (result.ms > page.budgetMs) missing.push('over-budget');
 
