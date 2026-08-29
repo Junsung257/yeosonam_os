@@ -1,6 +1,7 @@
 # Audit Archive Index
 
-Last updated: 2026-08-27
+Last updated: 2026-08-29
+- 2026-08-29 — Product publication authority rebuild: source-price lineage, copy V3, documentary media, single admin command, exact public catalog, full regression, production mobile baseline, and staging rollout gates: `2026-08-29-product-publication-authority-rebuild.md`
 - 2026-08-27 — GitHub OSS adoption audit: 41 active repositories, codebase-fit decisions, six bounded adoption batches, and explicit defer/reject triggers: `oss-adoption-audit-2026-08-27.md`
 - 2026-08-11 — Blog Quality Engine V3 baseline, canary, corpus disposition/redirect preview, verification: `blog-quality-engine-v3-baseline-2026-08-11.md`
 - 2026-08-12 — Blog Quality Engine V3 reliability follow-up migration safety (5 files, 0 issues): `blog-quality-v3-migration-safety-report.json`
@@ -40,6 +41,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Area | File |
 |---|---|
+| V162 publication authority implementation | `2026-08-29-product-publication-authority-rebuild.md` |
 | Learning engine verification | `2026-06-08-product-registration-learning-engine-audit.md` |
 | Upload pipeline map | `2026-06-04-upload-registration-pipeline-map.md` |
 | Registration object verification | `2026-06-05-registration-object-verification.md` |
