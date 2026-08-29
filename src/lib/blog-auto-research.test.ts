@@ -783,6 +783,40 @@ describe('augmentGuamFoodBudgetPayload', () => {
     expect(payload.evidence?.some((evidence) =>
       evidence.evidenceKey === 'chin-fe-breakfast-corned-beef-rice')).toBe(true);
   });
+
+  it('replaces an equivalent model 아침 draft with one deterministic evidence link', () => {
+    const payload = augmentGuamFoodBudgetPayload([{
+      url: 'https://chinfe.menuguam.com/',
+      title: 'House of Chin Fe menu',
+      text: 'Breakfast Corned Beef Fried Rice $14.50',
+    }], '괌', {
+      sources: [{
+        sourceKey: 'model-menu',
+        groundingChunkIndex: 0,
+        sourceType: 'reputable_price_source',
+      }],
+      evidence: [{
+        evidenceKey: 'model-breakfast',
+        sourceKey: 'model-menu',
+        excerpt: 'Breakfast Corned Beef Fried Rice $14.50',
+        claimType: 'price',
+        normalizedValue: '14.50',
+        currency: 'USD',
+      }],
+      claims: [{
+        claimText: '[아침] House of Chin Fe 괌 조식은 14.50 USD이다.',
+        claimType: 'price',
+        evidenceKeys: ['model-breakfast'],
+        normalizedValue: '14.50',
+        currency: 'USD',
+      }],
+    });
+    const breakfastClaims = payload.claims?.filter((claim) =>
+      /아침/.test(claim.claimText ?? '') && claim.normalizedValue === '14.50') ?? [];
+
+    expect(breakfastClaims).toHaveLength(1);
+    expect(breakfastClaims[0]?.evidenceKeys).toEqual(['chin-fe-breakfast-corned-beef-rice']);
+  });
 });
 
 describe('augmentGuamFamilyMealPayload', () => {
@@ -1155,6 +1189,138 @@ describe('mergeDuplicateAutoResearchClaims', () => {
 });
 
 describe('buildBlogResearchBundleFromGrounding', () => {
+  it('drops one unsupported numeric model claim and recovers the grounded evidence statement', () => {
+    const result = buildBlogResearchBundleFromGrounding({
+      contentKey: 'guam-food-budget',
+      destination: '괌',
+      locale: 'ko-KR',
+      brief: {
+        intentType: 'food_budget',
+        sourcePolicy: {
+          minimumClaimSourceCoverage: 0.9,
+          primarySourcesRequired: false,
+          exactNumbersRequireSource: true,
+          retrievedAtRequired: true,
+          sourceTypes: ['reputable_price_source'],
+        },
+      },
+      payload: {
+        sources: [{
+          sourceKey: 'menu',
+          groundingChunkIndex: 0,
+          publisher: 'Reviewed Guam menu',
+          sourceType: 'reputable_price_source',
+          claimTypes: ['price'],
+          country: '괌',
+          destination: '괌',
+        }],
+        evidence: [{
+          evidenceKey: 'lunch',
+          sourceKey: 'menu',
+          excerpt: '괌 점심 메뉴는 25 USD이다.',
+          claimType: 'price',
+          normalizedValue: '25',
+          currency: 'USD',
+        }],
+        claims: [{
+          claimText: '괌 여행자 1인의 점심 메뉴는 25 USD이다.',
+          claimType: 'price',
+          evidenceKeys: ['lunch'],
+          normalizedValue: '25',
+          currency: 'USD',
+        }],
+      },
+      groundingChunks: [{
+        web: { uri: 'https://menu.example.com/guam', title: 'Guam menu' },
+      }],
+      directSourceUrls: ['https://menu.example.com/guam'],
+      reputableRegistry: [{
+        id: 'guam-menu',
+        hostname: 'example.com',
+        sourceTypes: ['reputable_price_source'],
+        intents: ['food_budget'],
+        allowSubdomains: true,
+      }],
+      now: new Date('2026-08-29T18:00:00.000Z'),
+    });
+
+    expect(result.bundle, JSON.stringify(result.issues)).not.toBeNull();
+    expect(result.bundle?.claims.map((claim) => claim.claimText)).toEqual([
+      '괌 점심 메뉴는 25 USD이다.',
+    ]);
+    expect(result.issues.some((issue) =>
+      /^claim_rejected:unsupported_numeric_token:1:/.test(issue))).toBe(true);
+    expect(result.issues.some((issue) =>
+      /^claim:unsupported_numeric_token:/.test(issue))).toBe(false);
+  });
+
+  it('reapplies three distinct food-budget tier labels after invalid claims are removed', () => {
+    const values = [10, 20, 30, 40];
+    const result = buildBlogResearchBundleFromGrounding({
+      contentKey: 'guam-food-budget-tiers',
+      destination: '괌',
+      locale: 'ko-KR',
+      brief: {
+        intentType: 'food_budget',
+        sourcePolicy: {
+          minimumClaimSourceCoverage: 0.9,
+          primarySourcesRequired: false,
+          exactNumbersRequireSource: true,
+          retrievedAtRequired: true,
+          sourceTypes: ['reputable_price_source'],
+        },
+      },
+      payload: {
+        sources: [{
+          sourceKey: 'menu',
+          groundingChunkIndex: 0,
+          publisher: 'Reviewed Guam menu',
+          sourceType: 'reputable_price_source',
+          claimTypes: ['price'],
+          country: '괌',
+          destination: '괌',
+        }],
+        evidence: values.map((value) => ({
+          evidenceKey: `price-${value}`,
+          sourceKey: 'menu',
+          excerpt: `괌 메뉴 가격은 ${value} USD이다.`,
+          claimType: 'price',
+          normalizedValue: String(value),
+          currency: 'USD',
+        })),
+        claims: values.map((value) => ({
+          claimText: value === 40
+            ? `괌 여행자 1인의 메뉴 가격은 ${value} USD이다.`
+            : `괌 메뉴 가격은 ${value} USD이다.`,
+          claimType: 'price',
+          evidenceKeys: [`price-${value}`],
+          normalizedValue: String(value),
+          currency: 'USD',
+        })),
+      },
+      groundingChunks: [{
+        web: { uri: 'https://menu.example.com/guam', title: 'Guam menu' },
+      }],
+      directSourceUrls: ['https://menu.example.com/guam'],
+      reputableRegistry: [{
+        id: 'guam-menu',
+        hostname: 'example.com',
+        sourceTypes: ['reputable_price_source'],
+        intents: ['food_budget'],
+        allowSubdomains: true,
+      }],
+      now: new Date('2026-08-29T18:00:00.000Z'),
+    });
+    const claims = result.bundle?.claims ?? [];
+
+    expect(claims.filter((claim) => /절약형 하루 예산/.test(claim.claimText))).toHaveLength(1);
+    expect(claims.filter((claim) => /일반형 하루 예산/.test(claim.claimText))).toHaveLength(1);
+    expect(claims.filter((claim) => /여유형 하루 예산/.test(claim.claimText))).toHaveLength(1);
+    expect(new Set(claims
+      .filter((claim) => /(?:절약|일반|여유)형 하루 예산/.test(claim.claimText))
+      .map((claim) => claim.claimFingerprint)).size).toBe(3);
+  });
+
   it('persists one claim with both sources when grounded pages repeat the same numeric fact', () => {
     const result = buildBlogResearchBundleFromGrounding({
       contentKey: 'danang-hai-van-pass',
