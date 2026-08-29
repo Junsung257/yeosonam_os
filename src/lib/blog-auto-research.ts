@@ -1638,11 +1638,98 @@ export function augmentGuamFoodBudgetPayload(
       return false;
     }
   });
-  if (pageIndex < 0) return payload;
-  const breakfastMatch = pages[pageIndex]!.text.match(
+  const breakfastMatch = pageIndex >= 0 ? pages[pageIndex]!.text.match(
     /Breakfast[\s\S]{0,500}?Corned Beef Fried Rice\s*\$14\.50/i,
-  );
-  if (!breakfastMatch) return payload;
+  ) : null;
+  if (!breakfastMatch) {
+    const rootzPageIndex = pages.findIndex((page) => {
+      try {
+        const url = new URL(page.url);
+        return url.hostname.toLowerCase().replace(/^www\./, '') === 'rootzguam.com'
+          && /^\/menu\/?$/.test(url.pathname);
+      } catch {
+        return false;
+      }
+    });
+    const rootzBreakfastMatch = rootzPageIndex >= 0
+      ? pages[rootzPageIndex]!.text.match(
+          /Sunday Brunch Feasts[\s\S]{0,160}?\$55\.00\s*adult/i,
+        )
+      : null;
+    if (!rootzBreakfastMatch) return payload;
+
+    const sourceDrafts = [...(payload.sources ?? [])];
+    const matchingSourceIndex = sourceDrafts.findIndex(
+      (source) => Number(source.groundingChunkIndex) === rootzPageIndex,
+    );
+    const matchingSource = matchingSourceIndex >= 0
+      ? sourceDrafts.splice(matchingSourceIndex, 1)[0]
+      : null;
+    const sourceKeyValue = clean(matchingSource?.sourceKey) || 'rootz-guam-menu';
+    const evidenceKey = 'rootz-sunday-brunch-breakfast';
+    const evidenceDrafts = (payload.evidence ?? []).filter(
+      (evidence) => clean(evidence.evidenceKey) !== evidenceKey,
+    );
+    const claimDrafts = (payload.claims ?? []).filter((claim) => {
+      const statement = clean(claim.claimText);
+      return !normalizeList(claim.evidenceKeys).includes(evidenceKey)
+        && !(
+          /rootz|hill/i.test(statement)
+          && /brunch|브런치|아침|조식/i.test(statement)
+          && /55(?:\.00)?/.test(clean(claim.normalizedValue))
+        );
+    });
+    evidenceDrafts.unshift({
+      evidenceKey,
+      sourceKey: sourceKeyValue,
+      excerpt: "Rootz Hill's 괌 일요일 브런치 성인 가격은 확인일 기준 55.00 USD이다.",
+      sourceLocator: 'Sunday Brunch Feasts',
+      claimType: 'price',
+      riskLevel: 'MEDIUM',
+      country: '괌',
+      destination,
+      applicableTo: `${destination} 아침·브런치 식사 여행자`,
+      normalizedValue: '55.00',
+      unit: '성인 1인',
+      currency: 'USD',
+      conditions: ['일요일 브런치', '확인일 기준 메뉴', '방문 전 가격·제공 여부 재확인'],
+    });
+    claimDrafts.unshift({
+      claimText: "[아침] Rootz Hill's 괌의 일요일 브런치 성인 가격은 55.00 USD이다.",
+      claimType: 'price',
+      riskLevel: 'MEDIUM',
+      evidenceKeys: [evidenceKey],
+      normalizedValue: '55.00',
+      unit: '성인 1인',
+      currency: 'USD',
+    });
+    const selectedClaims = claimDrafts.slice(0, MAX_RESEARCH_CLAIMS);
+    const selectedEvidenceKeys = new Set(
+      selectedClaims.flatMap((claim) => normalizeList(claim.evidenceKeys)),
+    );
+    const selectedEvidence = evidenceDrafts
+      .filter((evidence) => selectedEvidenceKeys.has(clean(evidence.evidenceKey)))
+      .slice(0, MAX_RESEARCH_EVIDENCE);
+    const selectedSourceKeys = new Set(selectedEvidence.map((evidence) => clean(evidence.sourceKey)));
+    const rootzSource: GroundedSourceDraft = {
+      ...matchingSource,
+      sourceKey: sourceKeyValue,
+      groundingChunkIndex: rootzPageIndex,
+      publisher: clean(matchingSource?.publisher) || "Rootz Hill's Grillhouse",
+      sourceType: 'reputable_price_source',
+      claimTypes: ['price'],
+      country: clean(matchingSource?.country) || '괌',
+      destination,
+    };
+    return {
+      ...payload,
+      sources: [rootzSource, ...sourceDrafts]
+        .filter((source) => selectedSourceKeys.has(clean(source.sourceKey)))
+        .slice(0, MAX_GROUNDING_SOURCES),
+      evidence: selectedEvidence,
+      claims: selectedClaims,
+    };
+  }
   const coffeeMatch = pages[pageIndex]!.text.match(
     /Beverages[\s\S]{0,600}?Coffee\*\s*\$2\.50/i,
   );

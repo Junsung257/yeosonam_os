@@ -817,6 +817,50 @@ describe('augmentGuamFoodBudgetPayload', () => {
     expect(breakfastClaims).toHaveLength(1);
     expect(breakfastClaims[0]?.evidenceKeys).toEqual(['chin-fe-breakfast-corned-beef-rice']);
   });
+
+  it('uses the reviewed Rootz Sunday brunch when the Chin Fe breakfast body is unavailable', () => {
+    const payload = augmentGuamFoodBudgetPayload([
+      {
+        url: 'https://chinfe.menuguam.com/',
+        title: 'House of Chin Fe menu',
+        text: 'Menu body unavailable from this runtime',
+      },
+      {
+        url: 'https://www.rootzguam.com/menu',
+        title: "Rootz Hill's Grillhouse menu",
+        text: 'Sunday Brunch Feasts $55.00 adult / $30.00 child',
+      },
+    ], '괌', {
+      sources: [{
+        sourceKey: 'rootz-model',
+        groundingChunkIndex: 1,
+        publisher: "Rootz Hill's Grillhouse",
+        sourceType: 'reputable_price_source',
+      }],
+      evidence: [{
+        evidenceKey: 'model-brunch',
+        sourceKey: 'rootz-model',
+        excerpt: 'Sunday Brunch Feasts $55.00 adult / $30.00 child',
+        claimType: 'price',
+        normalizedValue: '55',
+        currency: 'USD',
+      }],
+      claims: [{
+        claimText: "Rootz Hill's Sunday Brunch Feasts 성인 가격은 55 USD이다.",
+        claimType: 'price',
+        evidenceKeys: ['model-brunch'],
+        normalizedValue: '55',
+        currency: 'USD',
+      }],
+    });
+    const breakfastClaims = payload.claims?.filter((claim) => /아침/.test(claim.claimText ?? '')) ?? [];
+
+    expect(breakfastClaims).toHaveLength(1);
+    expect(breakfastClaims[0]?.evidenceKeys).toEqual(['rootz-sunday-brunch-breakfast']);
+    expect(payload.evidence?.some((evidence) =>
+      evidence.evidenceKey === 'rootz-sunday-brunch-breakfast')).toBe(true);
+    expect(payload.sources?.some((source) => source.sourceKey === 'rootz-model')).toBe(true);
+  });
 });
 
 describe('augmentGuamFamilyMealPayload', () => {
