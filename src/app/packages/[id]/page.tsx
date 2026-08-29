@@ -25,12 +25,18 @@ import { formatProductTypeLabel } from '@/lib/product-type-label';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { runOptionalSupabaseQuery } from '@/lib/supabase-query-guard';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
-import { fetchPublicPackageSnapshotById, getCurrentPublicPackage } from '@/lib/package-publication/repository';
+import {
+  fetchPublicPackageSnapshotById,
+  resolveCurrentPublicPackage,
+} from '@/lib/package-publication/repository';
+import { ProductReviewNotice } from '@/components/product-review-notice';
 import { verifyProductRegistrationV6ProofToken } from '@/lib/product-registration-v6/proof-token';
 import { currentProductRegistrationRendererBuildId } from '@/lib/product-registration-v6/renderer-build';
 import {
-  listCurrentPublicPackageCardSnapshots,
-} from '@/lib/package-publication/snapshot-projection';
+  getPublicCatalogDetail,
+  listPublicCatalog,
+  type PublicCatalogDetail,
+} from '@/lib/public-catalog';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { formatKstDate, isUpcomingKstDate } from '@/lib/kst-date';
@@ -51,6 +57,28 @@ function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
 }
 
+function buildUnderReviewMetadata(canonical: string): Metadata {
+  return {
+    title: '상품 재검수 안내 | 여소남',
+    description: '상품 정보를 재검수하고 있습니다. 정확한 내용은 상담을 통해 안내해 드립니다.',
+    alternates: { canonical },
+    robots: { index: false, follow: false, nocache: true },
+    openGraph: {
+      title: '상품 재검수 안내 | 여소남',
+      description: '상품 정보를 재검수하고 있습니다.',
+      url: canonical,
+      type: 'website',
+      images: [],
+    },
+    twitter: {
+      card: 'summary',
+      title: '상품 재검수 안내 | 여소남',
+      description: '상품 정보를 재검수하고 있습니다.',
+      images: [],
+    },
+  };
+}
+
 async function loadV6ProofSnapshot(
   sb: SupabaseClient,
   packageId: string,
@@ -59,7 +87,7 @@ async function loadV6ProofSnapshot(
   if (!snapshotId) return null;
   const token = (await headers()).get('x-product-registration-v6-proof-token');
   if (!token) return null;
-  const snapshot = await fetchPublicPackageSnapshotById(sb, snapshotId).catch(() => null);
+  const snapshot = await fetchPublicPackageSnapshotById(sb, snapshotId, { allowProofCopyIssues: true }).catch(() => null);
   if (!snapshot || snapshot.row.package_id !== packageId) return null;
   return verifyProductRegistrationV6ProofToken(token, {
     snapshotId,
@@ -75,6 +103,22 @@ function getNonEmptyString(value: unknown): string | null {
 function getFiniteNumber(value: unknown): number | undefined {
   const normalized = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(normalized) ? normalized : undefined;
+}
+
+function catalogDetailToSnapshot(detail: PublicCatalogDetail) {
+  return {
+    row: {
+      package_id: detail.item.id,
+      canonical_revision_id: detail.lineage.revisionId,
+      snapshot_id: detail.lineage.snapshotId,
+      snapshot_hash: detail.lineage.snapshotHash,
+      pointer_version: detail.lineage.pointerVersion,
+      package_revision: getFiniteNumber(detail.snapshot.package_revision) ?? 1,
+      renderer_build_id: getNonEmptyString(detail.snapshot.renderer_build_id)
+        ?? currentProductRegistrationRendererBuildId(),
+    },
+    package: detail.package,
+  };
 }
 
 function waitForPackageDetailRetry(ms: number) {
@@ -233,16 +277,25 @@ export async function generateMetadata({
     const proofSnapshotId = getRouteParam(resolvedSearchParams.__proof_snapshot);
     const v6ProofSnapshot = await loadV6ProofSnapshot(sb, id, proofSnapshotId || null);
     proofSnapshotFound = Boolean(v6ProofSnapshot);
-    const publicSnapshot = v6ProofSnapshot ?? await getCurrentPublicPackage(sb, {
-        tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
-        packageRef: id,
-        channel: 'customer',
-        locale: 'ko-KR',
-      }).catch(() => null);
+    const routeResolution = v6ProofSnapshot
+      ? null
+      : await resolveCurrentPublicPackage(sb, {
+          tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+          packageRef: id,
+          channel: 'customer',
+          locale: 'ko-KR',
+        }).catch(() => ({ state: 'UNAVAILABLE' as const }));
+    if (routeResolution?.state === 'UNDER_REVIEW') return buildUnderReviewMetadata(canonical);
+    const catalogDetail = routeResolution?.state === 'PUBLIC'
+      ? await getPublicCatalogDetail(sb, id)
+      : null;
+    const publicSnapshot = v6ProofSnapshot
+      ?? (catalogDetail ? catalogDetailToSnapshot(catalogDetail) : null);
     rawData = publicSnapshot?.package as MetadataPackageRow | null;
     publicSnapshotFound = Boolean(publicSnapshot);
     publicSnapshotHash = publicSnapshot?.row.snapshot_hash;
-    rendererBuildId = currentProductRegistrationRendererBuildId();
+    rendererBuildId = (publicSnapshot?.row as { renderer_build_id?: string | null } | undefined)?.renderer_build_id
+      ?? currentProductRegistrationRendererBuildId();
     canonicalRevisionId = publicSnapshot?.row.canonical_revision_id ?? undefined;
     data = (publicSnapshot?.package as MetadataPackageRow | undefined) ?? rawData;
   } catch {
@@ -348,14 +401,26 @@ export default async function PackageDetailPage({
 
   // ACL: 怨좉컼 ?몄텧 ?섏씠吏?먯꽌???대??꾨뱶(net_price/selling_price/margin_rate) SELECT 湲덉?.
   // ?대뱶誘?UI??/api/packages GET?쇰줈 蹂꾨룄 議고쉶?섎ŉ 嫄곌린?쒕뒗 ?먭? ?뺣낫媛 ?좎??쒕떎.
-  const pointerSnapshot = !allowInternalProof
-    ? await getCurrentPublicPackage(sb, {
-      tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
-      packageRef: id,
-      channel: 'customer',
-      locale: 'ko-KR',
-    }).catch(() => null)
+  const routeResolution = !allowInternalProof
+    ? await resolveCurrentPublicPackage(sb, {
+        tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+        packageRef: id,
+        channel: 'customer',
+        locale: 'ko-KR',
+      }).catch(() => ({ state: 'UNAVAILABLE' as const }))
     : null;
+  if (routeResolution?.state === 'UNDER_REVIEW') return <ProductReviewNotice />;
+  if (routeResolution?.state === 'UNAVAILABLE') throw new Error('PACKAGE_VISIBILITY_LOOKUP_UNAVAILABLE');
+  const catalogDetail = routeResolution?.state === 'PUBLIC'
+    ? await getPublicCatalogDetail(sb, id).catch((error) => {
+        console.error('[packages/detail] public catalog lookup unavailable', {
+          id,
+          message: error instanceof Error ? error.message : String(error),
+        });
+        throw new Error('PACKAGE_CATALOG_LOOKUP_UNAVAILABLE');
+      })
+    : null;
+  const pointerSnapshot = catalogDetail ? catalogDetailToSnapshot(catalogDetail) : null;
   const rawPkgResult: { data: Record<string, unknown> | null; error: unknown } = v6ProofSnapshot
     ? { data: v6ProofSnapshot.package, error: null }
     : pointerSnapshot
@@ -402,12 +467,24 @@ export default async function PackageDetailPage({
   }
   let publishedCatalogPromise: Promise<Record<string, unknown>[]> | null = null;
   const loadPublishedCatalog = () => {
-    publishedCatalogPromise ??= listCurrentPublicPackageCardSnapshots(sb, {
-      tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
-      channel: 'customer',
-      locale: 'ko-KR',
-      limit: 5_000,
-    });
+    publishedCatalogPromise ??= listPublicCatalog(sb, { limit: 5_000 }).then((items) => items.map((item) => ({
+      id: item.id,
+      title: item.title,
+      destination: item.destination,
+      country: item.country,
+      duration: item.duration,
+      nights: item.nights,
+      price: item.price,
+      product_type: item.productKind,
+      departure_airport: item.departureAirport,
+      hero_image_url: item.heroImage,
+      product_highlights: item.badges,
+      price_dates: item.availableDates.map((entry) => ({
+        date: entry.date,
+        price: entry.price ?? item.price ?? 0,
+        confirmed: entry.confirmed ?? false,
+      })),
+    })));
     return publishedCatalogPromise;
   };
 

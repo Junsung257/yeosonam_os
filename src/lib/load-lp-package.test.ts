@@ -17,6 +17,24 @@ vi.mock('@/lib/supabase', () => ({
   isSupabaseConfigured: true,
   supabaseAdmin: {
     rpc(name: string) {
+      if (name === 'get_product_registration_customer_route_state') {
+        const publicAvailable = Boolean(
+          mocks.publicationPointerRow
+          && mocks.publicSnapshotRow
+          && mocks.publicationPointerRow.state === 'published',
+        );
+        return Promise.resolve({
+          data: publicAvailable ? {
+            state: 'PUBLIC',
+            catalog_product_id: 'catalog-product-test',
+            package_id: 'pkg-1',
+            revision_id: 'rev-1',
+            snapshot_id: 'snap-1',
+            pointer_version: 1,
+          } : { state: 'NOT_FOUND' },
+          error: null,
+        });
+      }
       if (name === 'resolve_product_registration_public_route') {
         return Promise.resolve({
           data: {
@@ -32,6 +50,65 @@ vi.mock('@/lib/supabase', () => ({
       throw new Error(`unexpected rpc ${name}`);
     },
     from(table: string) {
+      if (table === 'public_catalog_view') {
+        const snapshot = mocks.publicSnapshotRow;
+        const snapshotJson = snapshot?.snapshot_json
+          && typeof snapshot.snapshot_json === 'object'
+          && !Array.isArray(snapshot.snapshot_json)
+          ? snapshot.snapshot_json as Record<string, unknown>
+          : {};
+        const publicCatalogRow = snapshot && mocks.publicationPointerRow ? {
+          tenant_id: '00000000-0000-4000-8000-000000000000',
+          id: 'pkg-1',
+          catalog_product_id: 'catalog-product-test',
+          slug: 'pkg-1',
+          product_kind: 'package',
+          title: (snapshot.card_projection as Record<string, unknown> | undefined)?.title
+            ?? (snapshotJson.package as Record<string, unknown> | undefined)?.title
+            ?? 'Snapshot customer title',
+          destination: '다낭',
+          country: '베트남',
+          departure_airport: '김해국제공항',
+          duration: 4,
+          nights: 3,
+          price: 1230000,
+          price_display: '1,230,000원부터',
+          hero_image: 'https://cdn.yeosonam.com/public/pkg-1-hero.jpg',
+          badges: [],
+          available_dates: [{ date: '2026-10-12', price: 1230000, confirmed: true }],
+          revision_id: snapshot.canonical_revision_id ?? 'rev-1',
+          snapshot_id: snapshot.id,
+          snapshot_hash: snapshot.snapshot_hash,
+          pointer_version: 1,
+          booking_mode: 'inquiry',
+          last_verified_at: snapshot.created_at,
+          catalog_generation_id: 'catalog-generation-1',
+          minimum_departure_pax: 8,
+          lodging_state: 'confirmed',
+          shopping_count: 1,
+          mandatory_local_costs: [],
+          mandatory_local_cost_krw: 0,
+          itinerary_intensity: '보통',
+          companion_fit: '부모님과 함께',
+          copy_quality_score: 90,
+          media_readiness_state: 'verified_documentary',
+          public_detail: {
+            ...snapshotJson,
+            package_revision: snapshot.package_revision,
+            card_projection: snapshot.card_projection,
+            lp_projection: snapshot.lp_projection,
+            route_text_dump: snapshot.route_text_dump,
+            renderer_build_id: snapshot.renderer_build_id,
+          },
+        } : null;
+        const query = {
+          select() { return query; },
+          eq() { return query; },
+          limit() { return query; },
+          async maybeSingle() { return { data: publicCatalogRow, error: null }; },
+        };
+        return query;
+      }
       if (table === 'travel_packages') {
         const query = {
           select() {
@@ -444,7 +521,7 @@ premium villa golf package 3n5d
     expect(mocks.mappedInput).toMatchObject({
       id: 'pkg-1',
       title: 'Snapshot customer title',
-      _lp_projection: {},
+      _lp_projection: expect.objectContaining({ summary: '고객용 요약' }),
       _public_snapshot: expect.objectContaining({ snapshot_hash: 'snapshot-hash' }),
     });
   });

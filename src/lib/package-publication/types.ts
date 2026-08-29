@@ -38,7 +38,7 @@ export type PublicPackageMedia = {
   license_url: string | null;
 };
 
-export const PUBLIC_CUSTOMER_STATES: readonly PublicationState[] = ['approved', 'published'];
+export const PUBLIC_CUSTOMER_STATES: readonly PublicationState[] = ['published'];
 
 export type PublishBlockerCode =
   | 'audit_query_failed'
@@ -104,6 +104,6 @@ export type PublicPackageSnapshot = {
 
 export type OptionalTourStatus = 'none_explicit' | 'paid_options' | 'unknown' | 'polluted';
 
-export function isPublicPublicationState(value: string | null | undefined): value is 'approved' | 'published' {
-  return value === 'approved' || value === 'published';
+export function isPublicPublicationState(value: string | null | undefined): value is 'published' {
+  return value === 'published';
 }

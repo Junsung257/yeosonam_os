@@ -13,22 +13,24 @@ function pageSourceWithoutComments() {
 describe('package customer detail page publication contract', () => {
   it('uses the exact snapshot before any customer render and never reads mutable facts for a V6 proof', () => {
     const source = pageSourceWithoutComments();
-    const pointerIndex = source.indexOf('const pointerSnapshot = !allowInternalProof');
+    const pointerIndex = source.indexOf('const routeResolution = !allowInternalProof');
     const rawResultIndex = source.indexOf('const rawPkgResult', pointerIndex);
     const snapshotIndex = source.indexOf('const publicSnapshot = v6ProofSnapshot ?? pointerSnapshot', rawResultIndex);
+    const notFoundIndex = source.indexOf('if (!rawPkg) {', rawResultIndex);
     const pkgIndex = source.indexOf('const pkg = publicSnapshot?.package', snapshotIndex);
-    const notFoundIndex = source.indexOf('if (!pkg) {', pkgIndex);
     const renderStartIndex = source.indexOf('let matchQuery = sb.from', notFoundIndex);
 
     expect(pointerIndex).toBeGreaterThanOrEqual(0);
     expect(rawResultIndex).toBeGreaterThan(pointerIndex);
     expect(snapshotIndex).toBeGreaterThan(rawResultIndex);
+    expect(notFoundIndex).toBeGreaterThan(rawResultIndex);
     expect(pkgIndex).toBeGreaterThan(snapshotIndex);
-    expect(notFoundIndex).toBeGreaterThan(pkgIndex);
     expect(renderStartIndex).toBeGreaterThan(notFoundIndex);
     expect(source).not.toContain("sb.from('travel_packages')");
     expect(source).not.toContain('isInternalRenderProofRequest');
     expect(source).toContain('verifyProductRegistrationV6ProofToken');
+    expect(source).toContain('getPublicCatalogDetail');
+    expect(source).toContain('catalogDetailToSnapshot');
   });
 
   it('does not fall back to raw sibling package titles for customer option cards', () => {

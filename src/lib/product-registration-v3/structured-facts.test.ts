@@ -15,6 +15,25 @@ describe('product-registration-v3 structured facts', () => {
     expect(result.standardNotices[0]?.standard_text).toBe('가이드/기사 팁은 1인 기준 $50 현지 지불입니다.');
   });
 
+  it('does not turn a conditional no-shopping quote into a product contradiction', () => {
+    const rawText = [
+      '노옵션노팁 쇼핑1회',
+      '※노쇼핑 견적시 쇼핑일정없음',
+    ].join('\n');
+    const result = extractStructuredFactsFromSupplierText({ rawText, lines: createSourceLineIndex(rawText) });
+    const shoppingFacts = result.structuredFacts.filter(row => row.category === 'shopping_policy');
+    expect(shoppingFacts.some(row => row.values.none === true)).toBe(false);
+  });
+
+  it('does not mark a conditional no-shopping price as a no-shopping product', () => {
+    const rawText = '노옵션 진행시 성인 100,000원 / 노쇼핑 진행시 성인 100,000원 / 쇼핑센터 3회';
+    const result = extractStructuredFactsFromSupplierText({ rawText, lines: createSourceLineIndex(rawText) });
+    const shoppingFacts = result.structuredFacts.filter(row => row.category === 'shopping_policy');
+
+    expect(shoppingFacts.some(row => row.values.none === true)).toBe(false);
+    expect(result.standardNotices.some(row => row.template_key === 'shopping.none')).toBe(false);
+  });
+
   it('extracts trailing-dollar guide tip amount as source-backed auto-clean evidence', () => {
     const rawText = '가이드/기사경비 50$ ,개인 비용, 매너팁';
     const result = extractStructuredFactsFromSupplierText({ rawText, lines: createSourceLineIndex(rawText) });
@@ -38,6 +57,14 @@ describe('product-registration-v3 structured facts', () => {
     expect(result.standardNotices[0]?.standard_text).toBe('가이드/기사 팁은 포함되어 있습니다.');
   });
 
+  it('does not confuse a separate massage tip with an included guide tip', () => {
+    const rawText = '포함사항: 왕복항공료, 호텔, 차량, 가이드, 전통마사지 2시간(팁별도)';
+    const result = extractStructuredFactsFromSupplierText({ rawText, lines: createSourceLineIndex(rawText) });
+
+    expect(result.structuredFacts.some(row => row.category === 'guide_tip')).toBe(false);
+    expect(result.standardNotices.some(row => row.template_key === 'guide.tip_included')).toBe(false);
+  });
+
   it('keeps included guide tip evidence authoritative over amount-less derived tip noise', () => {
     const rawText = [
       '포함사항: 기사/가이드팁 포함, 노팁 상품',
@@ -53,6 +80,15 @@ describe('product-registration-v3 structured facts', () => {
     expect(guideTips[0]?.values).toMatchObject({ included: true, amount: null });
     expect(guideTips[0]?.review_status).toBe('auto_clean');
     expect(reviewNeededNotices).toHaveLength(0);
+  });
+
+  it('treats a leading-star exclusion row as a local guide-tip notice', () => {
+    const rawText = '* 불포함 : 기사&기사팁[3박-$30/4박-$40], 개인경비';
+    const result = extractStructuredFactsFromSupplierText({ rawText, lines: createSourceLineIndex(rawText) });
+    const guideTip = result.structuredFacts.find(row => row.category === 'guide_tip');
+
+    expect(guideTip?.values).toMatchObject({ included: false, amount: 30, currency: 'USD' });
+    expect(result.standardNotices.some(notice => notice.template_key === 'guide.tip_included')).toBe(false);
   });
 
   it('keeps explicit amount-less local guide tip conflicts blocked even when included evidence exists', () => {
@@ -226,7 +262,7 @@ describe('product-registration-v3 structured facts', () => {
     expect(fact?.standard_text).toContain('확인');
   });
 
-  it('keeps high-risk missing guide tip values blocked while no-tip stays publishable', async () => {
+  it('degrades high-risk missing guide tip values to source-bound inquiry while no-tip stays publishable', async () => {
     const missing = await runProductRegistrationV3([
       '상품: Guide Tip Missing 3D',
       '가격: 599,000원 / 최소출발 4명',
@@ -237,8 +273,8 @@ describe('product-registration-v3 structured facts', () => {
       '포함 호텔 식사',
       '불포함 개인경비',
     ].join('\n'));
-    expect(missing.gate_result.status).toBe('blocked');
-    expect(missing.gate_result.checks.some(check => check.id.endsWith('high_risk_structured_fact_values') && check.status === 'fail')).toBe(true);
+    expect(missing.gate_result.checks.some(check => check.id.endsWith('high_risk_structured_fact_values') && check.status === 'fail')).toBe(false);
+    expect(missing.ledger.variants[0]?.structured_facts.find(fact => fact.category === 'guide_tip')?.standard_text).toContain('예약 시 확인');
 
     const noTip = await runProductRegistrationV3([
       '상품: No Tip 3D',
@@ -279,6 +315,7 @@ describe('product-registration-v3 structured facts', () => {
     expect(fact?.values).toMatchObject({ included: false, amount: null, currency: null });
     expect(notice?.values.amount).toBeNull();
     expect(notice?.review_status).toBe('review_needed');
+    expect(notice?.standard_text).toContain('예약 시 확인');
   });
 
   it('does not apply a massage-tip exclusion to an included guide expense in another clause', () => {

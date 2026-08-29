@@ -22,6 +22,12 @@ describe('V6 domain projections', () => {
       },
     });
     expect(result.departures).toHaveLength(1);
+    expect(result.departures[0]).toMatchObject({
+      source_price_kind: 'SELLING',
+      source_amount: 999000,
+      net_price: null,
+      adult_selling_price: 999000,
+    });
     expect(result.transportSegments[0]).toMatchObject({
       carrier_code: 'BX',
       service_number: 'BX321',
@@ -34,12 +40,103 @@ describe('V6 domain projections', () => {
     expect(result.golfRounds[0]).toMatchObject({ holes: 18, tee_time: '08:00' });
   });
 
+  it('applies margin only when the source explicitly identifies a NET price', () => {
+    const result = buildProductRegistrationV6DomainProjection({
+      packageId: 'package-1',
+      canonicalPayload: {
+        sections: [{ v3: { ledger: { variants: [{
+          variant_key: 'v1',
+          price_calendar: [{ date: '2026-11-01', net_price: 900000, commission_rate: 0.1 }],
+        }] } } }],
+      },
+    });
+    expect(result.departures[0]).toMatchObject({
+      source_price_kind: 'NET',
+      source_amount: 900000,
+      net_price: 900000,
+      adult_selling_price: 1000000,
+      commission_rate_applied: 10,
+    });
+  });
+
+  it('never invents a NET value from a source selling price or a request-only row', () => {
+    const result = buildProductRegistrationV6DomainProjection({
+      packageId: 'package-1',
+      canonicalPayload: {
+        sections: [{ v3: { ledger: { variants: [{
+          variant_key: 'v1',
+          price_calendar: [
+            { date: '2026-11-01', selling_price: 990000 },
+            { date: '2026-11-02', label: '가격 문의' },
+          ],
+        }] } } }],
+      },
+    });
+    expect(result.departures).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source_price_kind: 'SELLING', source_amount: 990000, net_price: null, adult_selling_price: 990000 }),
+      expect.objectContaining({ source_price_kind: 'REQUEST_ONLY', source_amount: null, net_price: null, adult_selling_price: null }),
+    ]));
+  });
+
   it('does not turn optional golf text into a core round', () => {
     const result = buildProductRegistrationV6DomainProjection({
       packageId: 'package-1',
       canonicalPayload: { sections: [{ v3: { ledger: { variants: [{ days: [{ day: 1, events: [{ type: 'option', raw_text: '선택 골프 18홀 추가 비용' }] }] }] } } }] },
     });
     expect(result.golfRounds).toHaveLength(0);
+  });
+
+  it('deduplicates repeated departure dates while retaining all evidence anchors', () => {
+    const result = buildProductRegistrationV6DomainProjection({
+      packageId: 'package-1',
+      canonicalPayload: {
+        sections: [{
+          v3: { ledger: { variants: [{
+            variant_key: 'v1',
+            price_calendar: [
+              { date: '2026-10-01', amount: 599000, evidence: { node: 'p1' } },
+              { date: '2026-10-01', amount: 599000, evidence: { node: 'p2' } },
+            ],
+          }] } },
+        }],
+      },
+    });
+
+    expect(result.departures).toHaveLength(1);
+    expect(result.departures[0]?.evidence).toEqual([{ node: 'p1' }, { node: 'p2' }]);
+  });
+
+  it('keeps exact-date special pricing separate from booking availability', () => {
+    const result = buildProductRegistrationV6DomainProjection({
+      packageId: 'package-1',
+      canonicalPayload: {
+        sections: [{ v3: { ledger: { variants: [{
+          variant_key: 'golf-v1',
+          price_calendar: [
+            { date: '2026-10-30', amount: 869000, label: '별도문의', source_labels: ['제외일자'] },
+            { date: '2026-10-31', amount: '85,9000', label: '별도문의' },
+          ],
+        }] } } }],
+      },
+    });
+
+    expect(result.departures).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        departure_date: '2026-10-30',
+        adult_selling_price: 869000,
+        pricing_state: 'PRICED',
+        booking_state: 'MANUAL_CONFIRMATION_REQUIRED',
+        price_rule_type: 'EXACT_DATE_OVERRIDE',
+        sale_state: 'request',
+      }),
+      expect.objectContaining({
+        departure_date: '2026-10-31',
+        adult_selling_price: null,
+        raw_amount: '85,9000',
+        pricing_state: 'CONFLICTING',
+        booking_state: 'MANUAL_CONFIRMATION_REQUIRED',
+      }),
+    ]));
   });
 
   it('treats supplier placeholders as unconfirmed lodging', () => {

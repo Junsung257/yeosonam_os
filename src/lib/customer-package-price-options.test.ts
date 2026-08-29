@@ -46,7 +46,7 @@ describe('customer package price options', () => {
   it('loads customer prices from the immutable snapshot instead of raw product price rows', () => {
     const pageSource = readFileSync(join(process.cwd(), 'src/app/packages/[id]/page.tsx'), 'utf8');
 
-    expect(pageSource).toContain('getCurrentPublicPackage');
+    expect(pageSource).toContain('resolveCurrentPublicPackage');
     expect(pageSource).not.toMatch(/from\('product_prices'\)/);
     expect(pageSource).not.toMatch(/from\('product_prices'\)[\s\S]{0,240}\.select\([^)]*net_price/);
   });

@@ -16,7 +16,7 @@ import { getLatestApprovedMediaAsset } from '@/lib/media-generation/persistence'
 import { getDestinationUrl } from '@/lib/regions';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { runOptionalSupabaseQuery } from '@/lib/supabase-query-guard';
-import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { listPublicCatalog, publicCatalogItemToLegacyCard } from '@/lib/public-catalog';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
@@ -100,6 +100,7 @@ interface RankingPkg extends AggPkgRow {
   nights: number | null;
   product_type: string | null;
   ticketing_deadline: string | null;
+  hero_image_url?: string | null;
 }
 
 function computeRankingMinPrice(p: RankingPkg, today: string): number {
@@ -129,7 +130,8 @@ function buildRankingItemsUnique(
     .slice(0, 7);
 
   return list.map((p) => {
-    let image: string | null = null;
+    let image: string | null = p.hero_image_url?.trim() || null;
+    if (image) usedUrls.add(image);
 
     // attractions 매칭으로 이미지 찾기
     if (!image) {
@@ -178,8 +180,8 @@ export default async function HomePage() {
 
   // 5개 쿼리 동시 실행 (ratingAgg를 합쳐 총 왕복 1회로 절감)
   const [publicCatalog, attrResult, approvedCampaignHero] = isSupabaseConfigured && !skipPublicDbReads ? await Promise.all([
-    listCurrentPublicPackageCardSnapshots(sb, { limit: 2_000 }).catch((error) => {
-      console.warn('[home] pointer-only package catalog unavailable; hiding package-derived sections', error);
+    listPublicCatalog(sb, { limit: 2_000 }).then(rows => rows.map(publicCatalogItemToLegacyCard)).catch((error) => {
+      console.warn('[home] exact public catalog unavailable; hiding package-derived sections', error);
       return [];
     }),
     runOptionalSupabaseQuery(

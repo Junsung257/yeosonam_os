@@ -7,19 +7,13 @@ function homeSource(): string {
 }
 
 describe('home public package data boundary', () => {
-  it('builds package-derived home sections from publication pointers only', () => {
+  it('builds package-derived home sections from the exact public catalog only', () => {
     const source = homeSource();
-    const pointerCatalogIndex = source.indexOf('listCurrentPublicPackageCardSnapshots');
-    const aggregateMergeIndex = source.indexOf('const allPkgs =');
-    const rankingMergeIndex = source.indexOf('const rankingPkgs =');
-    const destinationMapIndex = source.indexOf('const destMap');
-    const rankingItemsIndex = source.indexOf('const overseas: RankingItem[]');
+    const catalogIndex = source.indexOf('listPublicCatalog');
+    const cardIndex = source.indexOf('rows.map(publicCatalogItemToLegacyCard)');
 
-    expect(source).toContain('listCurrentPublicPackageCardSnapshots');
+    expect(source).toContain('listPublicCatalog');
     expect(source).not.toContain("from('travel_packages')");
-    expect(aggregateMergeIndex).toBeGreaterThan(pointerCatalogIndex);
-    expect(rankingMergeIndex).toBeGreaterThan(pointerCatalogIndex);
-    expect(destinationMapIndex).toBeGreaterThan(aggregateMergeIndex);
-    expect(rankingItemsIndex).toBeGreaterThan(rankingMergeIndex);
+    expect(cardIndex).toBeGreaterThan(catalogIndex);
   });
 });

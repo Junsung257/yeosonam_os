@@ -217,7 +217,13 @@ export interface V3MatchSummary {
   attraction_unmatched_count: number;
   option_review_count: number;
   shopping_count: number;
-  unmatched: Array<{ raw_text: string; day_number: number | null; evidence: V3Evidence }>;
+  unmatched: Array<{
+    raw_text: string;
+    day_number: number | null;
+    evidence: V3Evidence;
+    review_candidates?: Array<{ id: string | null; name: string; score: number }>;
+    ambiguity_code?: 'ATTRACTION_MATCH_AMBIGUOUS' | 'ATTRACTION_NOT_FOUND';
+  }>;
   entity_summary: V3EntitySummary;
 }
 

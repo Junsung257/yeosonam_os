@@ -11,6 +11,9 @@ export type MobileProofRefreshCandidateRow = {
   updated_at?: string | null;
   package_revision?: string | number | null;
   audit_report?: unknown;
+  immutable_proof?: unknown;
+  immutable_snapshot_hash?: string | null;
+  immutable_renderer_build_id?: string | null;
 };
 
 export type MobileProofRefreshReason =
@@ -94,12 +97,15 @@ export function classifyMobileProofRefreshCandidate(
       package_revision: expectedRevision,
     }).snapshotHash
     : null;
+  const immutableProof = row.immutable_proof && typeof row.immutable_proof === 'object'
+    ? { mobile_browser_proof: row.immutable_proof }
+    : null;
   const proof = evaluateCustomerMobileProof({
-    auditReport: row.audit_report,
+    auditReport: immutableProof ?? row.audit_report,
     packageUpdatedAt: row.updated_at ?? null,
     packageRevision: expectedRevision,
-    publicSnapshotHash: expectedSnapshotHash,
-    appBuildId: process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_PUBLIC_BUILD_ID ?? null,
+    publicSnapshotHash: row.immutable_snapshot_hash ?? expectedSnapshotHash,
+    appBuildId: row.immutable_renderer_build_id ?? process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_PUBLIC_BUILD_ID ?? null,
   });
   if (proof.ok) return null;
   const reason = reasonFromDetail(proof.reason);

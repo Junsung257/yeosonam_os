@@ -210,6 +210,33 @@ describe('DocumentIR table-grid itinerary', () => {
     expect(result?.days[0]?.hotel).toMatchObject({ raw_text: '5성 – 호라이즌 또는 투이블루 동급' });
   });
 
+  it('accepts the spaced 세부 여행 일정 header used by supplier HWP tables', () => {
+    const cells = [
+      cell('spaced-h0', 0, 0, '일자'), cell('spaced-h1', 0, 1, '지역'),
+      cell('spaced-h2', 0, 2, '교통편'), cell('spaced-h3', 0, 3, '시간'),
+      cell('spaced-h4', 0, 4, '세부 여행 일정'), cell('spaced-h5', 0, 5, '식사'),
+      cell('spaced-d1', 1, 0, '제1일'), cell('spaced-r1', 1, 1, '부산\n호치민'),
+      cell('spaced-f1', 1, 2, 'VN423'), cell('spaced-t1', 1, 3, '10:00\n12:55'),
+      cell('spaced-s1', 1, 4, '부산 출발\n호치민 도착\n호텔 투숙'), cell('spaced-m1', 1, 5, '석:현지식'),
+      cell('spaced-hotel', 2, 4, 'HOTEL : 비사이 사이공 호텔 OR 동급'),
+      cell('spaced-d2', 3, 0, '제2일'), cell('spaced-r2', 3, 1, '호치민'),
+      cell('spaced-f2', 3, 2, ''), cell('spaced-t2', 3, 3, '전일'),
+      cell('spaced-s2', 3, 4, '시내 관광'), cell('spaced-m2', 3, 5, '조:호텔식'),
+    ];
+    const rawText = cells.map(item => item.text).filter(Boolean).join('\n');
+    const documentIr: DocumentIR = {
+      version: 'v4', filename: 'spaced-schedule.hwp', sourceType: 'hwp', pages: 1,
+      text: rawText, nodes: [], assets: [], parser: { engine: 'test', version: '1' },
+      tables: [{ id: 'spaced-schedule', rows: 4, columns: 6, cells }],
+    };
+
+    const result = buildDocumentIrTableItinerary({ documentIr, sectionRawText: rawText });
+
+    expect(result?.days.map(day => day.day)).toEqual([1, 2]);
+    expect(result?.flightSegments[0]?.code).toBe('VN423');
+    expect(result?.days[0]?.hotel.raw_text).toContain('비사이 사이공');
+  });
+
   it('uses the table product title to separate same-duration grade itineraries', () => {
     const makeTable = (id: string, title: string) => ({
       id,

@@ -121,7 +121,17 @@ export async function resolveQualifiedSupplierLayoutProfile(input: {
     .eq('activation_state', 'active')
     .order('activated_at', { ascending: false })
     .limit(1);
-  if (profileError) throw profileError;
+  // `internal_product_registration` is intentionally kept out of the
+  // PostgREST-exposed schemas.  A missing/hidden profile registry must not
+  // turn an otherwise processable source into a workflow failure; the
+  // deterministic generic resolver remains the safe fallback.  Genuine
+  // database errors still fail closed.
+  if (profileError) {
+    if (profileError.code === 'PGRST106' || profileError.code === '42P01') {
+      return { supplierKey, documentFamily: input.documentFamily, profile: null, reason: 'profile_not_found' };
+    }
+    throw profileError;
+  }
   const profile = profiles?.[0];
   if (!profile) {
     return { supplierKey, documentFamily: input.documentFamily, profile: null, reason: 'profile_not_found' };

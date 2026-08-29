@@ -6,7 +6,7 @@
  * - 2026-05-14 박제: Step 7 Hangul Fuzzy + MRT canonical 우선 매칭 추가
  */
 
-import { bestFuzzyMatch } from './parser/hangul-fuzzy';
+import { bestFuzzyMatch, hangulSimilarity } from './parser/hangul-fuzzy';
 
 export interface AttractionData {
   id?: string;
@@ -356,6 +356,56 @@ export function buildAttractionIndex(
   return { filtered, byLowerName, byLowerAlias, substringList, degraded };
 }
 
+function normalizedRegistrationAttractionIdentifier(value: string): string {
+  return value.normalize('NFKC').toLowerCase().replace(/[\s()（）\[\]·•・,，.。:：;；'"`!?_-]+/g, '');
+}
+
+/**
+ * Product Compiler authority match. Only an exact normalized canonical name
+ * or an existing approved alias may become a customer revision link. Fuzzy,
+ * substring, and keyword matches are deliberately excluded.
+ */
+export function matchAttractionForRegistration(
+  label: string,
+  attractions: AttractionData[],
+  destination?: string,
+): AttractionData | null {
+  const identifier = normalizedRegistrationAttractionIdentifier(label);
+  if (!identifier || SKIP_PATTERN.test(label)) return null;
+  const scoped = buildAttractionIndex(attractions, destination).filtered;
+  const exactNames = scoped.filter(item =>
+    normalizedRegistrationAttractionIdentifier(item.name) === identifier);
+  if (exactNames.length === 1) return exactNames[0]!;
+  if (exactNames.length > 1) return null;
+  const approvedAliases = scoped.filter(item => (item.aliases ?? []).some(alias =>
+    isMatchableAttractionAlias(alias, item)
+    && normalizedRegistrationAttractionIdentifier(alias) === identifier));
+  return approvedAliases.length === 1 ? approvedAliases[0]! : null;
+}
+
+export function attractionReviewCandidates(
+  label: string,
+  attractions: AttractionData[],
+  destination?: string,
+): {
+  candidates: Array<{ id: string | null; name: string; score: number }>;
+  ambiguityCode: 'ATTRACTION_MATCH_AMBIGUOUS' | 'ATTRACTION_NOT_FOUND';
+} {
+  const scoped = buildAttractionIndex(attractions, destination).filtered;
+  const candidates = scoped
+    .map(item => ({ item, score: hangulSimilarity(label, item.name) }))
+    .filter(item => item.score >= 0.65)
+    .sort((left, right) => right.score - left.score)
+    .slice(0, 5)
+    .map(({ item, score }) => ({ id: item.id ?? null, name: item.name, score }));
+  const ambiguous = candidates.length > 1
+    && Math.abs(candidates[0]!.score - candidates[1]!.score) <= 0.05;
+  return {
+    candidates,
+    ambiguityCode: ambiguous ? 'ATTRACTION_MATCH_AMBIGUOUS' : 'ATTRACTION_NOT_FOUND',
+  };
+}
+
 /**
  * 인덱스 기반 관광지 매칭 (matchAttraction의 O(1) 룩업 버전)
  * 매칭 순서는 기존과 동일 — 호환성 100% 유지.
@@ -447,42 +497,10 @@ export function matchAttractionIndexed(
       return ratio <= 2.0;
     });
     const fuzzy = bestFuzzyMatch(activity, lengthGuarded, a => a.name, 0.78);
-    if (fuzzy) {
-      // fuzzy 매칭이 잡은 음역 변형은 자동으로 attractions_aliases 에 누적 → 다음 등록 즉시 exact alias match.
-      // fire-and-forget — matcher 가 동기 함수라 await 없이 호출 (recordAlias 가 supabase 미설정 시 noop).
-      void scheduleAliasRecord(fuzzy.candidate.name, activity);
-      return fuzzy.candidate;
-    }
+    if (fuzzy) return fuzzy.candidate;
   }
 
   return null;
-}
-
-// dynamic import 캐싱 — 매번 import() 호출 비용 회피
-let _aliasLearnerImport: Promise<typeof import('./attraction-alias-learner')> | null = null;
-function scheduleAliasRecord(canonical: string, alias: string): void {
-  if (!canonical || !alias || canonical === alias) return;
-  const trimmed = alias.trim();
-  if (trimmed.length < 3) return;
-  if (!_aliasLearnerImport) _aliasLearnerImport = import('./attraction-alias-learner');
-  _aliasLearnerImport
-    .then(({ recordAlias }) =>
-      recordAlias({
-        canonical_name: canonical,
-        alias: trimmed,
-        source: 'reflexion',
-      }).catch((e) => {
-        // 학습 실패는 본 매칭 흐름과 무관하나, dev 환경에서는 누락 가시화
-        if (process.env.NODE_ENV !== 'production') {
-          console.warn('[attraction-matcher] alias record failed:', e?.message ?? e);
-        }
-      }),
-    )
-    .catch((e) => {
-      if (process.env.NODE_ENV !== 'production') {
-        console.warn('[attraction-matcher] alias-learner import failed:', e?.message ?? e);
-      }
-    });
 }
 
 // ── 렌더/요청 스코프 인덱스 캐시 (WeakMap) ──────────────────────────────────

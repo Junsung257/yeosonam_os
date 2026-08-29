@@ -186,7 +186,7 @@ async function replayRow(row: UploadReviewQueueFixtureRow, request: NextRequest)
     reason: check.reason,
     httpStatus: 202,
     jobId: started.jobId,
-    workflowRunId: started.workflowRunId,
+    workflowRunId: started.workflowRunId ?? undefined,
   };
 }
 

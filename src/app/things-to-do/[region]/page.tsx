@@ -19,8 +19,8 @@ import { pickAttractionPhotoUrl, isSafeImageSrc } from '@/lib/image-url';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
-import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
+import { listPublicCatalog } from '@/lib/public-catalog';
 
 export const revalidate = 86400; // 1d
 export const dynamicParams = true;
@@ -209,11 +209,20 @@ async function getPageData(regionRaw: string): Promise<PageData | null> {
       .eq('customer_publishable', true)
       .order('mention_count', { ascending: false })
       .limit(60),
-    listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: 1_000 })
+    listPublicCatalog(supabaseAdmin, { destination: region, limit: 8 })
       .then(rows => rows
-        .filter(row => String(row.destination ?? '').trim() === region)
         .sort((a, b) => Number(a.price ?? Number.MAX_SAFE_INTEGER) - Number(b.price ?? Number.MAX_SAFE_INTEGER))
-        .slice(0, 8)),
+        .slice(0, 8)
+        .map((item) => ({
+          id: item.id,
+          title: item.title,
+          destination: item.destination,
+          duration: item.duration,
+          nights: item.nights,
+          price: item.price,
+          airline: item.departureAirport,
+          photo_urls: item.heroImage ? [item.heroImage] : [],
+        }))),
   ]).catch(() => [{ data: null }, [] as Record<string, unknown>[]]);
   const attractions = (results[0] as { data?: unknown[] | null }).data ?? null;
   const publicPackages = results[1] as Record<string, unknown>[];
@@ -258,7 +267,7 @@ export async function generateMetadata({ params }: { params: Promise<{ region?: 
   const count = data?.totalAttractions ?? 0;
   const title = `${region} 가볼만한 곳 ${count}곳 — 카테고리별 정리`;
   const socialTitle = `${title} | 여소남`;
-  const description = `${region} 여행 시 꼭 가봐야 할 명소 ${count}곳을 카테고리(자연·문화·먹거리·쇼핑)별로 정리. 운영팀이 검증한 추천 일정과 패키지까지 한 페이지에서.`;
+  const description = `${region} 여행 명소 ${count}곳을 카테고리(자연·문화·먹거리·쇼핑)별로 정리하고 현재 공개된 관련 여행상품을 함께 안내합니다.`;
   const firstAttraction = data?.attractionsByCategory ? Object.values(data.attractionsByCategory).flat()[0] : null;
   const firstImage = firstAttraction?.photos?.[0]?.src_large ?? firstAttraction?.photos?.[0]?.src_medium ?? null;
   const ogImage = isSafeImageSrc(firstImage) ? firstImage.trim() : SOCIAL_IMAGE_URL;
@@ -306,8 +315,8 @@ export default async function ThingsToDoRegionPage({ params }: { params: Promise
           {data.region} 가볼만한 곳 <span className="text-orange-600">{data.totalAttractions}곳</span>
         </h1>
         <p className="mt-2 text-neutral-600">
-          여소남 운영팀이 직접 검증한 {data.region} 여행 명소를 카테고리별로 정리했습니다.
-          관광·자연·먹거리·쇼핑까지 한 페이지에서 비교하고, 마음에 드는 곳이 있다면 운영팀이 엄선한 패키지로 바로 떠날 수 있습니다.
+          {data.region} 여행 명소를 카테고리별로 정리했습니다.
+          관광·자연·먹거리·쇼핑을 한 페이지에서 비교하고 현재 공개된 관련 여행상품을 함께 확인할 수 있습니다.
         </p>
       </header>
 

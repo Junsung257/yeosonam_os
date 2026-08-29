@@ -18,6 +18,7 @@ import { trackAnalyticsEvent } from '@/lib/analytics';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
 import { getUpcomingPublicDepartureDates, hasUpcomingPublicDepartureDate } from '@/lib/package-public-eligibility';
 import { formatKstDate } from '@/lib/kst-date';
+import type { PublicCatalogItem } from '@/lib/public-catalog';
 import {
   type DepartureHubId,
   DEPARTURE_HUB_OPTIONS,
@@ -260,7 +261,30 @@ const EMPTY_RECOMMENDED_IDS: string[] = [];
 const EMPTY_RECOMMENDED_REASON_MAP: Record<string, string[]> = {};
 const EMPTY_SCORE_BY_PKG_ID: NonNullable<SearchResponse['scoreByPkgId']> = {};
 
-export default function PackagesClient() {
+function publicCatalogPackage(item: PublicCatalogItem): Package {
+  return {
+    id: item.id,
+    title: item.title,
+    display_title: item.title,
+    destination: item.destination ?? undefined,
+    country: item.country,
+    duration: item.duration ?? undefined,
+    nights: item.nights,
+    price: item.price ?? undefined,
+    price_dates: item.availableDates.map((entry) => ({
+      date: entry.date,
+      price: entry.price ?? 0,
+      confirmed: entry.confirmed ?? false,
+    })),
+    product_type: item.productKind,
+    departure_airport: item.departureAirport ?? undefined,
+    product_highlights: item.badges,
+    hero_image_url: item.heroImage,
+    thumbnail_urls: item.heroImage ? [item.heroImage] : null,
+  };
+}
+
+export default function PackagesClient({ initialCatalog }: { initialCatalog: PublicCatalogItem[] }) {
   const router = useRouter();
   const rawSearchParams = useSearchParams();
   const searchParamsString = rawSearchParams?.toString() ?? '';
@@ -282,12 +306,28 @@ export default function PackagesClient() {
   let hubFromParam = normalizeDepartureHub(searchParams.get('hub'));
   if (rawFilter === '인천출발' && !searchParams.get('hub')) hubFromParam = 'incheon';
   const filterForClientInitial = rawFilter === '인천출발' ? '' : rawFilter;
+  const serverPackages = useMemo(
+    () => initialCatalog.map(publicCatalogPackage),
+    [initialCatalog],
+  );
+  const fallbackSearch = useMemo<SearchResponse>(() => ({
+    packages: serverPackages,
+    imageByPkgId: Object.fromEntries(initialCatalog.map(item => [item.id, item.heroImage])),
+    recommendedIds: [],
+    recommendedReasonMap: {},
+    scoreByPkgId: {},
+    scoreReasonMap: {},
+    rankByPkgId: {},
+    comparisonGroupSizeMap: {},
+    hub: hubFromParam,
+    filterForClient: filterForClientInitial,
+  }), [filterForClientInitial, hubFromParam, initialCatalog, serverPackages]);
 
   const apiQuery = searchParams.toString();
   const { data, error: searchError, isLoading, mutate: retrySearch } = useSWR<SearchResponse>(
     `/api/packages/search?${apiQuery}`,
     packagesSearchFetcher,
-    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+    { revalidateOnFocus: false, dedupingInterval: 60_000, fallbackData: fallbackSearch },
   );
 
   const initialPackages = data?.packages ?? EMPTY_PACKAGES;

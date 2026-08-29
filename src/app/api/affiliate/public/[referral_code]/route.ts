@@ -2,8 +2,7 @@ import { type NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
-import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
+import { listPublicCatalog, type PublicCatalogItem } from '@/lib/public-catalog';
 
 export const runtime = 'nodejs';
 
@@ -17,28 +16,23 @@ type PublicCardNews = {
   engagement_score: number | null;
 };
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
-
-function toAffiliatePublicPackage(row: Record<string, unknown>): Record<string, unknown> {
-  const cardProjection = asRecord(row._card_projection);
-  const customerPackage = sanitizeCustomerPackageForClient({
-    id: row.id,
-    title: row.title,
-    destination: row.destination,
-    location_summary: cardProjection?.summary ?? row.summary ?? row.location_summary ?? null,
-    price: row.price,
-    price_display: row.price_display,
-    package_type: row.package_type ?? row.product_type ?? null,
-    main_image: row.main_image ?? row.hero_image_url ?? row.thumbnail_url ?? null,
-    badges: cardProjection?.badges ?? [],
-    publication_state: row.publication_state,
-    package_revision: row.package_revision,
-  });
-  return customerPackage ?? {};
+function toAffiliatePublicPackage(item: PublicCatalogItem): Record<string, unknown> {
+  return {
+    id: item.id,
+    slug: item.slug,
+    productKind: item.productKind,
+    title: item.title,
+    destination: item.destination,
+    departureAirport: item.departureAirport,
+    duration: item.duration,
+    heroImage: item.heroImage,
+    price: item.price,
+    priceDisplay: item.priceDisplay,
+    availableDates: item.availableDates,
+    badges: item.badges,
+    bookingMode: item.bookingMode,
+    lastVerifiedAt: item.lastVerifiedAt,
+  };
 }
 
 export async function GET(
@@ -92,8 +86,16 @@ export async function GET(
 
     let packages: unknown[] = [];
     if (affiliate.landing_pick_package_ids && affiliate.landing_pick_package_ids.length > 0) {
-      const publicPackages = (await listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: 1_000 }))
-        .filter(pkg => affiliate.landing_pick_package_ids.includes(String(pkg.id ?? '')))
+      const requestedIds = affiliate.landing_pick_package_ids
+        .filter((id: unknown): id is string => typeof id === 'string' && id.trim().length > 0);
+      const order = new Map<string, number>(
+        requestedIds.map((id: string, index: number): [string, number] => [id, index]),
+      );
+      const publicPackages = (await listPublicCatalog(supabaseAdmin, {
+        ids: requestedIds,
+        limit: Math.min(10, requestedIds.length),
+      }))
+        .sort((a, b) => (order.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (order.get(b.id) ?? Number.MAX_SAFE_INTEGER))
         .slice(0, 10);
       packages = publicPackages.map(toAffiliatePublicPackage);
     }
