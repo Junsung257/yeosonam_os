@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { prioritizeQueuedInformationResearch } from './blog-queue-research';
 
 describe('blog queue research source contract', () => {
-  it('keeps the ready buffer scoped to candidates that still need a publish slot', () => {
+  it('also researches editor-approved seeds that already carry a requested publish time', () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), 'src/lib/blog-queue-research.ts'),
       'utf8',
@@ -15,7 +15,7 @@ describe('blog queue research source contract', () => {
     );
 
     expect(candidateQuery).toContain(".eq('status', 'queued')");
-    expect(candidateQuery).toContain(".is('target_publish_at', null)");
+    expect(candidateQuery).toContain(".or('target_publish_at.is.null,source.eq.user_seed')");
   });
 
   it('tries one candidate per research intent before repeating weather', () => {
