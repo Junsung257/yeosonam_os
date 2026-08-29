@@ -870,6 +870,9 @@ describe('buildBlogStructuredResearchPrompt', () => {
     expect(prompt).toContain('Choose supported meal prices before beverages');
     expect(prompt).toContain('explicit breakfast, lunch, dinner, and snack/cafe samples');
     expect(prompt).toContain('절약, 일반, 여유, 아침, 점심, 저녁, 간식');
+    expect(prompt).toContain('FOOD BUDGET OUTPUT BOUNDARY: return 7-10 claims');
+    expect(prompt).toContain('evidence excerpts under 160 characters');
+    expect(prompt).toContain('Hard output limits: sources<=12, evidence<=24, claims<=12');
   });
 
   it('prioritizes transport durations and insurance coverage over marketing filler', () => {

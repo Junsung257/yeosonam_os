@@ -1336,6 +1336,8 @@ export function buildBlogStructuredResearchPrompt(input: {
         'Include explicit breakfast, lunch, dinner, and snack/cafe samples when the reviewed pages state those meal periods.',
         'Prefix the Korean labels 절약, 일반, 여유, 아침, 점심, 저녁, 간식 in claimText where applicable.',
         '절약/일반/여유 are transparent editorial comparison bands for the collected checked-date samples; they do not change or invent the sourced value.',
+        'FOOD BUDGET OUTPUT BOUNDARY: return 7-10 claims, at most 10 evidence rows, and at most 6 source rows.',
+        'For food-budget output, keep claimText and evidence excerpts under 160 characters and conditions to at most 2 short items. Stop once every required meal slot and budget band is supported.',
       ]
     : input.brief.intentType === 'airport_transport'
       ? [
@@ -1415,6 +1417,7 @@ export function buildBlogStructuredResearchPrompt(input: {
     'Every evidence sourceKey must exist in sources. Every claim evidenceKey must exist in evidence.',
     'Copy only facts present in GROUNDED_DIGEST. Do not infer missing values.',
     'Keep every evidence excerpt and claimText under 240 characters. Never copy a full table, directory, schedule, policy section, or menu.',
+    `Hard output limits: sources<=${MAX_GROUNDING_SOURCES}, evidence<=${MAX_RESEARCH_EVIDENCE}, claims<=${MAX_RESEARCH_CLAIMS}. Never keep extracting after the required decision facts and minimum claim counts are satisfied.`,
     'Each claim must contain one independently supported fact from one linked evidence excerpt.',
     'Every digit in claimText must occur in that linked excerpt. Never combine a second schedule, distance, date, quantity, or price into the claim.',
     'Every route-duration claim must name both the origin and destination stated by the digest; a duration with only one endpoint is incomplete.',
