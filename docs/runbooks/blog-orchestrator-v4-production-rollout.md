@@ -11,9 +11,18 @@
 - Isolated release workdir: `npm run prepare:blog-supabase-release-workdir-v4 -- --output=.tmp/blog-v4-supabase-release`
 - Supabase dry-run verifier: `npm run verify:blog-supabase-dry-run-v4 -- --input=<dry-run.txt> --allow-empty`
 - Emergency rollback: `supabase/rollbacks/blog-orchestrator-v4-release-rollback.sql`
-- Protected workflow: `.github/workflows/blog-v4-production-release.yml`
+- Candidate workflow: `.github/workflows/blog-v4-production-release.yml`
+- Explicit activation workflow: `.github/workflows/blog-v4-production-activation.yml`
+- Both workflows share the `blog-v4-production-control` concurrency group; they must never mutate the production project concurrently.
 - Production evidence collector: `npm run collect:blog-production-evidence-v4 -- ...`
 - Fail-closed decision: `npm run verify:blog-production-readiness-v4 -- --evidence=<json>`
+- Snapshot artifact verifier: `npm run verify:blog-snapshot-artifact-v4 -- --manifest=<manifest> --expected-ref=main --expected-commit=<main SHA> --require-source-commit`
+- Read-only activation probe: `npm run verify:blog-autopublish-activation-v4 -- --base=https://www.yeosonam.com --strict`
+
+`.github/workflows/blog-v4-required.yml`은 path filter 없이 pull request, merge queue,
+main push마다 생성된다. Blog V4 변경이 있으면 `Blog V4 targeted contract` job을
+실행하고, 변경이 없으면 명시적인 no-change success를 남긴다. GitHub Ruleset에서
+이 job 이름을 main required status check로 등록해야 실제 merge gate가 된다.
 
 Manifest에는 운영 기준선에서 누락된 migration 11개의 경로와 SHA-256이 고정된다. 여기에는 운영에서 이력과 실제 함수 본문이 드리프트한 medication HIGH-risk 정책 복구 및 Next.js 15 스트리밍 전 hard-404 slug registry 권한 복구가 포함된다. dry-run 결과는 아직 적용되지 않은 manifest 부분집합이어야 하며, 재실행 시 이미 모두 적용되어 0개여야 한다. manifest 밖 migration이 섞이면 중단한다.
 
@@ -28,15 +37,20 @@ GitHub `blog-production` environment에 배포 승인 규칙과 다음 secret을
 - `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD`, `SUPABASE_ACCESS_TOKEN` (CI의 link 및 read-only migration inventory용)
 - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
 - `CRON_SECRET`
+- `BLOG_OPS_READ_TOKEN` (권장; `/api/ops/blog-system` 읽기 점검 전용. 미설정 시 `CRON_SECRET` fallback)
 
 애플리케이션 production 환경은 아래 계약을 사용한다.
 
 ```text
 BLOG_AUTOPUBLISH_MODE=draft_only
 BLOG_GENERATION_CRON_ENABLED=false
-BLOG_DAILY_PUBLISH_CAP=30
-BLOG_PUBLICATION_RAMP_STAGE=max_30
-BLOG_AUTO_RAMP_ENABLED=true
+BLOG_CONTENT_FACTORY_ENABLED=false
+BLOG_AI_CONTROL_PLANE_ENABLED=0
+BLOG_PRODUCTION_ALLOWED_GIT_REF=main
+BLOG_PRODUCTION_ALLOWED_COMMIT_SHA=<승인된 main 40자리 SHA>
+BLOG_DAILY_PUBLISH_CAP=1
+BLOG_PUBLICATION_RAMP_STAGE=pilot_3
+BLOG_AUTO_RAMP_ENABLED=false
 BLOG_AUTO_ROLLBACK_ENABLED=true
 BLOG_DAILY_AI_COST_CAP_USD=2
 BLOG_DAILY_CANDIDATE_CAP=30
@@ -46,31 +60,77 @@ BLOG_MAX_SAME_ARCHETYPE_IN_LAST_10=2
 DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS=1
 ```
 
-DB rollout state는 migration에서 `pilot_3`으로 시작한다. 따라서 환경 ceiling을 30으로 열어도 첫 실효 공개량은 슬롯별 `[1,1,2,2,3]`, 일 최대 3건이다.
+`BLOG_PRODUCTION_ALLOWED_COMMIT_SHA`는 workflow 입력 `release_commit`과 동일한
+40자리 SHA로만 설정한다. runtime Vercel 값과 build snapshot이 모두 존재할 때
+ref 또는 SHA가 서로 다르면 provenance를 `mixed`로 기록하고 자동발행을 차단한다.
+허용 SHA가 누락·형식 오류·불일치인 경우에도 production 정책은 `draft_only`로
+강등된다. 따라서 환경값만 먼저 `live`로 바꾸는 운영 절차는 허용하지 않는다.
+
+Candidate 환경은 항상 `cap=1`, `pilot_3`, `auto-ramp=false`인 inert 상태다. 운영 공개는
+`.github/workflows/blog-v4-production-activation.yml`의 명시적 `activation_stage`만 변경할
+수 있으며, generation을 켜는 모든 stage는 `BLOG_CONTENT_FACTORY_ENABLED=true`와
+`BLOG_AI_CONTROL_PLANE_ENABLED=1`을 함께 요구한다. `promote_live` 단일 입력으로 draft를
+live/max_30으로 바꾸는 경로는 존재하지 않는다.
+
+DB rollout state는 migration에서 `pilot_3`으로 시작한다. activation stage도
+`draft_generation_canary → reviewed_canary → pilot_1 → pilot_3 → ramp_10 → max_30` 순서로
+별도 실행한다. `max_30`은 `approval_reference`와 인증된 `approvedForSlotCount >= 60` 증거가
+없으면 실패하며, 자동 ramp는 항상 꺼져 있다.
+
+생성 workflow 시작 상한은 activation 단계와 함께 고정한다. 순서대로
+`1, 1, 1, 3, 6, 12`이며 `BLOG_DAILY_PUBLISH_CAP`과 별도다. 실패 복구 시에는
+`BLOG_CONTENT_FACTORY_WORKFLOW_START_LIMIT=1`로 되돌린 inert deployment를 다시 배포한다.
+`ramp_10`과 `max_30` 전환은 환경값만 올리지 않고 DB CAS RPC를 실행한다. 이 RPC는
+호출자가 전달한 재고 숫자를 신뢰하지 않고 잠금 구간에서 `approved_for_slot` 실제 수를
+다시 계산하며, 전환 후 readiness가 DB stage·effective stage·daily cap을 모두 확인한다.
+
+`generationReady`와 `publicationReady`는 별도 판정이다. `approved_for_slot=0`은
+발행을 막는 `publicationBlockers`이지만 draft-only 생성의 전제조건이 아니다.
+따라서 후보가 아직 없을 때에도 `readyForDraftOnlyGeneration=true`이면 검증된
+demand 후보를 생성할 수 있고, `readyForLivePublication=false`인 동안에는
+공개·색인 side effect가 실행되지 않는다.
+
+## 활성화 상태 확인 (읽기 전용)
+
+`verify:blog-autopublish-activation-v4`는 `/api/cron/blog-generate`와 `/api/cron/blog-publication-controller`를 조회만 한다. `/api/ops/blog-system` readiness probe는 `BLOG_OPS_READ_TOKEN`을 우선 사용하고, 없을 때만 `CRON_SECRET`을 fallback으로 사용한다. 보호된 응답을 읽을 때 secret·본문·DB를 변경하거나 출력하지 않는다.
+
+- `generation_cron_disabled`: `BLOG_GENERATION_CRON_ENABLED`가 꺼져 있어 DeepSeek 생성이 시작되지 않음
+- `deployment_provenance_failed`: production 런타임이 허용된 `main` ref와 build commit을 증명하지 못해 정책이 자동으로 `draft_only`로 강등됨
+- `autopublish_not_live`: `BLOG_AUTOPUBLISH_MODE`가 `draft_only` 또는 `reviewed_only`라서 공개·색인 경로가 의도적으로 멈춤
+- `configured_but_not_due`: 환경은 켜져 있으나 현재 KST 슬롯이 아직 도래하지 않음
+- `READY`: 두 엔드포인트가 모두 인증·런타임·정책상 실행 가능한 상태
+
+이 점검이 `BLOCKED`인 상태에서 운영 환경값을 임의로 바꾸지 않는다. 먼저 V4 readiness 여섯 scope와 forward migration을 통과시키고, 승인된 change window에서 generation을 켠 뒤 `live`를 별도로 전환한다.
 
 ## 정확한 실행 순서
 
-1. 리뷰된 `main`의 40자리 commit SHA를 확정한다. 운영 source는 branch 이름만이 아니라 이 SHA와 같아야 한다.
+1. 리뷰된 `main`의 40자리 commit SHA를 확정하고 `BLOG_PRODUCTION_ALLOWED_COMMIT_SHA`를 먼저 설정한다. 환경변수는 기존 deployment에 소급되지 않으므로, 이 값을 포함한 동일 SHA의 새 production deployment가 뒤따라야 한다. 운영 source는 branch 이름만이 아니라 이 SHA와 같아야 한다.
 2. release bundle, targeted V4 tests, typecheck를 통과한다.
 3. 격리 workdir를 생성한 뒤 `db push --workdir .tmp/blog-v4-supabase-release --include-all --skip-vault --dry-run` 결과를 exact-set verifier로 확인한다. 운영 migration history를 수정하는 `migration repair`는 금지한다.
 4. 승인된 change window에서만 forward migration을 적용한다. seed와 Vault 갱신은 포함하지 않는다.
 5. `audit:blog-corpus-reconciliation-v4` 기본 dry-run을 확인한다. 운영 disposition 기록이 승인된 경우에만 `BLOG_CORPUS_RECONCILIATION_CONFIRM=APPLY_REVIEWED_DISPOSITIONS_V4`와 `--apply`를 함께 쓴다. 이 작업은 글 status, queue, redirect, index를 바꾸지 않는다.
 6. `refresh_blog_public_snapshots_v3`를 실행하고 public eligible slug와 current snapshot slug의 정확한 parity를 확인한다.
-7. catalog/detail snapshot을 동일 시각에 생성한다. URL 파일명에 본문 SHA-256을 포함하고, 상세 parity가 하나라도 비면 artifact를 만들지 않는다.
-8. production 환경을 `draft_only`, generation disabled로 바꾼 후 `--prod --skip-domain` candidate를 만든다. 아직 운영 도메인에 연결하지 않는다.
-9. candidate에서 `/blog`, 실제 상세, 존재하지 않는 상세의 hard 404, sitemap, RSS, image sitemap을 확인한다. `BLOG_DATABASE_UNAVAILABLE` 고객 문구, soft-404, review-blocked URL 노출이 없어야 한다. 후보 URL 호출은 Vercel protection bypass secret을 사용한다.
+7. catalog/detail snapshot을 먼저 read-only artifact로 생성한다. URL 파일명에 본문 SHA-256을 포함하고, 상세 parity가 하나라도 비면 artifact를 만들지 않는다. `verify:blog-snapshot-artifact-v4`가 schema v4, non-empty row count, catalog/detail parity, 파일 SHA-256, source commit과 release SHA 일치를 모두 확인한 뒤에만 별도 `--apply-db` refresh를 실행한다.
+8. 정확한 `release_commit`을 checkout한 동일 빌드에서 production 환경을 `draft_only`, generation disabled, factory disabled, control-plane disabled, cap 1, `pilot_3`, auto-ramp false로 고정한 후 `--prod --skip-domain` candidate를 만든다. candidate workflow는 검증 후에도 promote하지 않으며, 아직 운영 도메인에 연결하지 않는다.
+9. candidate에서 `/blog`, 실제 상세, 존재하지 않는 상세의 hard 404, sitemap, RSS, image sitemap을 확인한다. `BLOG_DATABASE_UNAVAILABLE` 고객 문구, soft-404, review-blocked URL 노출이 없어야 한다. 후보 URL 호출은 Vercel protection bypass secret을 사용한다. 생성 readiness와 발행 readiness를 따로 기록하며, approved slot이 0이면 생성 canary는 허용하되 live activation은 금지한다. Vercel runtime log 조회가 실패하면 error 0건으로 처리하지 않고 candidate를 차단한다.
 10. `blog-ai-model-canary`로 DeepSeek Flash, Pro high, Pro max를 각각 최소 토큰으로 실호출한다. 세 호출 모두 정확한 `OK`, 정상 stop, 모델·provider·thinking 설정과 usage 영수증이 일치해야 한다. 이 canary는 글과 DB를 쓰지 않는다.
 11. `blog-analytics-canary`를 실행한다. synthetic row가 재조회되고 external delivery job이 0이어야 한다.
 12. `rank-tracking`을 실행한다. 최근 7일 재수집과 90일 chunk cursor가 저장되며 실패 날짜가 있으면 cursor가 전진하지 않아야 한다.
 13. candidate 로그의 `BLOG_DATABASE_UNAVAILABLE`를 배포 시점 이후로 집계하고 production evidence JSON을 생성한다.
 14. V4 readiness가 source, schema, delivery, corpus, measurement, rollout 여섯 scope 모두 통과할 때만 다음 단계로 간다. 자연 전환 0건은 warning이지만 합성 analytics canary 부재는 blocker다.
-15. `BLOG_AUTOPUBLISH_MODE=live`, `BLOG_GENERATION_CRON_ENABLED=true`로 바꿔 두 번째 unaliased candidate를 배포한다.
-16. live candidate의 blog/data-readiness를 확인한 뒤에만 promote한다.
-17. 운영 도메인에서 catalog, sitemap, analytics canary, data-readiness를 다시 확인하고 10분 로그에서 DB unavailable 0건을 확인한다.
+15. 별도 activation workflow에서 `activation_stage=draft_generation_canary`를 선택해 factory와 control-plane을 함께 켠다. 이 단계는 공개·색인 side effect 없이 승인 재고를 생성하는 용도다.
+16. 승인 후보와 비용/receipt 증거를 확보한 뒤 `reviewed_canary` 또는 `pilot_1`을 실행한다. `reviewed_canary`는 사람 승인 후보만 발행하며, `pilot_1`은 일일 cap 1건이다.
+17. pilot 1건의 snapshot·cache·sitemap/RSS·indexing outbox·runtime log evidence가 통과한 뒤에만 `pilot_3`, 이후 별도 관측·승인으로 `ramp_10`, `max_30`을 실행한다. `ramp_10`/`max_30`은 production promote 후 `transition:blog-publication-rollout-v4 --apply`가 CAS 전환을 성공해야 실효 단계가 올라간다. `max_30`은 RPC가 transaction 안에서 다시 센 승인 재고가 60건 미만이면 실패한다. CAS 응답의 stage/state_version 또는 post-transition effective stage/cap이 요청과 다르면 activation 실패로 처리하고 inert runtime을 재배포한다.
 
 대표 글 자동 갱신 canary는 신규 URL canary와 분리한다. 먼저 `draft_only`에서 기존 canonical ID/slug/`published_at`과 공개 수, indexing outbox가 변하지 않는 shadow draft를 증명한다. 이후 `live`의 `pilot_3`에서 새로 생성한 LOW/MEDIUM run 한 건만 UUID-targeted controller로 실행한다. 기존 `draft_only` shadow draft를 나중에 자동 승인으로 재사용하거나 `review_status`를 임의 변경하지 않는다. 성공 증거는 canonical 행의 material fingerprint 변경, ID/slug/원래 `published_at` 불변, shadow archive, `blog_information_automated_replacements` 1건, 선택 attempt 동일성, `URL_UPDATED` outbox, 공개 surface 200과 sitemap/RSS canonical-only다.
 
-보호 workflow는 위 순서를 구현한다. `release_commit`, migration apply, disposition apply, candidate deploy, live promote를 각각 명시해야 하며, SHA가 현재 `origin/main`과 다르면 시작하지 않는다.
+Candidate workflow와 activation workflow는 위 순서를 분리해 구현한다. `release_commit`, migration apply,
+disposition apply, candidate deploy, activation stage를 각각 명시해야 하며, SHA가 현재
+`origin/main`과 다르면 시작하지 않는다. 모든 activation 단계는 실패 시 draft-only, generation/factory/control-plane
+off, cap 1, pilot_3, auto-ramp false로 환경을 복구한 뒤, 새 inert candidate를 배포·검증하고 production
+alias까지 promote한다. 복구 결과는 `ACTIVATION_FAILED_ROLLBACK_SUCCEEDED` 또는
+`ACTIVATION_FAILED_ROLLBACK_FAILED` artifact로 남긴다. 복구 자체가 실패하면 일반 activation 실패와
+구별되는 긴급 대응 대상이다.
 
 ## 스냅샷 장애 대응
 
@@ -81,6 +141,7 @@ DB rollout state는 migration에서 `pilot_3`으로 시작한다. 따라서 환�
 ```text
 npm run refresh:blog-public-snapshots-v3
 npm run refresh:blog-public-snapshots-v3 -- --write-bundled --write-detail-bundled --all-details --artifact-dir=<release-dir>
+npm run verify:blog-snapshot-artifact-v4 -- --manifest=<release-dir>/manifest.json --expected-ref=main --expected-commit=<release SHA> --require-source-commit
 ```
 
 DB 갱신은 `BLOG_SNAPSHOT_APPLY_CONFIRM=PUBLIC_ELIGIBILITY_REVIEWED`와 `--apply-db`가 동시에 있어야 한다. artifact는 catalog/detail 각각 8 MiB를 넘거나 slug parity가 깨지면 생성하지 않는다.

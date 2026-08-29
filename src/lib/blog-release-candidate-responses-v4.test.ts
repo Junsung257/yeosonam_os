@@ -20,6 +20,9 @@ const passing = {
     snapshotParity: { parity: true },
     remoteSnapshots: { catalog: true, detail: true },
     analyticsCanary24h: 1,
+    approvedForSlotCount: 1,
+    generationReady: true,
+    publicationReady: true,
     autopublish: { effectiveMode: 'draft_only' },
   },
 };
@@ -47,8 +50,29 @@ describe('Blog V4 release candidate response contracts', () => {
     expect(() => verifyBlogReleaseCandidateResponsesV4({
       ...passing,
       rankTracking: { ok: false, requested_dates: [], errors: ['gsc_unavailable'] },
-      dataReadiness: { ...passing.dataReadiness, ok: false },
+      dataReadiness: { ...passing.dataReadiness, generationReady: false },
     })).toThrow(/rank_tracking_contract_failed.*data_readiness_contract_failed/);
+  });
+
+  it('allows generation readiness before an approved slot exists', () => {
+    expect(verifyBlogReleaseCandidateResponsesV4({
+      ...passing,
+      dataReadiness: { ...passing.dataReadiness, approvedForSlotCount: 0 },
+    })).toMatchObject({ passed: true });
+  });
+
+  it('requires publication readiness only for the live promotion gate', () => {
+    expect(() => verifyBlogReleaseCandidateResponsesV4({
+      ...passing,
+      dataReadiness: { ...passing.dataReadiness, publicationReady: false },
+    }, { requirePublicationReady: true })).toThrow('publication_readiness_contract_failed');
+  });
+
+  it('rejects a candidate whose generation readiness is blocked', () => {
+    expect(() => verifyBlogReleaseCandidateResponsesV4({
+      ...passing,
+      dataReadiness: { ...passing.dataReadiness, generationReady: false },
+    })).toThrow('data_readiness_contract_failed');
   });
 
   it('CLI input cannot silently parse an HTML body as a valid response', () => {

@@ -8,9 +8,9 @@ const generationRoute = readFileSync('src/app/api/cron/blog-generate/route.ts', 
 const externalWorkflow = readFileSync('.github/workflows/blog-external-cron.yml', 'utf8');
 
 describe('blog DeepSeek V4 cron contract', () => {
-  it('generates in the KST overnight off-peak window', () => {
+  it('replenishes durable workflows every ten minutes in the KST overnight off-peak window', () => {
     expect(config.crons).toContainEqual({
-      path: '/api/cron/blog-generate', schedule: '5 16,17,18,19,20,21 * * *',
+      path: '/api/cron/blog-generate', schedule: '5,15,25,35,45,55 16-21 * * *',
     });
     expect(generationRoute).toContain('isBlogGenerationWindowKstV4');
     expect(generationRoute).toContain("forceValue === '1' || forceValue === 'true'");
@@ -19,11 +19,25 @@ describe('blog DeepSeek V4 cron contract', () => {
     expect(externalWorkflow).toContain('if [ "$endpoint" != "blog-generate" ]; then');
   });
 
-  it('publishes without a model at five KST daytime slots', () => {
+  it('runs a model-free publication controller while its ten KST slots enforce release quota', () => {
     expect(config.crons).toContainEqual({
-      path: '/api/cron/blog-publication-controller', schedule: '5 0,3,6,9,12 * * *',
+      path: '/api/cron/blog-publication-controller', schedule: '0,30 0-13 * * *',
     });
     expect(config.crons.some((cron) => cron.path === '/api/cron/blog-publisher')).toBe(false);
+  });
+
+  it('schedules the durable refill while keeping unrelated legacy producers disabled', () => {
+    expect(config.crons).toContainEqual({
+      path: '/api/cron/blog-scheduler', schedule: '0 15 * * *',
+    });
+    for (const path of [
+      '/api/cron/blog-regenerate-zero-click',
+      '/api/cron/trend-topic-miner',
+      '/api/cron/programmatic-seo-generator',
+      '/api/cron/blog-orchestrator',
+    ]) {
+      expect(config.crons.some((cron) => cron.path === path)).toBe(false);
+    }
   });
 
   it('stays below the Vercel cron-count ceiling', () => {

@@ -20,6 +20,9 @@ describe('blog public snapshot refresh script', () => {
     expect(script).toContain('catalogArtifactSha256}.json');
     expect(script).toContain('detailArtifactSha256}.json');
     expect(script).toContain("version: 'blog-public-snapshot-artifacts-v3'");
+    expect(script).toContain('schema_version: 4');
+    expect(script).toContain('source_commit_sha: sourceCommitSha');
+    expect(script).toContain('source_git_ref: sourceGitRef');
   });
 
   it('fills missing or empty current detail snapshots from the eligible legacy body before parity checks', () => {

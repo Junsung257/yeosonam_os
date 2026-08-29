@@ -110,10 +110,6 @@
       "schedule": "30 16 * * *"
     },
     {
-      "path": "/api/cron/blog-scheduler",
-      "schedule": "50 23 * * *"
-    },
-    {
       "path": "/api/cron/blog-learn",
       "schedule": "0 14 * * 0"
     },
@@ -127,19 +123,19 @@
     },
     {
       "path": "/api/cron/blog-generate",
-      "schedule": "5 16,17,18,19,20,21 * * *"
+      "schedule": "5,15,25,35,45,55 16-21 * * *"
+    },
+    {
+      "path": "/api/cron/blog-scheduler",
+      "schedule": "0 15 * * *"
     },
     {
       "path": "/api/cron/blog-publication-controller",
-      "schedule": "5 0,3,6,9,12 * * *"
+      "schedule": "0,30 0-13 * * *"
     },
     {
-      "path": "/api/cron/blog-regenerate-zero-click",
-      "schedule": "45 12 * * *"
-    },
-    {
-      "path": "/api/cron/trend-topic-miner",
-      "schedule": "0 21 * * *"
+      "path": "/api/cron/blog-indexing-worker",
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/cron/serp-rank-snapshot",
@@ -350,10 +346,6 @@
       "schedule": "30 2 * * *"
     },
     {
-      "path": "/api/cron/programmatic-seo-generator",
-      "schedule": "0 4 * * 0"
-    },
-    {
       "path": "/api/cron/snapshot-inventory",
       "schedule": "0 18 * * *"
     },
@@ -392,10 +384,6 @@
     {
       "path": "/api/cron/trend-cleanup",
       "schedule": "30 3 * * *"
-    },
-    {
-      "path": "/api/cron/blog-orchestrator",
-      "schedule": "45 5 * * 1"
     }
   ],
   "functions": {

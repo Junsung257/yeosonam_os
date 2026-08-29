@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "release": "blog-deepseek-auto-repair-v1-20260819",
+  "apply_mode": "generation-off-migration-apply-required",
+  "migrations": [
+    {
+      "version": "20260818080000",
+      "file": "supabase/migrations/20260818080000_blog_deepseek_auto_repair_budget_v1.sql",
+      "sha256": "a406340ae0d53894f230321d03c166f560ac956302556ee208530b815aad1ef3"
+    }
+  ],
+  "rollback": {
+    "file": "supabase/rollbacks/blog-deepseek-auto-repair-budget-v1-20260819.sql",
+    "sha256": "fa96454a4c7ac208df7eedd4a855ad765d58b38194cc538c2b6a27c0dbeea72c"
+  },
+  "apply": "not executed in this change",
+  "rollback_note": "manual review only; guard aborts when attempt > 3 exists"
+}

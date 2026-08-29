@@ -197,9 +197,16 @@ async function main(): Promise<void> {
     quality_gate: compactDetailQualityGate(row.quality_gate),
   })).filter(hasUsableDetailBody);
   const generatedAt = new Date().toISOString();
+  const sourceCommitSha = process.env.VERCEL_GIT_COMMIT_SHA
+    || process.env.GITHUB_SHA
+    || null;
+  const sourceGitRef = process.env.VERCEL_GIT_COMMIT_REF
+    || (process.env.GITHUB_REF_NAME === 'main' ? 'main' : null);
   const catalogArtifact = `${JSON.stringify({
     generated_at: generatedAt,
     source: 'public_blog_content_creatives_read_only',
+    source_commit_sha: sourceCommitSha,
+    source_git_ref: sourceGitRef,
     count: publicRows.length,
     posts: publicRows,
   }, null, 2)}\n`;
@@ -264,7 +271,10 @@ async function main(): Promise<void> {
     writeFileSync(join(root, detailRelativePath), detailArtifact);
     writeFileSync(join(root, 'manifest.json'), `${JSON.stringify({
       version: 'blog-public-snapshot-artifacts-v3',
+      schema_version: 4,
       generated_at: generatedAt,
+      source_commit_sha: sourceCommitSha,
+      source_git_ref: sourceGitRef,
       source_checksum: checksum,
       catalog: {
         relative_path: catalogRelativePath,

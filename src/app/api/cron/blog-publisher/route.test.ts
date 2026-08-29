@@ -39,7 +39,7 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('information_evidence_content_key: evidenceContentKey');
     expect(source).toContain('applyFinalResearchStructureRepair();');
     expect(source).toContain('evaluateBlogAutopublishDecisionV3');
-    expect(source).toContain('loadQueueDemandEvidenceV3(item)');
+    expect(source).toContain('loadQueueDemandEvidenceV3(item,');
     expect(source).toContain('verified_demand_signal_missing_before_generation');
     expect(source).toContain('demand_signal_repository_unavailable_before_generation');
     const snapshotRefresh = source.indexOf("rpc('refresh_blog_public_snapshots_v3')");
@@ -72,6 +72,29 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('claim_queue_items');
     expect(source).toContain('publishedThisRun += 1');
     expect(source).toContain('candidateFailures.push');
+  });
+
+  it('bounds optional Naver research so it cannot block the verified writer path', () => {
+    const source = routeSource();
+    const serpStart = source.indexOf('const shouldAnalyzeSerp =');
+    const serpBlock = source.slice(serpStart, source.indexOf('const contentBriefV3 =', serpStart));
+
+    expect(source).toContain('BLOG_PUBLISHER_SERP_RESEARCH_TIMEOUT_MS');
+    expect(source).toContain('2_000,\n  45_000');
+    expect(source).toContain("process.env.BLOG_PUBLISHER_SERP_RESEARCH_ENABLED !== '0'");
+    expect(serpBlock).toContain('withPublisherTimeout(');
+    expect(serpBlock).toContain("'blog_serp_research'");
+    expect(serpBlock).toContain('continuing with verified demand and official evidence only');
+  });
+
+  it('allows staging to disable advisory SERP calls without disabling factual research or writing', () => {
+    const source = routeSource();
+    const serpStart = source.indexOf('const shouldAnalyzeSerp =');
+    const serpBlock = source.slice(serpStart, source.indexOf('const contentBriefV3 =', serpStart));
+
+    expect(serpBlock).toContain('BLOG_PUBLISHER_SERP_RESEARCH_ENABLED');
+    expect(serpBlock).toContain('researchSerpNaverFirstV3({');
+    expect(source).toContain('generatePublisherBlogText(generationPrompt');
   });
 
   it('deduplicates micro-angle candidates by destination, broad angle, and micro angle', () => {
@@ -153,8 +176,8 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('isHighRiskInformationalTopic({');
     expect(source).toContain('const contentRequiresHumanReview');
     expect(source).toContain("status: publishAllowed ? 'published' : 'draft'");
-    expect(source).toContain("review_status: (publishAllowed || approvedForDeferredPublication) ? contentReviewStatus : 'pending_review'");
-    expect(source).toContain('representativeIdentity && !requiresHumanReview');
+    expect(source).toContain("review_status: requiresHumanReview");
+    expect(source).toContain('representativeIdentity && publishAllowed && !requiresHumanReview');
     expect(source).toContain('publishBlogInformationAtomically({');
     expect(source).toContain("status: 'pending_review'");
     expect(source).toContain('createBlogInformationEvidenceWorkflowStore({');
@@ -292,6 +315,15 @@ describe('blog publisher quota recovery contract', () => {
     );
   });
 
+  it('does not label a V3 legacy SEO aggregate diagnostic as a public publish blocker', () => {
+    const source = routeSource();
+
+    expect(source).toContain('legacy SEO aggregate diagnostic below publish floor');
+    expect(source).toContain('V3 SEO hard gate failed');
+    expect(source).toContain('isBlogSeoDetailBlockingForPublish(detail.name, flexibleV3Seo)');
+    expect(source).not.toContain('SEO score ${seoScore.score}/${seoScore.maxScore} - public publish blocked');
+  });
+
   it('normalizes literal newline escapes at every final quality boundary', () => {
     const source = routeSource();
 
@@ -305,7 +337,8 @@ describe('blog publisher quota recovery contract', () => {
     const source = routeSource();
 
     expect(source).toContain('const privateRegeneration = privateRegenerationRequest !== null');
-    expect(source).toContain('const shouldAnalyzeSerp = !privateRegeneration && Boolean(');
+    expect(source).toContain('const shouldAnalyzeSerp = BLOG_PUBLISHER_SERP_RESEARCH_ENABLED');
+    expect(source).toContain('!privateRegeneration && Boolean(');
     expect(source).not.toContain('maybeApplyChainOfDensity');
     expect(source).toContain('if (destForImage && !privateRegeneration) {');
     expect(source).toContain('const replacementAssets = privateReplacementAssets ?? queueReusableAssets');
@@ -450,7 +483,8 @@ describe('blog publisher quota recovery contract', () => {
 
     expect(source).not.toContain("from '@/lib/blog-article-quality-v2-repair'");
     expect(source).not.toContain('repairArticleQualityV2Specifics');
-    expect(source).toContain('V3 records failed dimensions and routes the generated draft to review');
+    expect(source).toContain("from '@/lib/blog-auto-repair-v4'");
+    expect(source).toContain('auto_quality_repair_v4');
   });
 
   it('returns claimed but unattempted rows to the queue for the next recovery run', () => {
@@ -521,5 +555,16 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('`publish_gate:${gate.gate}`');
     expect(source).toContain('score: orchestrationQualityScore');
     expect(source).toContain('publish_quality_passed: publishQuality.passed');
+    expect(source).toContain('publish_quality_legacy_diagnostic: publishQuality.blogQualityScore.score');
+    expect(source).toContain('getBlogPublishDecisionScore(publishQuality)');
+  });
+
+  it('keeps grounded weather rewrites answer-first and complete for clothing coverage', () => {
+    const source = routeSource();
+
+    expect(source).toContain('applyInformationalAnswerFirstRepair');
+    expect(source).toContain('applyInformationalWeatherCoverageRepair');
+    expect(source).toContain('restored_source_neutral_clothing_preparation_block');
+    expect(source).toContain('added_source_neutral_weather_answer_signal');
   });
 });

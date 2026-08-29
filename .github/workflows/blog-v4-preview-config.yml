@@ -1,0 +1,57 @@
+name: Blog V4 Preview Configuration
+
+on:
+  workflow_dispatch:
+    inputs:
+      preview_branch:
+        description: Git branch to deploy to the isolated Blog V4 Preview.
+        required: true
+        type: string
+      commit_sha:
+        description: Exact reviewed commit SHA to deploy.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blog-v4-preview-config-${{ inputs.preview_branch }}
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    name: Configure isolated Blog V4 Preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: blog-staging
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      BLOG_V4_PREVIEW_BRANCH: ${{ inputs.preview_branch }}
+      GITHUB_SHA: ${{ inputs.commit_sha }}
+      BLOG_STAGING_SUPABASE_PROJECT_REF: ${{ vars.BLOG_STAGING_SUPABASE_PROJECT_REF }}
+      BLOG_PRODUCTION_SUPABASE_PROJECT_REF: ${{ vars.BLOG_PRODUCTION_SUPABASE_PROJECT_REF }}
+      BLOG_STAGING_SUPABASE_URL: ${{ vars.BLOG_STAGING_SUPABASE_URL }}
+      BLOG_STAGING_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.BLOG_STAGING_SUPABASE_SERVICE_ROLE_KEY }}
+      BLOG_STAGING_SUPABASE_ANON_KEY: ${{ secrets.BLOG_STAGING_SUPABASE_ANON_KEY }}
+      BLOG_STAGING_SUPABASE_ACCESS_TOKEN: ${{ secrets.BLOG_STAGING_SUPABASE_ACCESS_TOKEN }}
+      BLOG_STAGING_SUPABASE_BRANCH_NAME: ${{ vars.BLOG_STAGING_SUPABASE_BRANCH_NAME }}
+      DEEPSEEK_STAGING_API_KEY: ${{ secrets.DEEPSEEK_STAGING_API_KEY }}
+      BLOG_STAGING_V4_SHARED_KEY_USED: ${{ secrets.BLOG_STAGING_V4_SHARED_KEY_USED }}
+      BLOG_STAGING_CRON_SECRET: ${{ secrets.BLOG_STAGING_CRON_SECRET }}
+      BLOG_STAGING_VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.BLOG_STAGING_VERCEL_AUTOMATION_BYPASS_SECRET }}
+      BLOG_STAGING_OPS_READ_TOKEN: ${{ secrets.BLOG_STAGING_OPS_READ_TOKEN }}
+    steps:
+      - name: Checkout exact requested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 1
+
+      - name: Verify isolated Supabase Branch metadata
+        run: npx tsx scripts/verify-blog-v4-preview-target.ts
+
+      - name: Verify isolated staging configuration and deploy Preview
+        run: node scripts/configure-vercel-blog-v4-preview.mjs

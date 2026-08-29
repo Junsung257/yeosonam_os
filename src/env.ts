@@ -45,6 +45,8 @@ export const env = createEnv({
 
     // ── Cron / Internal ──
     CRON_SECRET: z.string().min(1).optional(),
+    BLOG_OPS_READ_TOKEN: z.string().min(1).optional(),
+    BLOG_OPS_ALLOW_CRON_FALLBACK: z.enum(['0', '1']).optional(),
     ADMIN_API_TOKEN: z.string().min(1).optional(),
     MEDIA_CODEX_WORKER_TOKEN: z.string().min(32).optional(),
     REVALIDATE_SECRET: z.string().min(1).optional(),
@@ -107,6 +109,8 @@ export const env = createEnv({
     GOOGLE_AI_API_KEY: process.env.GOOGLE_AI_API_KEY,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     CRON_SECRET: process.env.CRON_SECRET,
+    BLOG_OPS_READ_TOKEN: process.env.BLOG_OPS_READ_TOKEN,
+    BLOG_OPS_ALLOW_CRON_FALLBACK: process.env.BLOG_OPS_ALLOW_CRON_FALLBACK,
     ADMIN_API_TOKEN: process.env.ADMIN_API_TOKEN,
     MEDIA_CODEX_WORKER_TOKEN: process.env.MEDIA_CODEX_WORKER_TOKEN,
     REVALIDATE_SECRET: process.env.REVALIDATE_SECRET,

@@ -1,16 +1,98 @@
 # Blog Ops Runbook
 
+> 2026-08-27 autonomous V4 completion override: `blog-scheduler` runs daily at 00:00 KST (`0 15 * * *`) before the off-peak generation window, `blog-generate` materializes and starts durable operations at KST 01:05~06:55, `blog-publication-controller` handles the live slots, and `blog-indexing-worker` independently drains/retries the indexing outbox every five minutes. Low-risk, fully gated candidates require no per-article approval. HIGH-risk topics (entry, medical, safety, legal, insurance, price, availability, schedule, promotion) are automatically quarantined before any AI call; they do not wait in `human_review` and never create publication or indexing side effects.
+
+> 2026-08-19 Durable Content Factory override: `BLOG_CONTENT_FACTORY_ENABLED=1`인 배포에서는 `blog-generate`가 KST 01:05~06:55 사이 10분마다 수요 재고를 materialize하고 durable workflow만 시작한다. 공개 controller는 KST 09:00~22:00의 10개 누적 슬롯에서 승인 재고만 처리한다. 상업성 글은 현재 `public_package_snapshot` ID/revision/hash가 모두 일치해야 하며 공개+indexing outbox는 하나의 RPC다. 이 절은 아래의 구형 5-slot/direct publisher 설명보다 우선한다.
+
 > 2026-08-16 release override: DeepSeek-only 연구 구조화·초안·재작성, 비용 예약, `pilot_3→ramp_10→max_30` 자동 승격/강등, immutable snapshot, 90일 GSC 보강, 분석 canary, 배포·롤백 순서는 `docs/runbooks/blog-orchestrator-v4-production-rollout.md`와 `docs/runbooks/blog-deepseek-orchestrator-v4.md`가 우선한다.
 
 > 2026-08-15 V4 override: 신규 운영은 `docs/runbooks/blog-deepseek-orchestrator-v4.md`의 생성/공개 분리 계약을 따른다. `blog-generate`는 KST 01:05~06:05 계산 전용이고 `blog-publication-controller`는 KST 09:05/12:05/15:05/18:05/21:05 공개 전용이다. 아래 `blog-publisher` 직접 공개·22:05 catch-up 설명은 V4 이전 사고 기록이며 신규 스케줄 근거로 사용하지 않는다.
 
 > 2026-08-13 V3 override: `backfill:blog-quality:write` was removed. The legacy backfill creates article text, so `--write` and `--apply` now fail before any database mutation. Commands below that include the old write flag are historical verification records only.
 
-Last updated: 2026-07-28
+Last updated: 2026-08-27
 
 This runbook defines how operators decide whether the Yeosonam blog automation is healthy. The durable publish contract remains `docs/blog-autopublish-contract.md`; this file explains the daily operating workflow shown in `/admin/blog`.
 
 Information Engine V2 CTA setup, high-risk approval, fixture evaluation, existing-post dry-run, staging order, and rollback are handed off in `docs/blog-informational-engine-v2-owner-runbook.md`.
+
+## 2026-08-19 Durable Content Factory rollout
+
+### 2026-08-19 AI Control Plane P0 override
+
+생성 factory를 켜기 전에 `BLOG_AI_CONTROL_PLANE_ENABLED=1`을 적용할 수
+있는 배포는 다음을 모두 만족해야 한다.
+
+- `20260819113000_ai_control_plane_v1.sql`을 generation OFF 상태에서
+  migration dry-run 후 적용하고, service-role RPC와 RLS를 확인한다.
+- 동일 candidate의 Flash 1회와 Pro 1회만 예약되며, 동일 prompt hash와
+  idempotency key의 재호출도 차단한다. fallback·advisor·자동 Pro 승격은
+  없다. durable attempt 3~5는 deterministic repair·재검증·human review만
+  수행한다.
+- 예산 RPC 오류, idempotency 충돌, provider receipt settlement 오류는
+  유료 호출을 fail-closed한다. 이미 `approved_for_slot`인 공개 작업은 AI
+  예산과 분리해 publication controller가 처리한다.
+- `/admin/blog/system`에서 global/workload/candidate 예약·settled 비용,
+  candidate당 provider 호출 수, receipt 누락을 확인한다.
+
+기존 `llm-gateway.ts`와 `blog-ai-caller.ts`의 직접 provider SDK 호출은
+호환성 allowlist에 남아 있지만 durable Blog V4 경로는 이 adapter를 통해야
+한다. `npm run verify:ai-direct-call-guard`가 새 우회 호출을 차단한다. 이
+단계에서는 운영 key 분리·migration apply·환경변경을 수행하지 않는다.
+
+V4 factory와 중복되는 `blog-scheduler`, `trend-topic-miner`,
+`programmatic-seo-generator`, `blog-orchestrator`,
+`blog-regenerate-zero-click`은 `vercel.json` 자동 스케줄에서 제거했다.
+수동 유지보수 호출은 여전히 cron 인증과 기존 public/demand gate를 통과해야
+하며, canonical 생성·발행 권한은 `blog-generate`와
+`blog-publication-controller`에만 둔다.
+
+### 안전한 적용 순서
+
+1. 최신 `main`의 정확한 Git SHA를 확정하고 Blog required CI와 release exact-set을 통과시킨다.
+2. generation을 OFF로 유지한 채 content factory release manifest의 세 migration(`20260819073009`, `20260820100000`, `20260820113000`)을 순서대로 적용하고 private ledger, manual rollout RPC, RLS, service-role 권한을 확인한다. 마지막 migration은 `max_30` 승인 재고를 DB transaction 안에서 다시 계산한다.
+3. snapshot v4를 생성한 뒤 Git 기반 `main` 배포에서 provenance ref/SHA가 일치하는지 확인한다.
+4. demand 10건을 dry-run/materialize하고 무수요 후보가 operation으로 생성되지 않는지 확인한다.
+5. `BLOG_CONTENT_FACTORY_ENABLED=1`, `BLOG_GENERATION_CRON_ENABLED=1`, `BLOG_AUTOPUBLISH_MODE=draft_only`, `BLOG_CONTENT_FACTORY_WORKFLOW_START_LIMIT=1`로 단일 canary workflow만 시작한다. 공개·indexing side effect는 0이어야 한다.
+6. `approved_for_slot` 3건과 selected attempt, score 90+, failure/hard blocker 0을 확인한다.
+7. `reviewed_only`에서 사람이 승인한 1건만 canary 공개하고 creative·snapshot·indexing outbox·operation parity를 확인한다.
+8. 이상이 없을 때만 `live`와 `pilot_3`로 전환하고 `ramp_10`, `max_30` 순서로 승격한다.
+
+### 일일 상한과 재고
+
+| 단계 | 총 작업 | 신규 URL | 상한 구성 |
+|---|---:|---:|---|
+| `pilot_3` | 3 | 2 | 안전 canary |
+| `ramp_10` | 10 | 6 | 승인율·공개·색인 관측 후 |
+| `max_30` | 30 | 18 | 정보 12, 상업 4, 계절 2, material refresh 8, product refresh 4 |
+
+환경 cap과 DB rollout cap 중 낮은 값만 적용한다. 승인 재고 목표는 60건(2일분), 검증 demand brief 목표는 90건이다. 재고가 부족하면 슬롯을 저품질 URL로 채우지 않는다.
+
+### 운영 판정 쿼리(읽기 전용)
+
+```sql
+select status, current_stage, count(*)
+from public.blog_content_operations
+group by 1,2 order by 1,2;
+
+select publication_day_kst, count(*) as operations,
+       count(*) filter (where creates_new_url) as new_urls
+from public.blog_content_operations
+where status in ('publishing','published','indexed')
+  and publication_day_kst is not null
+group by 1 order by 1 desc;
+
+select failure_code, skip_reason, count(*)
+from public.blog_content_operations
+where failure_code is not null or skip_reason is not null
+group by 1,2 order by 3 desc;
+```
+
+HTTP 200은 성공 증거가 아니다. `/admin/blog/system`의 Demand→Verified brief→Research ready→Draft→Repairing→Human review→Approved→Published→Indexed 퍼널과 provenance, migration, effective mode, rollout cap, 승인 재고 일수를 함께 확인한다.
+
+### 즉시 freeze 조건
+
+공개 자격 누출, 일일/신규 URL cap 위반, selected attempt 없는 공개, 반복 5xx, 일일 비용 초과, provenance mismatch, indexing dead job이 발생하면 generation을 OFF로 하고 publication mode를 `draft_only`로 내린다. `BLOG_CONTENT_FACTORY_ENABLED`만 끄면 새 factory workflow 시작을 중단하고 legacy 경로를 보존한다. ledger 제거가 필요하면 먼저 활성/승인 operation을 0으로 만들고 evidence를 export한 후 `supabase/rollbacks/blog-v4-content-factory-20260819.sql`을 수동 검토한다. 이 작업에서는 rollback을 자동 실행하지 않는다.
 
 ## 2026-07-28 Root-Cause Controls
 

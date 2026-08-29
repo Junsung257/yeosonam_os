@@ -128,6 +128,22 @@ export function buildMicroAnglePrimaryKeyword(destination: string, template: Pic
 
 export const MIN_PUBLISHABLE_BUFFER_DAYS = 3;
 
+function buildSchedulerAutomationKey(row: {
+  source?: string | null;
+  topic?: string | null;
+  destination?: string | null;
+  product_id?: string | null;
+}): string {
+  return createHash('sha256')
+    .update([
+      row.source ?? '',
+      row.topic ?? '',
+      row.destination ?? '',
+      row.product_id ?? '',
+    ].map((value) => String(value).normalize('NFKC').trim().toLowerCase()).join('|'))
+    .digest('hex');
+}
+
 const WEATHER_READER_SCENARIOS = [
   'first_time_light_packer',
   'family_rain_plan',
@@ -810,11 +826,11 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
     const { rows: seasonalRows } = filterTopicFitPassed(seasonalRowsRaw);
     const demandBackedSeasonalRows = seasonalRows.filter((row) =>
       hasVerifiedBlogDemandSignal(readEmbeddedBlogQueueDemandSignalV3(row)),
-    );
+    ).map((row) => ({ ...row, automation_key: buildSchedulerAutomationKey(row) }));
     if (demandBackedSeasonalRows.length > 0) {
     const { data: inserted, error } = await supabaseAdmin
       .from('blog_topic_queue')
-      .insert(demandBackedSeasonalRows)
+      .upsert(demandBackedSeasonalRows, { onConflict: 'automation_key', ignoreDuplicates: true })
       .select('topic');
     if (!error) {
       const insertedTopics = new Set((inserted ?? []).map((r: { topic: string }) => r.topic));
@@ -869,11 +885,11 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
     const { rows: gapRows } = filterTopicFitPassed(gapRowsRaw);
     const demandBackedGapRows = gapRows.filter((row) =>
       hasVerifiedBlogDemandSignal(readEmbeddedBlogQueueDemandSignalV3(row)),
-    );
+    ).map((row) => ({ ...row, automation_key: buildSchedulerAutomationKey(row) }));
     if (demandBackedGapRows.length > 0) {
       const { data: inserted, error } = await supabaseAdmin
         .from('blog_topic_queue')
-        .insert(demandBackedGapRows)
+        .upsert(demandBackedGapRows, { onConflict: 'automation_key', ignoreDuplicates: true })
         .select('topic');
       if (!error) coverageAdded = (inserted ?? []).length;
     }
@@ -1000,10 +1016,14 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
       };
     });
     const { rows: productRows } = filterTopicFitPassed(productRowsRaw);
-    if (productRows.length > 0) {
+    const idempotentProductRows = productRows.map((row) => ({
+      ...row,
+      automation_key: buildSchedulerAutomationKey(row),
+    }));
+    if (idempotentProductRows.length > 0) {
       const { data: inserted, error } = await supabaseAdmin
         .from('blog_topic_queue')
-        .insert(productRows)
+        .upsert(idempotentProductRows, { onConflict: 'automation_key', ignoreDuplicates: true })
         .select('id');
       if (!error) productAdded = (inserted ?? []).length;
     }

@@ -7,7 +7,9 @@ describe('blog publication controller source contract', () => {
   it('publishes only durable approved attempts without importing an AI caller', () => {
     expect(source).toContain(".eq('status', 'approved_for_slot')");
     expect(source).toContain("attempt?.route !== 'approved_for_slot'");
-    expect(source).toContain('Number(run.latest_quality_score ?? 0) < 90');
+    expect(source).toContain('final_quality_decision_not_publishable');
+    expect(source).toContain('final_quality_revision_not_immutable_or_current');
+    expect(source).toContain('hashBlogContentRevisionV1');
     expect(source).not.toMatch(/blog-ai-caller|generateBlogText|DEEPSEEK_API_KEY|GoogleGenerativeAI|OpenAI/);
   });
 
@@ -16,6 +18,16 @@ describe('blog publication controller source contract', () => {
     expect(source).toContain('replaceBlogInformationAutomatedDraftAtomically');
     expect(source).toContain('readAutomatedPublishedBlogReplacement');
     expect(source).toContain('modelCalls: 0');
+  });
+
+  it('uses the fenced atomic commercial path when the content factory is enabled', () => {
+    expect(source).toContain('publishBlogCommercialOperationV4');
+    expect(source).toContain("if (factoryEnabled)");
+    expect(source).toContain('operationFinalizedAtomically = true');
+    expect(source).toContain('if (!factoryEnabled)');
+    expect(source).toContain("reason: 'content_factory_publication_window_closed'");
+    expect(source).toContain("publicationMode: policy.mode === 'reviewed_only' ? 'reviewed_only' : 'live'");
+    expect(source).toContain("source: 'blog_publication_controller_legacy'");
   });
 
   it('publishes an automated refresh only through its canonical target contract', () => {
@@ -31,6 +43,14 @@ describe('blog publication controller source contract', () => {
     expect(source).toContain('if (publicCommitComplete)');
     expect(source).toContain("status: 'published_state_sync_error'");
     expect(source).toContain('post_publish_state_sync_failed');
+  });
+
+  it('requeues transient publication failures and terminalizes non-retryable failures', () => {
+    expect(source).toContain('isRetryablePublicationFailure');
+    expect(source).toContain('retryBlogContentOperationPublicationV4');
+    expect(source).toContain("eventKey: `publication:retryable:v1:${run.id}`");
+    expect(source).toContain('terminalizeBlogContentOperationV4');
+    expect(source).toContain("eventKey: 'publication:failed:v2'");
   });
 
   it('allows only an explicit UUID-targeted force canary without bypassing the daily cap', () => {

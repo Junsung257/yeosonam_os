@@ -30,6 +30,7 @@ const readyInput = (): BlogProductionReadinessInputV4 => ({
     reviewBlockedWithDisposition: 8,
     queuedWithoutVerifiedDemand: 0,
     dueQueuedWithoutVerifiedDemand: 0,
+    approvedForSlotCount: 1,
   },
   measurement: {
     schemaReady: true,
@@ -54,6 +55,9 @@ describe('blog production readiness v4', () => {
   it('permits live pilot when every safety boundary has direct evidence', () => {
     const report = evaluateBlogProductionReadinessV4(readyInput(), now);
     expect(report.safeToEnableLive).toBe(true);
+    expect(report.generationReady).toBe(true);
+    expect(report.publicationReady).toBe(true);
+    expect(report.readyForLivePublication).toBe(true);
     expect(Object.values(report.scopes).every(Boolean)).toBe(true);
     expect(report.checks.find((item) => item.key === 'natural_conversion_observation')?.status)
       .toBe('warning');
@@ -85,6 +89,20 @@ describe('blog production readiness v4', () => {
     const report = evaluateBlogProductionReadinessV4(input, now);
     expect(report.scopes.corpus).toBe(false);
     expect(report.safeToEnableLive).toBe(false);
+  });
+
+  it('blocks live readiness when no approved slot candidate exists', () => {
+    const input = readyInput();
+    input.corpus.approvedForSlotCount = 0;
+    const report = evaluateBlogProductionReadinessV4(input, now);
+    expect(report.scopes.corpus).toBe(false);
+    expect(report.checks.find((item) => item.key === 'approved_for_slot_inventory'))
+      .toMatchObject({ status: 'block' });
+    expect(report.generationReady).toBe(true);
+    expect(report.readyForDraftOnlyGeneration).toBe(true);
+    expect(report.publicationReady).toBe(false);
+    expect(report.readyForLivePublication).toBe(false);
+    expect(report.publicationBlockers).toContain('approved_for_slot_inventory');
   });
 
   it('separates a tested analytics path from naturally zero conversion volume', () => {

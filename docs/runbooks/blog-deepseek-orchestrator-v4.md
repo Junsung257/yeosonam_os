@@ -1,12 +1,12 @@
 # Blog DeepSeek Orchestrator V4 Runbook
 
-기준일: 2026-08-17 (Asia/Seoul)
+기준일: 2026-08-27 (Asia/Seoul)
 
-이 런북은 블로그 후보 생성과 공개를 분리한다. 하루 30개는 후보 처리량이며 공개량이 아니다. 운영 공개는 품질·수요·증거·중복·포트폴리오 gate를 통과한 글만 `pilot_3→ramp_10→max_30`으로 단계 상승한다. 환경 변수는 상한일 뿐이고 실제 단계는 DB rollout 원장이 결정한다. 이 문서는 배포 절차를 정의하지만 문서 실행 자체가 운영 배포나 DB 변경을 승인하지 않는다.
+이 런북은 블로그 후보 생성과 공개를 분리한다. 하루 30개는 후보 처리량이며 공개량이 아니다. 운영 공개는 품질·수요·증거·중복·포트폴리오 gate를 통과한 저위험 글만 `pilot_3→ramp_10→max_30`으로 단계 상승한다. HIGH-risk 주제는 사람 승인 대기 없이 preflight에서 자동 격리한다. 환경 변수는 상한일 뿐이고 실제 단계는 DB rollout 원장이 결정한다. 이 문서는 배포 절차를 정의하지만 문서 실행 자체가 운영 배포나 DB 변경을 승인하지 않는다.
 
 ## 실행 구조
 
-1. `blog-generate`가 KST 01:05~06:05에 실행된다.
+1. `blog-scheduler`가 매일 KST 00:00에 수요 기반 queue와 research-ready buffer를 보충한다. `blog-generate`는 KST 01:05~06:55에 실행된다.
 2. Naver API HUB → 기존 Naver Developers API → Search Ads/DataLab/GSC/공식 근거 순으로 수요와 구조 신호를 수집한다.
 3. DeepSeek V4 Flash(non-thinking)가 첫 초안을 작성한다.
 4. 기존 claim gate, V3 brief, corpus diversity, 한국어·이미지·공개 렌더 gate가 평가한다.
@@ -14,8 +14,8 @@
 6. 75~89점은 DeepSeek V4 Pro `reasoning_effort=high`, 두 번째 시도까지 미수렴하면 Pro `max`를 최종 3차 시도로 사용한다.
 7. 사실·수요·claim 충돌은 문장 재작성으로 덮지 않는다. 한 번 재연구 후 계속 실패하면 격리한다.
 8. 75점 미만도 `researchValid=true`, `claimLedgerValid=true`, 남은 실패가 표현·구조뿐일 때에는 DeepSeek V4 Pro max 보완으로 계속 보낸다. 사실·수요·출처·충돌·언어 무결성·중복 문제는 재작성으로 우회하지 않는다. 한 후보의 writer 호출은 초안을 포함해 최대 5회(초안 1회 + 보완 4회)이며, 다섯 번째 결과도 사실·고위험·중복·claim gate를 통과하지 못하면 격리한다. 이 예산은 `20260818080000_blog_deepseek_auto_repair_budget_v1.sql` 적용 후에만 운영에서 활성화된다.
-9. `blog-publication-controller`가 KST 09/12/15/18/21에 저장된 승인 초안만 공개한다. 이 route의 모델 호출 수는 0이다.
-10. 공개 후 기존 atomic representative, indexing outbox, public snapshot, cache tag 경로를 사용한다.
+9. `blog-publication-controller`가 KST 09:00~22:00의 저장된 승인 초안만 공개한다. 이 route의 모델 호출 수는 0이다.
+10. 공개 후 기존 atomic representative, indexing outbox, public snapshot, cache tag 경로를 사용하며, `blog-indexing-worker`가 5분 주기로 독립 retry/drain한다.
 
 ### 기존 대표 글의 자동 갱신
 
@@ -29,7 +29,7 @@
 
 생성 실행 원장은 `blog_generation_runs`, 개별 모델 시도는 `blog_generation_attempts`, 가격 근거는 `ai_model_price_catalog`, 호출 전 비용 예약은 `blog_ai_budget_reservations`에 저장한다. 승인된 run은 반드시 실제 저장된 `selected_attempt_id`를 가져야 한다. 기존 `agent_tasks`에는 queue별 `blog_orchestrator` 작업 한 건을 재사용해 stage와 최종 disposition을 남긴다.
 
-모델 품질이 90점 이상이어도 `draft_only`, HIGH-risk, 사람 검토, 또는 발행 정책으로 공개할 수 없으면 run은 `approved_for_slot`에 남기지 않고 `human_review`로 전환하며 `scheduled_publish_at`을 비운다. 따라서 publication controller의 슬롯 재고는 실제 공개 가능한 초안만 포함한다.
+모델 품질이 90점 이상이어도 `draft_only`, 품질 실패, 또는 발행 정책으로 공개할 수 없으면 run은 `approved_for_slot`에 남기지 않는다. V4 factory의 HIGH-risk와 bounded repair 이후 품질 미달은 `quarantined`로 terminalize하며 `scheduled_publish_at`을 비운다. 따라서 publication controller의 슬롯 재고는 실제 공개 가능한 저위험 초안만 포함한다.
 
 ## DeepSeek 시간·가격 계약
 

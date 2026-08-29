@@ -19,6 +19,7 @@ type CorpusEvidence = {
   review_blocked_with_disposition: number;
   queued_without_verified_demand: number;
   due_queued_without_verified_demand: number;
+  approved_for_slot_count: number;
   sample_slug: string | null;
   gsc_rows_90d: number;
   gsc_latest_metric_date: string | null;
@@ -151,6 +152,7 @@ async function main(): Promise<void> {
       'review_blocked_with_disposition', (select count(*) from public.content_creatives c where c.channel = 'naver_blog' and c.status = 'published' and c.slug is not null and coalesce(c.review_status, '') in ('pending_review','in_review','rejected','changes_requested') and exists (select 1 from public.blog_url_dispositions d where d.creative_id = c.id and d.action in ('REDIRECT','QUARANTINE'))),
       'queued_without_verified_demand', (select count(*) from public.blog_topic_queue q where q.status = 'queued' and coalesce(q.monthly_search_volume, 0) <= 0 and coalesce(q.trend_score, 0) <= 0 and q.product_id is null and coalesce(q.meta ->> 'gsc_signal', '') <> 'true' and coalesce(q.meta ->> 'naver_signal', '') <> 'true' and nullif(q.meta ->> 'verified_operator_note_id', '') is null and coalesce(q.meta ->> 'editor_approved_seed', '') <> 'true' and coalesce(q.meta ->> 'active_product_relation_verified', '') <> 'true' and coalesce(q.meta ->> 'customer_question_count', '0') !~ '^[1-9][0-9]*$' and not exists (select 1 from public.blog_demand_signals d where d.queue_id = q.id and d.source_reference is not null and (d.expires_at is null or d.expires_at > now()) and (coalesce(d.signal_value, 0) > 0 or (d.provider in ('operator_note','editor_seed') and d.verified_at is not null) or d.provider = 'active_product_question'))),
       'due_queued_without_verified_demand', (select count(*) from public.blog_topic_queue q where q.status = 'queued' and (q.target_publish_at is null or q.target_publish_at <= now()) and coalesce(q.monthly_search_volume, 0) <= 0 and coalesce(q.trend_score, 0) <= 0 and q.product_id is null and coalesce(q.meta ->> 'gsc_signal', '') <> 'true' and coalesce(q.meta ->> 'naver_signal', '') <> 'true' and nullif(q.meta ->> 'verified_operator_note_id', '') is null and coalesce(q.meta ->> 'editor_approved_seed', '') <> 'true' and coalesce(q.meta ->> 'active_product_relation_verified', '') <> 'true' and coalesce(q.meta ->> 'customer_question_count', '0') !~ '^[1-9][0-9]*$' and not exists (select 1 from public.blog_demand_signals d where d.queue_id = q.id and d.source_reference is not null and (d.expires_at is null or d.expires_at > now()) and (coalesce(d.signal_value, 0) > 0 or (d.provider in ('operator_note','editor_seed') and d.verified_at is not null) or d.provider = 'active_product_question'))),
+      'approved_for_slot_count', (select count(*) from public.blog_generation_runs where status = 'approved_for_slot'),
       'sample_slug', (select slug from public.public_blog_content_creatives where slug is not null order by published_at desc nulls last limit 1),
       'gsc_rows_90d', (select count(*) from public.blog_search_performance where provider = 'google_search_console' and metric_date >= current_date - 90),
       'gsc_latest_metric_date', (select max(metric_date)::text from public.blog_search_performance where provider = 'google_search_console'),
@@ -216,6 +218,7 @@ async function main(): Promise<void> {
       reviewBlockedWithDisposition: corpus.review_blocked_with_disposition,
       queuedWithoutVerifiedDemand: corpus.queued_without_verified_demand,
       dueQueuedWithoutVerifiedDemand: corpus.due_queued_without_verified_demand,
+      approvedForSlotCount: corpus.approved_for_slot_count,
     },
     measurement: {
       schemaReady: ['search_performance', 'analytics_attribution', 'engagement_and_rum'].every((key) => presentCapabilities.includes(key)),

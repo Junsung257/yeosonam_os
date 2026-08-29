@@ -526,7 +526,7 @@ export function resolveBlogPublicationRampCapV4(
 }
 
 /** The overnight KST generation window is deliberately outside DeepSeek's published peak windows. */
-export function isBlogGenerationWindowKstV4(now: Date, start = '01:00', end = '06:50'): boolean {
+export function isBlogGenerationWindowKstV4(now: Date, start = '01:00', end = '07:00'): boolean {
   const parse = (value: string): number => {
     const [hour, minute] = value.split(':').map(Number);
     return hour * 60 + minute;

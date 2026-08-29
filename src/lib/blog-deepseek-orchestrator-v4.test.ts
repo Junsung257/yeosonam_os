@@ -593,6 +593,7 @@ describe('blog DeepSeek orchestrator V4', () => {
 
   it('recognizes the overnight KST compute window and clamps publication ramp stages', () => {
     expect(isBlogGenerationWindowKstV4(new Date('2026-08-16T16:00:00.000Z'))).toBe(true);
+    expect(isBlogGenerationWindowKstV4(new Date('2026-08-16T21:55:00.000Z'))).toBe(true);
     expect(isBlogGenerationWindowKstV4(new Date('2026-08-16T22:00:00.000Z'))).toBe(false);
     expect(resolveBlogPublicationRampCapV4('max_30').cap).toBe(30);
     expect(resolveBlogPublicationRampCapV4('ramp_10').cap).toBe(10);

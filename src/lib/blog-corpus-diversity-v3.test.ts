@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  decideBlogDuplicateDispositionV3, evaluateBlogCorpusCandidateV3, extractBlogHeadingTreeV3, minHashSignatureV3,
+  BLOG_OPENING_MAX_SIMILARITY_V3, decideBlogDuplicateDispositionV3, evaluateBlogCorpusCandidateV3, extractBlogHeadingTreeV3, minHashSignatureV3,
   minHashSimilarityV3, normalizeBlogTitleSkeletonV3,
 } from './blog-corpus-diversity-v3';
 
@@ -32,5 +32,20 @@ describe('blog corpus diversity v3', () => {
     expect(report.comparedCount).toBe(2);
     expect(report.disposition).toBe('queue_reject');
     expect(report.evidence.some((item) => item.metric === 'exact_title')).toBe(true);
+  });
+
+  it('uses the strict opening threshold and excludes non-accepted drafts from opening comparison', () => {
+    const candidate = {
+      title: '괌 숙소 지역 비교',
+      body: '일정의 우선순위를 먼저 적고 확인된 근거를 기준별로 대조합니다.\n\n## 비교 기준\n조건을 나눕니다.',
+      destination: '괌',
+    };
+    const report = evaluateBlogCorpusCandidateV3(candidate, [
+      { title: '실패한 초안', body: candidate.body, source: 'draft', includeInOpeningComparison: false },
+      { title: '승인된 글', body: '일정의 우선순위를 먼저 적고 확인된 근거를 기준별로 대조합니다.\n\n## 다른 기준\n조건을 나눕니다.', source: 'published' },
+    ]);
+    expect(report.openingEvidence.threshold).toBe(BLOG_OPENING_MAX_SIMILARITY_V3);
+    expect(report.openingEvidence.comparedCount).toBe(1);
+    expect(report.openingEvidence.nearestMatch?.title).toBe('승인된 글');
   });
 });

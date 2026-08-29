@@ -95,5 +95,6 @@ jobs:
           # TypeScript + Vitest is a required parallel job; do not run the same
           # 6 GB type pass again inside Next's bundle-only build.
           NEXT_BUILD_SKIP_TYPECHECK: '1'
+          NEXT_BUILD_RECOVERY_WAIT_MS: '30000'
       - name: Bundle budget check (--fail)
         run: npm run check:bundle:ci
