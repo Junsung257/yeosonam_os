@@ -21,16 +21,25 @@ describe('destination public package data boundary', () => {
   it('uses public snapshots for city route inventory and package-derived destination data', () => {
     const text = source('src/app/destinations/[city]/page.tsx');
     const helperIndex = text.indexOf('async function listDestinationPublicSnapshotRows');
-    const inventoryIndex = text.indexOf('async function destinationHasPublicInventory');
     const packageMatchIndex = text.indexOf('const packageMatch =');
     const departureIndex = text.indexOf('const departureCities =');
 
     expect(text).toContain('listDestinationPublicSnapshotRows(');
     expect(text).not.toContain("from('travel_packages')");
-    expect(text.slice(inventoryIndex, packageMatchIndex)).toContain('listDestinationPublicSnapshotRows');
     expect(text.slice(packageMatchIndex - 260, packageMatchIndex)).toContain('listDestinationPublicSnapshotRows');
     expect(text.slice(departureIndex, departureIndex + 450)).toContain('alivePackageRows');
     expect(helperIndex).toBeGreaterThan(0);
+  });
+
+  it('lets the page render own existence decisions instead of merging transient metadata noindex', () => {
+    const text = source('src/app/destinations/[city]/page.tsx');
+    const metadataStart = text.indexOf('export async function generateMetadata');
+    const renderStart = text.indexOf('export default async function DestinationPillarPage');
+    const metadataSource = text.slice(metadataStart, renderStart);
+
+    expect(metadataSource).not.toContain('destinationHasPublicInventory');
+    expect(metadataSource).not.toContain('destinationExistsForMetadata');
+    expect(metadataSource).toContain('const socialImage = await getDestinationSocialImage(decoded);');
   });
 
   it('renders live city routes dynamically to avoid DYNAMIC_SERVER_USAGE 500s', () => {

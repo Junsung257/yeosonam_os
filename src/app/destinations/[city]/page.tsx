@@ -140,10 +140,7 @@ async function getDestinationSocialImage(city: string): Promise<string> {
   }
 }
 
-async function destinationExistsForMetadata(city: string): Promise<boolean | null> {
-  if (!isSupabaseConfigured) return null;
-  if (shouldSkipPublicDbReadsForResourceSaver()) return null;
-
+async function destinationExistsForRoute(city: string): Promise<boolean | null> {
   try {
     const queryNames = getPublicDestinationQueryNames(city);
     const { data, error } = await supabaseAdmin
@@ -159,19 +156,6 @@ async function destinationExistsForMetadata(city: string): Promise<boolean | nul
   }
 }
 
-async function destinationHasPublicInventory(city: string): Promise<boolean | null> {
-  if (!isSupabaseConfigured) return null;
-  if (shouldSkipPublicDbReadsForResourceSaver()) return null;
-
-  try {
-    const queryNames = getPublicDestinationQueryNames(city);
-    const publicRows = await listDestinationPublicSnapshotRows();
-    return publicRows.some(row => queryNames.includes(String(row.destination ?? '')));
-  } catch {
-    return null;
-  }
-}
-
 async function resolveDestinationRouteParam(value: string): Promise<string | null> {
   const decoded = safeDecodePathSegment(value).trim();
   if (!decoded) return null;
@@ -179,7 +163,7 @@ async function resolveDestinationRouteParam(value: string): Promise<string | nul
   if (!isSupabaseConfigured) return decodedCanonical;
   if (shouldSkipPublicDbReadsForResourceSaver()) return decodedCanonical;
 
-  const exact = await destinationExistsForMetadata(decodedCanonical);
+  const exact = await destinationExistsForRoute(decodedCanonical);
   if (exact === true) return decodedCanonical;
 
   try {
@@ -601,10 +585,12 @@ export async function generateMetadata({ params }: { params: Promise<{ city?: st
 
   const title = `${decoded} 여행 완벽 가이드 | 관광지·일정·비용`;
   const description = `${decoded} 여행의 모든 것 — 운영팀 검증 관광지, 추천 일정, 예상 비용, 계절별 팁까지. 여소남이 정리한 ${decoded} 완벽 가이드.`;
-  const destinationExists = await destinationHasPublicInventory(decoded);
-  if (destinationExists === false) {
-    notFound();
-  }
+
+  // Existence is owned by the page render itself. Calling notFound() from
+  // generateMetadata performed a second, independent inventory read and could
+  // merge the global noindex metadata into a valid 200 page during a transient
+  // snapshot mismatch. A genuinely missing destination reaches notFound() in
+  // DestinationPillarPage and keeps the expected 404/noindex behavior there.
 
   const socialImage = await getDestinationSocialImage(decoded);
 
@@ -635,12 +621,12 @@ export async function generateMetadata({ params }: { params: Promise<{ city?: st
   };
 }
 
-async function renderPillarBody(md: string): Promise<string> {
+async function renderPillarBody(md: string, imageAltPrefix: string): Promise<string> {
   const accented = applyMarkdownAccents(md);
   const { marked } = await import('marked');
   const html = marked.parse(accented) as string;
   const colored = applyHtmlAccents(html);
-  return sanitizePublicBlogBodyHtml(colored);
+  return sanitizePublicBlogBodyHtml(colored, { imageAltPrefix });
 }
 
 export default async function DestinationPillarPage({ params }: { params: Promise<{ city?: string | string[] }> }) {
@@ -678,7 +664,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
       .find((url): url is string => isSafeImageSrc(url)) ?? null;
   const heroImage = fromMeta || fromAttr || fromPackage || fromPost;
 
-  const pillarHtml = data.pillarPost?.blog_html ? await renderPillarBody(data.pillarPost.blog_html) : null;
+  const pillarHtml = data.pillarPost?.blog_html ? await renderPillarBody(data.pillarPost.blog_html, decoded) : null;
   const region = getRegionForCity(decoded);
 
   // 히어로 타이틀/설명 (destination_metadata 우선)
