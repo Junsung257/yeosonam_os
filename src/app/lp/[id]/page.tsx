@@ -109,6 +109,7 @@ export async function generateMetadata(
   // the page body; otherwise Next.js can perform a second public-only lookup,
   // block on a stale snapshot and make an otherwise valid proof time out.
   const loadOptions = await proofLoadOptions(props.searchParams);
+  const proofMode = Boolean(loadOptions.proofSnapshotId);
   if (!loadOptions.proofSnapshotId) {
     const routeState = await publicRouteState(id);
     if (routeState.state === 'UNDER_REVIEW') return underReviewMetadata(canonical);
@@ -180,6 +181,9 @@ export async function generateMetadata(
     title,
     description: desc,
     alternates: { canonical },
+    ...(proofMode
+      ? { robots: { index: false, follow: false, nocache: true } }
+      : {}),
     openGraph: {
       title: rawTitle,
       description: desc,

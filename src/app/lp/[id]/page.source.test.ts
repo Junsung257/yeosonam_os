@@ -22,4 +22,11 @@ describe('LP customer publication contract', () => {
     expect(source).toContain("if (routeState.state === 'UNDER_REVIEW') return <ProductReviewNotice />;");
     expect(source).toContain("if (routeState.state === 'UNAVAILABLE') throw new Error('PACKAGE_VISIBILITY_LOOKUP_UNAVAILABLE');");
   });
+
+  it('keeps signed proof metadata out of search indexes', () => {
+    const source = pageSource();
+
+    expect(source).toContain('const proofMode = Boolean(loadOptions.proofSnapshotId);');
+    expect(source).toContain("? { robots: { index: false, follow: false, nocache: true } }");
+  });
 });
