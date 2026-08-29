@@ -47,6 +47,32 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(repaired).toContain('## 근거 확인');
   });
 
+  it('repairs the opening after a plain fixed title is normalized to H1', () => {
+    const normalized = normalizeBlogWriterHeadingV4([
+      '괌 여행 식비 예산',
+      '',
+      '이 예산은 확인일 기준으로 수집된 항목만 포함합니다.',
+      '',
+      '## 근거 확인',
+      '승인 문장',
+    ].join('\n'), '괌 여행 식비 예산');
+    const repaired = repairFoodBudgetRewriteOpeningV4({
+      markdown: normalized,
+      primaryQuery: '괌 여행 식비 예산',
+      intentType: 'food_budget',
+      approvedClaims: [{
+        claimText: '승인 문장',
+        claimType: 'price',
+        riskLevel: 'MEDIUM',
+        sourceUrls: ['https://chinfe.menuguam.com/'],
+      }],
+    });
+
+    expect(normalized).toMatch(/^# 괌 여행 식비 예산/);
+    expect(repaired).toContain('chinfe.menuguam.com 근거 링크부터 확인');
+    expect(repaired).not.toContain('이 예산은 확인일 기준으로 수집된 항목만 포함합니다.');
+  });
+
   it('does not replace a food-budget opening containing a number', () => {
     const markdown = '# 괌 식비\n\n승인된 가격은 25 USD이다.\n\n## 근거\n본문';
     expect(repairFoodBudgetRewriteOpeningV4({

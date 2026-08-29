@@ -494,6 +494,16 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).not.toContain("fallback: 'gemini'");
   });
 
+  it('normalizes the writer H1 before deterministic food-budget opening repair', () => {
+    const source = routeSource();
+    const normalizeIndex = source.indexOf('const headingNormalizedWriterOutput =');
+    const repairIndex = source.indexOf('markdown: repairFoodBudgetRewriteOpeningV4({');
+
+    expect(normalizeIndex).toBeGreaterThan(-1);
+    expect(repairIndex).toBeGreaterThan(normalizeIndex);
+    expect(source).toContain('markdown: headingNormalizedWriterOutput.markdown');
+  });
+
   it('persists incomplete provider calls as failed attempts and never evaluates partial text', () => {
     const source = routeSource();
 

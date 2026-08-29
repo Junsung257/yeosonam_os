@@ -4989,12 +4989,21 @@ async function generateFromTopic(
   const labelRepairedWriterOutput = generationStage === 'draft_flash'
     ? parsedWriterOutput
     : restoreApprovedRewriteClaimLabels(parsedWriterOutput, rewriteApprovedClaims);
+  // The writer may return the fixed title as plain text. Normalize it before
+  // opening repair so the repair can locate the H1/H2 boundary reliably.
+  const headingNormalizedWriterOutput = {
+    ...labelRepairedWriterOutput,
+    markdown: normalizeBlogWriterHeadingV4(
+      labelRepairedWriterOutput.markdown,
+      contentBriefV3.metadata.title,
+    ),
+  };
   const writerOutput = generationStage === 'draft_flash'
-    ? labelRepairedWriterOutput
+    ? headingNormalizedWriterOutput
     : {
-        ...labelRepairedWriterOutput,
+        ...headingNormalizedWriterOutput,
         markdown: repairFoodBudgetRewriteOpeningV4({
-          markdown: labelRepairedWriterOutput.markdown,
+          markdown: headingNormalizedWriterOutput.markdown,
           primaryQuery: contentBriefV3.primaryQuery,
           intentType: contentBrief.intentType,
           approvedClaims: rewriteApprovedClaims,
@@ -5005,7 +5014,6 @@ async function generateFromTopic(
     .replace(/^```\s*/i, '')
     .replace(/```\s*$/i, '')
     .trim();
-  blog_html = normalizeBlogWriterHeadingV4(blog_html, contentBriefV3.metadata.title);
   const writerOutputBoundary = boundBlogWriterOutput(blog_html);
   blog_html = writerOutputBoundary.markdown;
   const competitorPhraseMatches = serpResearchV3
