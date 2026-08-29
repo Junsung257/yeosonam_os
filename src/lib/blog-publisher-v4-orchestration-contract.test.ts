@@ -77,4 +77,12 @@ describe('blog publisher V4 orchestration wiring', () => {
     expect(source.match(/\[generated\.seo_title, generated\.seo_description, generated\.blog_html\]/g))
       .toHaveLength(2);
   });
+
+  it('revalidates the controlled canary without consuming another model attempt', () => {
+    expect(source).toContain("request.reason !== 'opening_heading_exclusion_v1'");
+    expect(source).toContain('attempts: attemptRevalidationRequest');
+    expect(source).toContain('loadBlogAttemptRevalidationCandidateV4(');
+    expect(source).toContain('revalidateBlogGenerationAttemptV4({');
+    expect(source).toContain('model_calls: 0');
+  });
 });

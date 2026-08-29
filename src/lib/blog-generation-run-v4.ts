@@ -46,6 +46,69 @@ export interface BlogGenerationAttemptRecordV4 {
   errorCode?: string | null;
 }
 
+export interface BlogGenerationAttemptRevalidationV4 {
+  queueId: string;
+  attemptId: string;
+  attemptNumber: number;
+  qualityScore: number;
+  reason: 'opening_heading_exclusion_v1';
+  output: BlogGenerationAttemptRecordV4['output'];
+}
+
+interface BlogGenerationAttemptRevalidationSnapshotV4 {
+  attemptNumber: number;
+  status: string;
+  route: string;
+  qualityScore: number;
+  hardBlockers: unknown;
+  failureReasons: unknown;
+  output: BlogGenerationAttemptRecordV4['output'];
+}
+
+function publicAttemptOutputMatchesV4(
+  left: BlogGenerationAttemptRecordV4['output'],
+  right: BlogGenerationAttemptRecordV4['output'],
+): boolean {
+  return left.title === right.title
+    && left.description === right.description
+    && left.slug === right.slug
+    && left.markdown === right.markdown;
+}
+
+export function isEligibleBlogGenerationAttemptRevalidationV4(input: {
+  snapshot: BlogGenerationAttemptRevalidationSnapshotV4;
+  expectedAttemptNumber: number;
+  output: BlogGenerationAttemptRecordV4['output'];
+}): boolean {
+  const failureReasons = Array.isArray(input.snapshot.failureReasons)
+    ? input.snapshot.failureReasons.map(String)
+    : [];
+  const hardBlockers = Array.isArray(input.snapshot.hardBlockers)
+    ? input.snapshot.hardBlockers.map(String)
+    : [];
+  const oldAudit = input.snapshot.output.audit;
+  const oldQuality = oldAudit?.quality_evaluation_v3 as Record<string, unknown> | undefined;
+  const oldQualityFailures = Array.isArray(oldQuality?.failureReasons)
+    ? oldQuality.failureReasons
+      .map((row) => row && typeof row === 'object' ? String((row as Record<string, unknown>).code || '') : '')
+      .filter(Boolean)
+    : [];
+  const oldClaimValidation = oldAudit?.claim_validation as Record<string, unknown> | undefined;
+  const oldPublishQuality = oldAudit?.publish_quality as Record<string, unknown> | undefined;
+  return input.snapshot.attemptNumber === input.expectedAttemptNumber
+    && input.snapshot.status === 'completed'
+    && input.snapshot.route === 'quarantine'
+    && Number(input.snapshot.qualityScore) >= 90
+    && hardBlockers.length === 0
+    && failureReasons.length === 1
+    && failureReasons[0] === 'opening_too_similar'
+    && oldQualityFailures.length === 1
+    && oldQualityFailures[0] === 'opening_too_similar'
+    && oldClaimValidation?.passed === true
+    && oldPublishQuality?.passed === true
+    && publicAttemptOutputMatchesV4(input.snapshot.output, input.output);
+}
+
 export interface PriorBlogGenerationAttemptV4 {
   attemptNumber: number;
   output: { title?: string; description?: string; slug?: string; markdown?: string };
@@ -354,6 +417,137 @@ export async function recordBlogGenerationAttemptV4(
     }).eq('id', task.id);
   }
   return { runId: run.id, error: null };
+}
+
+/**
+ * Re-runs deterministic quality checks against an existing model output after
+ * an evaluator-only defect is fixed. It never spends AI budget or creates a
+ * new model attempt. The original route, score and failure are retained in the
+ * attempt audit before the attempt is promoted for the publication controller.
+ */
+export async function revalidateBlogGenerationAttemptV4(
+  input: BlogGenerationAttemptRevalidationV4,
+): Promise<string | null> {
+  const { data: run, error: runError } = await supabaseAdmin
+    .from('blog_generation_runs')
+    .select('id,status,attempt_count,selected_attempt_id')
+    .eq('queue_id', input.queueId)
+    .eq('generation_key', `queue:${input.queueId}`)
+    .maybeSingle();
+  if (runError || !run?.id) return runError?.message || 'generation_run_missing';
+
+  const { data: attempt, error: attemptError } = await supabaseAdmin
+    .from('blog_generation_attempts')
+    .select('id,attempt_number,status,route,quality_score_after,hard_blockers,failure_reasons,output_document,output_hash')
+    .eq('id', input.attemptId)
+    .eq('run_id', run.id)
+    .eq('queue_id', input.queueId)
+    .maybeSingle();
+  if (attemptError || !attempt?.id) return attemptError?.message || 'generation_attempt_missing';
+
+  const currentOutput = (attempt.output_document || {}) as BlogGenerationAttemptRecordV4['output'];
+  const currentAudit = currentOutput.audit || {};
+  const existingRevalidation = currentAudit.deterministic_revalidation_v4 as Record<string, unknown> | undefined;
+  const alreadyRevalidated = attempt.route === 'approved_for_slot'
+    && Array.isArray(attempt.failure_reasons)
+    && attempt.failure_reasons.length === 0
+    && existingRevalidation?.reason === input.reason
+    && existingRevalidation?.source_attempt_id === input.attemptId
+    && publicAttemptOutputMatchesV4(currentOutput, input.output);
+
+  if (!alreadyRevalidated) {
+    const eligible = isEligibleBlogGenerationAttemptRevalidationV4({
+      snapshot: {
+        attemptNumber: Number(attempt.attempt_number || 0),
+        status: String(attempt.status || ''),
+        route: String(attempt.route || ''),
+        qualityScore: Number(attempt.quality_score_after || 0),
+        hardBlockers: attempt.hard_blockers,
+        failureReasons: attempt.failure_reasons,
+        output: currentOutput,
+      },
+      expectedAttemptNumber: input.attemptNumber,
+      output: input.output,
+    });
+    const newAudit = input.output.audit || {};
+    const newQuality = newAudit.quality_evaluation_v3 as Record<string, unknown> | undefined;
+    const newClaimValidation = newAudit.claim_validation as Record<string, unknown> | undefined;
+    const newPublishQuality = newAudit.publish_quality as Record<string, unknown> | undefined;
+    if (!eligible
+      || newQuality?.passed !== true
+      || newClaimValidation?.passed !== true
+      || newPublishQuality?.passed !== true
+      || Number(input.qualityScore) < 90) {
+      return 'generation_attempt_revalidation_precondition_failed';
+    }
+
+    const revalidatedAt = new Date().toISOString();
+    const revalidatedOutput: BlogGenerationAttemptRecordV4['output'] = {
+      ...input.output,
+      audit: {
+        ...newAudit,
+        deterministic_revalidation_v4: {
+          version: 'v1',
+          reason: input.reason,
+          source_attempt_id: input.attemptId,
+          source_route: attempt.route,
+          source_failure_reasons: attempt.failure_reasons,
+          source_quality_score: Number(attempt.quality_score_after || 0),
+          source_output_hash: attempt.output_hash,
+          revalidated_at: revalidatedAt,
+          model_calls: 0,
+        },
+      },
+    };
+    const revalidatedHash = createHash('sha256').update(JSON.stringify(revalidatedOutput)).digest('hex');
+    const { data: updatedAttempt, error: updateAttemptError } = await supabaseAdmin
+      .from('blog_generation_attempts')
+      .update({
+        route: 'approved_for_slot',
+        quality_score_after: input.qualityScore,
+        hard_blockers: [],
+        failure_reasons: [],
+        output_document: revalidatedOutput,
+        output_hash: revalidatedHash,
+        error_code: null,
+      })
+      .eq('id', input.attemptId)
+      .eq('run_id', run.id)
+      .eq('queue_id', input.queueId)
+      .eq('attempt_number', input.attemptNumber)
+      .eq('route', 'quarantine')
+      .eq('output_hash', attempt.output_hash)
+      .select('id')
+      .maybeSingle();
+    if (updateAttemptError || !updatedAttempt?.id) {
+      return updateAttemptError?.message || 'generation_attempt_revalidation_conflict';
+    }
+  }
+
+  if (run.status === 'generating' && run.selected_attempt_id === input.attemptId) return null;
+  if (run.status !== 'quarantine'
+    || Number(run.attempt_count || 0) !== input.attemptNumber
+    || run.selected_attempt_id !== null) {
+    return 'generation_run_revalidation_precondition_failed';
+  }
+  const { data: updatedRun, error: updateRunError } = await supabaseAdmin
+    .from('blog_generation_runs')
+    .update({
+      status: 'generating',
+      disposition: 'awaiting_publication_gates',
+      selected_attempt_id: input.attemptId,
+      latest_quality_score: input.qualityScore,
+      last_error: null,
+      quarantined_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', run.id)
+    .eq('status', 'quarantine')
+    .eq('attempt_count', input.attemptNumber)
+    .is('selected_attempt_id', null)
+    .select('id')
+    .maybeSingle();
+  return updateRunError?.message ?? (updatedRun?.id ? null : 'generation_run_revalidation_conflict');
 }
 
 export async function approveBlogGenerationRunForSlotV4(input: {

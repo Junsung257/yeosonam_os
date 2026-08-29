@@ -211,11 +211,13 @@ import {
 } from '@/lib/blog-deepseek-orchestrator-v4';
 import {
   approveBlogGenerationRunForSlotV4,
+  isEligibleBlogGenerationAttemptRevalidationV4,
   markBlogGenerationRunForHumanReviewV4,
   readLatestBlogGenerationAttemptV4,
   readLatestBlogModelCallAttemptNumberV4,
   nextBlogModelCallAttemptNumberV4,
   recordBlogGenerationAttemptV4,
+  revalidateBlogGenerationAttemptV4,
   reserveBlogAiBudgetBeforeCallV4,
   settleBlogAiBudgetReservationV4,
 } from '@/lib/blog-generation-run-v4';
@@ -2330,6 +2332,26 @@ async function isRecentInfoDuplicateCandidate(item: any): Promise<boolean> {
   return Number(count ?? 0) > 0;
 }
 
+interface BlogAttemptRevalidationRequestV4 {
+  attemptId: string;
+  reason: 'opening_heading_exclusion_v1';
+}
+
+function readBlogAttemptRevalidationRequestV4(item: any): BlogAttemptRevalidationRequestV4 | null {
+  const request = item?.meta?.deterministic_attempt_revalidation_v4;
+  if (!request || typeof request !== 'object' || Array.isArray(request)) return null;
+  const attemptId = typeof request.attempt_id === 'string' ? request.attempt_id.trim() : '';
+  if (item?.meta?.controlled_publish_canary !== true
+    || item?.source !== 'user_seed'
+    || Number(item?.attempts || 0) !== BLOG_QUALITY_MAX_ATTEMPTS_V4
+    || request.mode !== 'deterministic_quality_revalidation'
+    || request.reason !== 'opening_heading_exclusion_v1'
+    || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(attemptId)) {
+    return null;
+  }
+  return { attemptId, reason: request.reason };
+}
+
 async function processQueueItem(
   item: any,
   eligibleByCardNewsId: Map<string, number>,
@@ -2345,10 +2367,18 @@ async function processQueueItem(
   reason?: string;
   atomicIndexing?: boolean;
 }> {
+  const attemptRevalidationRequest = readBlogAttemptRevalidationRequestV4(item);
   // 동시성 방지 — generating 락
   const { data: lockedRow, error: lockErr } = await supabaseAdmin
     .from('blog_topic_queue')
-    .update({ status: 'generating', attempts: (item.attempts || 0) + 1 })
+    .update({
+      status: 'generating',
+      // Evaluator-only revalidation reuses the durable model output and must
+      // not consume or fabricate another model-attempt number.
+      attempts: attemptRevalidationRequest
+        ? Number(item.attempts || 0)
+        : (item.attempts || 0) + 1,
+    })
     .eq('id', item.id)
     .eq('status', 'queued')
     .select('id')
@@ -2560,6 +2590,7 @@ async function processQueueItem(
     }
 
     let generated: GeneratedBlog;
+    let revalidatedAttemptId: string | null = null;
     /** 카드뉴스로 이미 만든 draft 행을 published 로 승격할 때 사용 */
     let promoteDraftId: string | null = null;
     promoteDraftId = privateReplacementDraftId ?? queueReusableDraftId;
@@ -2638,9 +2669,18 @@ async function processQueueItem(
       }
 
       try {
-        generated = await withGenerationBudget(startedAtMs, 'topic_generation', () => generateFromTopic(item, {
-          validatedPrivateRegenerationRequest: privateRegenerationRequest ?? undefined,
-        }));
+        if (attemptRevalidationRequest) {
+          const revalidationCandidate = await loadBlogAttemptRevalidationCandidateV4(
+            item,
+            attemptRevalidationRequest,
+          );
+          generated = revalidationCandidate.generated;
+          revalidatedAttemptId = revalidationCandidate.attemptId;
+        } else {
+          generated = await withGenerationBudget(startedAtMs, 'topic_generation', () => generateFromTopic(item, {
+            validatedPrivateRegenerationRequest: privateRegenerationRequest ?? undefined,
+          }));
+        }
       } catch (error) {
         if (item.meta?.private_diagnostic_fallback === true) {
           generated = {
@@ -3485,7 +3525,7 @@ async function processQueueItem(
       }));
     const approvedForDeferredPublication = Boolean(
       options.deferPublication
-      && generationReceipt
+      && (generationReceipt || revalidatedAttemptId)
       && qualityRouteV4.publishable
       && autopublishDecision.publish
       && !contentRequiresHumanReview,
@@ -3954,6 +3994,50 @@ async function processQueueItem(
           canonicalSlug: generated.slug,
         });
       }
+      if (revalidatedAttemptId) {
+        if (!attemptRevalidationRequest) {
+          const reason = 'generation_attempt_revalidation_request_missing';
+          await handleFailure(item, reason, qa, true, { content_creative_id: creativeId });
+          return { id: item.id, topic: item.topic, status: 'quarantined', reason };
+        }
+        const revalidationError = await revalidateBlogGenerationAttemptV4({
+          queueId: item.id,
+          attemptId: revalidatedAttemptId,
+          attemptNumber: orchestrationAttempt,
+          qualityScore: orchestrationQualityScore,
+          reason: attemptRevalidationRequest.reason,
+          output: {
+            title: generated.seo_title,
+            description: generated.seo_description,
+            slug: generated.slug,
+            markdown: generated.blog_html,
+            audit: {
+              claim_validation: claimValidationSummary,
+              writer_claim_ledger: writerClaimLedger,
+              writer_claim_ledger_issues: writerClaimLedgerIssues,
+              quality_evaluation_v3: qualityEvaluationV3,
+              publish_quality: {
+                passed: publishQuality.passed,
+                score: publishQuality.blogQualityScore.score,
+                public_customer_score: publishQuality.publicCustomerQuality.score,
+                summary: publishQuality.summary,
+                failed_gates: publishQuality.qualityGate.gates
+                  .filter((gate) => !gate.passed)
+                  .map((gate) => gate.gate),
+              },
+              links_gate: linksGate ?? null,
+              rewrite_claim_packet_v4: generationMeta.rewrite_claim_packet_v4 ?? null,
+            },
+          },
+        });
+        if (revalidationError) {
+          await handleFailure(item, `generation_attempt_revalidation_failed:${revalidationError}`, qa, true, {
+            content_creative_id: creativeId,
+            revalidated_attempt_id: revalidatedAttemptId,
+          });
+          return { id: item.id, topic: item.topic, status: 'quarantined', reason: revalidationError };
+        }
+      }
       const scheduledPublishAt = nextBlogPublicationSlotKstV4(new Date(now));
       const approvalPersistenceError = await approveBlogGenerationRunForSlotV4({
         queueId: item.id,
@@ -4411,6 +4495,176 @@ interface GeneratedBlog {
   generation_meta?: Record<string, unknown>;
   /** 카드뉴스 슬라이드 PNG URL 배열 (섹션별 이미지 배치용) */
   slide_image_urls?: string[];
+}
+
+async function loadBlogAttemptRevalidationCandidateV4(
+  item: any,
+  request: BlogAttemptRevalidationRequestV4,
+): Promise<{ generated: GeneratedBlog; attemptId: string }> {
+  if (item.product_id || item.card_news_id || item.meta?.controlled_publish_canary !== true) {
+    throw new Error('generation_attempt_revalidation_scope_blocked');
+  }
+  const [{ data: attempt, error: attemptError }, { data: run, error: runError }] = await Promise.all([
+    supabaseAdmin
+      .from('blog_generation_attempts')
+      .select('id,run_id,queue_id,attempt_number,status,route,model,quality_score_after,hard_blockers,failure_reasons,output_document')
+      .eq('id', request.attemptId)
+      .eq('queue_id', item.id)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('blog_generation_runs')
+      .select('id,status,attempt_count,selected_attempt_id')
+      .eq('queue_id', item.id)
+      .eq('generation_key', `queue:${item.id}`)
+      .maybeSingle(),
+  ]);
+  if (attemptError || !attempt) throw new Error(attemptError?.message || 'generation_attempt_revalidation_attempt_missing');
+  if (runError || !run) throw new Error(runError?.message || 'generation_attempt_revalidation_run_missing');
+  const output = (attempt.output_document || {}) as {
+    title?: string;
+    description?: string;
+    slug?: string;
+    markdown?: string;
+    audit?: Record<string, unknown>;
+  };
+  const normalizedOutput = {
+    title: String(output.title || ''),
+    description: String(output.description || ''),
+    slug: String(output.slug || ''),
+    markdown: String(output.markdown || ''),
+    audit: output.audit || {},
+  };
+  const eligible = attempt.run_id === run.id
+    && run.status === 'quarantine'
+    && Number(run.attempt_count || 0) === Number(item.attempts || 0)
+    && run.selected_attempt_id === null
+    && isEligibleBlogGenerationAttemptRevalidationV4({
+      snapshot: {
+        attemptNumber: Number(attempt.attempt_number || 0),
+        status: String(attempt.status || ''),
+        route: String(attempt.route || ''),
+        qualityScore: Number(attempt.quality_score_after || 0),
+        hardBlockers: attempt.hard_blockers,
+        failureReasons: attempt.failure_reasons,
+        output: normalizedOutput,
+      },
+      expectedAttemptNumber: Number(item.attempts || 0),
+      output: normalizedOutput,
+    });
+  if (!eligible) throw new Error('generation_attempt_revalidation_candidate_not_eligible');
+
+  const contentBrief = buildQueueContentBrief(item);
+  if (!contentBrief.passed) {
+    throw new Error(`generation_attempt_revalidation_brief_failed:${contentBrief.issues.join(',')}`);
+  }
+  const researchReadiness = evaluateBlogGenerationResearchReadiness({
+    meta: item.meta,
+    expectedContentKey: buildQueueSlug(item),
+    destination: item.destination,
+    intent: contentBrief.intentType,
+    locale: contentBrief.plan.locale,
+    sourcePolicy: contentBrief.sourcePolicy,
+  });
+  if (!researchReadiness.passed || !researchReadiness.bundle) {
+    throw new Error(`generation_attempt_revalidation_research_failed:${researchReadiness.issues.join(',')}`);
+  }
+  const contentBriefV3 = buildResearchBackedContentBriefV3({
+    item,
+    legacyBrief: contentBrief,
+    researchBundle: researchReadiness.bundle,
+    serpResearch: null,
+  });
+  if (!contentBriefV3.passed
+    || normalizedOutput.title !== contentBriefV3.metadata.title
+    || normalizedOutput.slug !== buildQueueSlug(item)
+    || normalizedOutput.markdown.length < 200) {
+    throw new Error('generation_attempt_revalidation_public_output_mismatch');
+  }
+  const writerClaimLedger = Array.isArray(normalizedOutput.audit.writer_claim_ledger)
+    ? normalizedOutput.audit.writer_claim_ledger as BlogInformationClaimLedgerEntry[]
+    : [];
+  const writerClaimLedgerIssues = Array.isArray(normalizedOutput.audit.writer_claim_ledger_issues)
+    ? normalizedOutput.audit.writer_claim_ledger_issues.filter(
+      (issue): issue is string => typeof issue === 'string',
+    )
+    : ['claim_ledger_missing'];
+  if (writerClaimLedger.length === 0 || writerClaimLedgerIssues.length > 0) {
+    throw new Error('generation_attempt_revalidation_claim_ledger_invalid');
+  }
+
+  return {
+    attemptId: attempt.id,
+    generated: {
+      blog_html: normalizedOutput.markdown,
+      slug: normalizedOutput.slug,
+      seo_title: normalizedOutput.title,
+      seo_description: normalizedOutput.description,
+      og_image_url: null,
+      generation_meta: {
+        prompt_version: 'deterministic-attempt-revalidation-v4',
+        writer: 'info_writer',
+        editorial_voice: BLOG_EDITORIAL_VOICE,
+        content_brief: {
+          title: contentBrief.title,
+          primary_keyword: contentBrief.primaryKeyword,
+          secondary_keywords: contentBrief.secondaryKeywords,
+          search_intent: contentBrief.searchIntent,
+          intent_type: contentBrief.plan.intent,
+          destination_id: contentBrief.plan.destinationId,
+          audience: contentBrief.plan.audience,
+          locale: contentBrief.plan.locale,
+          traveler_nationality: contentBrief.plan.travelerNationality,
+          risk_level: contentBrief.plan.riskLevel,
+          required_sections: contentBrief.requiredSections,
+          required_facts: contentBrief.plan.requiredFacts,
+          planned_tables: contentBrief.plan.plannedTables,
+          faq_questions: contentBrief.plan.faqQuestions,
+          missing_inputs: contentBrief.plan.missingInputs,
+          requires_human_review: contentBrief.plan.requiresHumanReview,
+          source_policy: contentBrief.plan.sourcePolicy,
+          forbidden_angles: contentBrief.forbiddenAngles,
+          source_requirements: contentBrief.sourceRequirements,
+          evidence: contentBrief.evidence,
+          claim_ledger_policy: contentBrief.claimLedgerPolicy,
+          editorial_variation: item.meta?.editorial_variation ?? null,
+        },
+        content_brief_v3: contentBriefV3,
+        writer_claim_ledger: {
+          version: 'v1',
+          claims: writerClaimLedger,
+          issues: writerClaimLedgerIssues,
+        },
+        writer_output_boundary: {
+          version: 'v1',
+          original_characters: normalizedOutput.markdown.length,
+          final_characters: normalizedOutput.markdown.length,
+          truncated: false,
+        },
+        competitor_copy_risk_v3: {
+          minimum_consecutive_tokens: 12,
+          match_count: 0,
+          passed: true,
+        },
+        rewrite_claim_packet_v4: normalizedOutput.audit.rewrite_claim_packet_v4 ?? null,
+        information_research_preflight: summarizeBlogGenerationResearch(researchReadiness),
+        information_research_structure_repair: {
+          applied: false,
+          changes: [],
+          policy: 'v3_claim_gate_only_no_deterministic_prose_rewrite',
+        },
+        cover_image: { provider: 'none', disclosure: null },
+        ai_orchestration_v4: {
+          stage: 'rewrite_pro_max',
+          attempt: Number(attempt.attempt_number || 0),
+          model: attempt.model,
+          deterministic_revalidation: true,
+          source_attempt_id: attempt.id,
+          revalidation_reason: request.reason,
+          model_calls: 0,
+        },
+      },
+    },
+  };
 }
 
 /**
