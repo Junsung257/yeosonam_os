@@ -276,7 +276,11 @@ async function fetchUrl(name, path, options = {}) {
       const ok = options.ok ? options.ok(res, body, setCookie) : res.status >= 200 && res.status < 400;
       const protectedDeployment = isProtectedDeploymentResponse(res.status, body);
       if (protectedDeployment) markProtectedDeployment();
-      addCheck(name, ok ? 'pass' : protectedDeployment ? 'blocked' : 'fail', {
+      const localDataBlocked = !ok
+        && options.allowLocalMissingData === true
+        && ALLOW_LOCAL_MISSING_DATA
+        && (localDataUnavailableText(body) || PACKAGE_NOT_FOUND_PATTERN.test(body));
+      addCheck(name, ok ? 'pass' : protectedDeployment || localDataBlocked ? 'blocked' : 'fail', {
         statusCode: res.status,
         ms: Date.now() - started,
         url,
@@ -284,8 +288,10 @@ async function fetchUrl(name, path, options = {}) {
         attempts: attempt,
         notes: protectedDeployment
           ? 'Vercel protected deployment requires an authenticated preview bypass'
+          : localDataBlocked
+            ? 'local data unavailable; production/staging data is required for full verification'
           : options.notes?.(res, body, setCookie) || '',
-        error: ok || protectedDeployment ? '' : body.slice(0, 1200),
+        error: ok || protectedDeployment || localDataBlocked ? '' : body.slice(0, 1200),
       });
       return;
     } catch (err) {
@@ -375,6 +381,7 @@ async function checkPublicUrls() {
   } else {
     await fetchUrl('public:package-detail', `/packages/${PACKAGE_ID}`, {
       ok: (res, body) => res.status >= 200 && res.status < 400 && packageDetailLooksRenderable(body),
+      allowLocalMissingData: true,
       notes: (_res, body) => (packageDetailLooksRenderable(body) ? '' : 'package detail title did not include the probe package id'),
     });
   }
@@ -460,6 +467,10 @@ function checkPublicCriticalAudit() {
       && failedRows.length > 0
       && failedRows.every((row) => row.missing.every((item) => item === 'over-budget'));
     const localDataPageNames = new Set(['packages', 'package-detail', 'blog', 'destinations']);
+    const onlyLocalDataDrivenPageUnavailable = LOCAL_MODE
+      && ALLOW_LOCAL_MISSING_DATA
+      && failedRows.length > 0
+      && failedRows.every((row) => localDataPageNames.has(row.name));
     const onlyLocalDataPageUnavailable = LOCAL_MODE
       && ALLOW_LOCAL_MISSING_DATA
       && failedRows.length > 0
@@ -485,6 +496,7 @@ function checkPublicCriticalAudit() {
     const blockedByLocalCondition = localAuditUnavailable
       || localCommandOnlyFailure
       || onlyLocalPackageDetailUnavailable
+      || onlyLocalDataDrivenPageUnavailable
       || onlyLocalDevLatencyBudgetExceeded
       || onlyLocalDataPageUnavailable
       || onlyLocalServerDependencyUnavailable;
