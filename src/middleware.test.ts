@@ -214,6 +214,10 @@ describe('middleware package availability preflight credentials', () => {
   it('uses the server-only Supabase key before public keys for internal publication reads', async () => {
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co');
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY', 'publishable-key');
+    // The CI release gate provides a dummy service-role key globally. Override
+    // it so this test remains deterministic and still verifies server-key
+    // precedence over the public publishable key.
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'server-secret-key');
     vi.stubEnv('SUPABASE_SECRET_KEY', 'server-secret-key');
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('[]', {
       status: 200,
@@ -226,15 +230,15 @@ describe('middleware package availability preflight credentials', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('x-middleware-next')).toBe('1');
-    expect(fetchSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ pathname: '/rest/v1/product_registration_v5_publication_pointers' }),
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          apikey: 'server-secret-key',
-          authorization: 'Bearer server-secret-key',
-        }),
+    const [requestUrl, requestInit] = fetchSpy.mock.calls[0] ?? [];
+    expect(requestUrl).toBeInstanceOf(URL);
+    expect((requestUrl as URL).pathname).toBe('/rest/v1/product_registration_v5_publication_pointers');
+    expect(requestInit).toEqual(expect.objectContaining({
+      headers: expect.objectContaining({
+        apikey: 'server-secret-key',
+        authorization: 'Bearer server-secret-key',
       }),
-    );
+    }));
   });
 });
 
