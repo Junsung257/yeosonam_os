@@ -1720,14 +1720,17 @@ async function runBlogPublisher(request: NextRequest) {
       const result = await processQueueItem(item, new Map(), { startedAtMs: startTime, deferPublication });
       results.push(result);
       const published = result.status === 'published' ? 1 : 0;
+      const targetedSucceeded = published === 1
+        || result.status === 'pending_review'
+        || result.status === 'approved_for_slot';
       return {
-        ok: published === 1 || result.status === 'pending_review',
+        ok: targetedSucceeded,
         processed: 1,
         published,
         targetedCanaryPublication: true,
         queueId: targetQueueId,
         results,
-        errors: published === 1 || result.status === 'pending_review'
+        errors: targetedSucceeded
           ? errors
           : [...errors, result.reason || result.status],
         ranAt: new Date().toISOString(),

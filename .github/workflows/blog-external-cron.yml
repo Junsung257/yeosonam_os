@@ -53,6 +53,16 @@ on:
         required: false
         type: string
         default: ''
+      target_queue_id:
+        description: Optional controlled-canary UUID. Allowed only with blog-generate.
+        required: false
+        type: string
+        default: ''
+      target_run_id:
+        description: Optional approved run UUID. Allowed only with blog-publication-controller.
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -79,6 +89,8 @@ jobs:
           endpoint="${{ github.event.inputs.endpoint || '' }}"
           force="${{ github.event.inputs.force || 'false' }}"
           private_queue_id="${{ github.event.inputs.private_queue_id || '' }}"
+          target_queue_id="${{ github.event.inputs.target_queue_id || '' }}"
+          target_run_id="${{ github.event.inputs.target_run_id || '' }}"
 
           if [ -z "$endpoint" ]; then
             case "${{ github.event.schedule }}" in
@@ -133,12 +145,40 @@ jobs:
             fi
             force="true"
           fi
+          if [ -n "$target_queue_id" ]; then
+            if [ "$endpoint" != "blog-generate" ]; then
+              echo "target_queue_id is allowed only with blog-generate" >&2
+              exit 1
+            fi
+            if [[ ! "$target_queue_id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+              echo "target_queue_id must be a UUID" >&2
+              exit 1
+            fi
+            force="true"
+          fi
+          if [ -n "$target_run_id" ]; then
+            if [ "$endpoint" != "blog-publication-controller" ]; then
+              echo "target_run_id is allowed only with blog-publication-controller" >&2
+              exit 1
+            fi
+            if [[ ! "$target_run_id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+              echo "target_run_id must be a UUID" >&2
+              exit 1
+            fi
+            force="true"
+          fi
 
           if [ "$force" = "true" ]; then
             query="?force=true"
           fi
           if [ -n "$private_queue_id" ]; then
             query="${query}&privateQueueId=${private_queue_id}"
+          fi
+          if [ -n "$target_queue_id" ]; then
+            query="${query}&targetQueueId=${target_queue_id}"
+          fi
+          if [ -n "$target_run_id" ]; then
+            query="${query}&runId=${target_run_id}"
           fi
 
           echo "endpoint=$endpoint" >> "$GITHUB_OUTPUT"
