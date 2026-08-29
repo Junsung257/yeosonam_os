@@ -25,18 +25,25 @@
 - Security advisor: no WARN/ERROR. Two INFO-only `RLS enabled with no policy` notices document service-role-only fail-closed tables (`departure_price_lineage`, existing `publication_requests`).
 - Publication CAS/race and price/package rollback contracts: PASS in unit/contract tests.
 - Production database writes: `0`.
-- Required rollout order now resumes at application candidate → authenticated signed proof/canary → explicit production approval.
+- The protected application Preview targets only the rehearsal project. Branch configuration keeps authority in shadow, publication freeze on, publish/backfill/auto-publish off, and service credentials server-only.
+- Required rollout order now resumes at rebuilding the two Danang golden products → shadow publication/convergence canary → explicit production approval.
 
 ## Browser checks
 
 - Admin truth, publication request, signed mobile proof, CTA, private-preview headers, and canary hashes are covered by route/workflow contracts.
 - Fresh read-only Chrome baseline at 390x844 confirmed that production `/packages` exposes two Danang products with `참고 이미지` and generic copy. The inspected LP uses a `여소남 브랜드 이미지` hero, repeats the alternative-hotel sentence, and shows `시간 미정` flight times. No console error was observed. This is a defect baseline, not candidate proof.
-- Fresh authenticated 390x844 browser evidence against migrated rehearsal data: NOT RUN. The candidate branch remains local and uncommitted/unpushed, and the inspected worktrees contain no server credential targeting the rehearsal project. A browser target therefore does not exist yet; grants were not weakened and service credentials were not exposed to manufacture one.
-- Existing production is not valid evidence for this candidate because this turn performs no deployment or production mutation.
+- Fresh authenticated 390x844 browser evidence against migrated rehearsal data: PASS on commit `161ef4991619308003a14228c7658ca7dd8d4adb`, Preview deployment `dpl_Hp4G6gCZDRspnWQQCukv1YLizSdr`.
+- Public `/packages` returned 200 and zero products, proving the stale rehearsal pointer fails closed. The signed package and LP routes returned the same immutable snapshot hash `5d1fe4a7808cd431f46ffcb3e6b9e18bb07f29d48ca2d669663273ac95f702b9`, revision `d9ebc962-fb4f-483a-9513-5a2761fb0d7b`, renderer build `b1497a8cafa3b2c3ec7bc35562779c029dd357ce`, and KRW 699,000.
+- The proof exchange returned 307 with `private, no-store`, `noindex, nofollow, noarchive`, and route marker `v6-proof-cookie-20260829`. The final LP emitted `noindex,nofollow,nocache`; the initial `index,follow` defect was fixed before final proof.
+- Package reservation and LP departure-date consultation sheets both opened. No inquiry was submitted. Final browser console warning/error count was zero.
+- Vercel runtime for the final deployment showed repeated 200 package/LP responses and no warning/error/fatal application logs. A single transient edge-middleware 503 during the first post-alias-cutover tab was followed by repeated 200s and did not recur.
+- Screenshots: [`docs/audits/evidence/product-publication-2026-08-30`](../../audits/evidence/product-publication-2026-08-30/README.md).
+- Existing production is not evidence for this candidate and was not mutated.
 
 ## Release gates
 
 - production writes: 0 during local implementation
 - auto-publish: OFF
 - no public pointer change until explicit rollout approval
+- P0 implementation ready: YES
 - production ready: NO

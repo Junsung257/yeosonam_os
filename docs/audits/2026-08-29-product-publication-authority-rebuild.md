@@ -2,7 +2,7 @@
 
 Date: 2026-08-29
 
-Base: `origin/main@579cbb2458cc82771d59c6db35ae5c4c4640e32a`
+Base: `origin/main@b39aff2ee` merged into candidate head `161ef4991619308003a14228c7658ca7dd8d4adb`
 
 Worktree: `C:\dev\yeosonam-os-product-authority-rebuild-20260829`
 
@@ -15,7 +15,7 @@ The code implementation is a staging candidate. It is not a production release.
 - Registration, source-price lineage, grounded customer copy, documentary product media, immutable mobile proof, customer publication, cache convergence, and live canary now form one observable authority chain.
 - Customer readers use one exact public catalog. Legacy `approved` and raw package rows are no longer customer-publication authority.
 - Production writes, deployment, public pointer changes, and auto-publish changes in this implementation session are zero.
-- The migrations now pass an isolated Supabase rehearsal apply, atomic single-product and four-product shared-price samples, idempotent retry, rollback, immutability and service-role catalog canary. Authenticated candidate browser proof is still required before P0 can be declared implementation-ready.
+- The migrations pass an isolated Supabase rehearsal apply, atomic single-product and four-product shared-price samples, idempotent retry, rollback, immutability and service-role catalog canary. The latest-main candidate also passes signed 390×844 package, LP and CTA proof on a branch-only Vercel Preview.
 
 ## Implemented controls
 
@@ -91,6 +91,36 @@ Fresh Chrome inspection used a 390×844 viewport override on 2026-08-29. No form
 
 This production evidence is a baseline finding only. It is not evidence that the un-deployed V162 candidate renders correctly.
 
+## Isolated candidate Preview proof — latest main, no production writes
+
+The candidate was merged with `origin/main@b39aff2ee`, pushed to draft PR [#1181](https://github.com/Junsung257/yeosonam_os/pull/1181), and deployed only as a protected Preview bound to the isolated Supabase rehearsal project. The final application candidate is commit `161ef4991619308003a14228c7658ca7dd8d4adb`, deployment `dpl_Hp4G6gCZDRspnWQQCukv1YLizSdr`.
+
+The first browser attempt exposed two implementation defects before the final proof:
+
+- the proof depended on a custom request header that an ordinary protected Preview browser could not supply;
+- the LP proof metadata defaulted to `index,follow`.
+
+The final design exchanges the already verified, snapshot-bound signed token for a maximum ten-minute `HttpOnly`, `Secure`, `SameSite=Strict`, package-path-scoped cookie. The redirect removes the token from the customer URL and returns `private, no-store` plus `noindex, nofollow, noarchive`. Both detail and LP proof pages verify the token again against package ID, snapshot ID, immutable snapshot hash and expiry. The LP proof now emits `noindex,nofollow,nocache`.
+
+Final 390×844 results:
+
+| Surface | Result |
+|---|---|
+| Public `/packages` | HTTP 200, `0개 상품`, stale Danang snapshot hidden |
+| Signed proof redirect | HTTP 307, route marker `v6-proof-cookie-20260829`, private/no-store, noindex/nofollow/noarchive |
+| Package detail | HTTP 200, KRW 699,000, snapshot hash `5d1fe4a7808cd431f46ffcb3e6b9e18bb07f29d48ca2d669663273ac95f702b9`, noindex |
+| Package CTA | Reservation inquiry sheet opened; no form submitted |
+| LP | HTTP 200, same price/hash/revision/build, `noindex,nofollow,nocache` |
+| LP CTA | Departure-date consultation sheet opened; no form submitted |
+| Browser console | zero warning/error entries on final proof |
+| Preview runtime | repeated package/LP 200s; zero warning/error/fatal application logs |
+
+One edge-middleware 503 occurred during the first browser tab immediately after alias cutover and was followed by repeated 200 responses for the same package. It emitted no application error log and did not recur in the fresh-tab final proof.
+
+The proof intentionally uses the existing rehearsal canary snapshot. Its snapshot revision `d9ebc962-fb4f-483a-9513-5a2761fb0d7b` is older than the package's latest revision and its hero remains a brand/logo asset. That is why the public catalog correctly stays empty. This proves the authority and preview mechanics, not that this legacy product data is sale-ready.
+
+Screenshots are stored in [`docs/audits/evidence/product-publication-2026-08-30`](evidence/product-publication-2026-08-30/README.md).
+
 ## Verification
 
 | Check | Result |
@@ -110,15 +140,16 @@ This production evidence is a baseline finding only. It is not evidence that the
 | Append-only mutation checks | PASS — departure lineage and V61 price override UPDATE rejected |
 | Service-role public catalog canary | PASS — exact count 0, fail closed |
 | Multi-product durable DB sample | PASS — one exact Clark source, four products, 54 departures, 54 immutable lineage rows, four idempotent authority events, zero excluded-date leakage |
-| Authenticated V6.2 browser proof | NOT RUN — the implementation branch is not committed, pushed or deployed, and no application candidate/server credential targets rehearsal; grants remain closed |
+| Migration safety gate | PASS — 24 migrations, 0 unapproved issues, 37 exact reviewed approvals; schema-qualified FK/index detection regression-covered |
+| Latest-main branch CI | PASS — Vercel, code quality, TypeScript/Vitest, build budget, security, dependency, golden corpus and policy checks |
+| Authenticated V6.2 browser proof | PASS — protected Preview, 390×844, exact hash on package/LP, both CTAs opened, proof routes no-store/noindex, browser console clean |
 
 ## Required rollout order
 
-1. Commit and push the reviewed candidate, then attach a non-production application candidate to the rehearsal project without exposing service credentials to the browser.
-2. Rebuild the two Danang products as the first golden cohort from their source evidence.
-3. Capture signed 390×844 `/packages`, `/lp`, and CTA proofs and compare snapshot/render hashes.
-4. Run customer-only publication in shadow, verify cache convergence and live-domain canary, and confirm public product-set parity.
-5. Obtain explicit approval before production migration/deployment; keep `publication_freeze=true` until that approval.
+1. Rebuild the two Danang products as the first golden cohort from their source evidence, including documentary product media and the latest canonical revision.
+2. Re-run signed 390×844 `/packages`, `/lp`, CTA and hash proof on those newly built snapshots.
+3. Run customer-only publication in shadow, verify cache convergence and live-domain canary, and confirm public product-set parity.
+4. Obtain explicit approval before any production migration/deployment; keep `publication_freeze=true` until that approval.
 
 ## Final gate
 
@@ -128,6 +159,6 @@ BASELINE SAMPLE RUNS: PASS (A/B/C PASS)
 PRODUCTION WRITES: 0
 AUTO-PUBLISH: OFF
 STAGING CANDIDATE READY: YES
-P0 IMPLEMENTATION READY: NO
+P0 IMPLEMENTATION READY: YES
 PRODUCTION READY: NO
 ```

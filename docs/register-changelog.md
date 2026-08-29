@@ -1,5 +1,12 @@
 # /register 변경 이력 (P0~P1 정책 + 결정 이력)
 
+## 2026-08-30 — V6.2 격리 Preview·서명 모바일 증명 완료
+
+- 최신 `main`을 병합한 후보 커밋 `161ef4991`을 Supabase rehearsal 전용 보호 Preview에 배포하고 390×844에서 공개 목록, 서명 상세, 서명 LP, 두 CTA를 검증했다. 운영 DB 쓰기·운영 배포·pointer 변경은 0이고 auto-publish와 publication freeze는 그대로다.
+- 검수 토큰은 검증 후 최대 10분의 `HttpOnly`, `Secure`, `SameSite=Strict`, 상품 경로 제한 쿠키로 교환한다. redirect는 token을 제거하고 private/no-store/noindex를 강제한다.
+- 첫 브라우저 검사에서 LP proof가 `index,follow`인 결함을 재현해 `noindex,nofollow,nocache`로 수정했다. 최종 상세/LP는 같은 snapshot hash·revision·renderer build·KRW 699,000을 표시했고 두 상담 sheet가 열렸으며 제출은 하지 않았다.
+- 공개 목록은 0건으로 fail-closed했다. 사용한 legacy rehearsal snapshot은 최신 revision이 아니고 logo media를 사용하므로 고객 판매 준비 증거가 아니며, 다음 단계는 다낭 2건을 원문부터 새 golden cohort로 재구축하는 것이다.
+
 ## 2026-08-29 — V6.2 다상품 공용 가격표 영속 기준선 B
 
 - 격리 Supabase rehearsal에서 기존 Clark 골든 원문 한 건을 네 상품으로 분리해 V62에 영속했다. 동일 source hash 아래 4 revision, 54 departure, 54 immutable SELLING price-lineage가 생성됐고, 상품별 동일 재시도 후에도 authority event는 각 1건만 남았다.
