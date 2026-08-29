@@ -120,7 +120,7 @@ export async function prepareDailyInformationResearch(input: {
     .select('id, product_id, topic, destination, primary_keyword, category, source, angle_type, meta, priority, created_at')
     .eq('status', 'queued')
     .is('product_id', null)
-    .is('target_publish_at', null)
+    .or('target_publish_at.is.null,source.eq.user_seed')
     .neq('source', 'pillar')
     .order('priority', { ascending: false })
     .order('created_at', { ascending: true })
