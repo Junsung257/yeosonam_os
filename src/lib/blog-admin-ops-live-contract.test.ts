@@ -37,4 +37,12 @@ describe('blog admin live operations contract', () => {
     expect(systemPage).toContain('자동발행 실효 정책');
     expect(systemPage).toContain('V3 운영 DB 준비상태');
   });
+
+  it('persists authenticated admin topic additions as editor-approved demand', () => {
+    const route = source('src/app/api/blog/queue/route.ts');
+
+    expect(route).toContain('editor_approved_seed: true');
+    expect(route).toContain("editor_approval_channel: 'admin_blog_queue'");
+    expect(route).toContain('demand_source_reference: `admin_blog_queue:add_topic:${editorApprovedAt}`');
+  });
 });

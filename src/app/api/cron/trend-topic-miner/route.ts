@@ -7,6 +7,10 @@ import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { normalizeBlogTopicQueueRow } from '@/lib/blog-queue-normalize';
 import { filterTopicFitPassed } from '@/lib/blog-topic-fit-gate';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
+import {
+  buildSupportedBlogTrendDestinations,
+  isSupportedBlogTrendDestination,
+} from '@/lib/blog-trend-destination';
 
 /**
  * 트렌드 토픽 마이너 — 매일 06:00 KST (21:00 UTC) 실행
@@ -52,16 +56,28 @@ async function runTrendMiner(request: NextRequest) {
     return { collected: 0, archived: 0, queued: 0, errors, message: '수집된 트렌드 없음' };
   }
 
-  // 2) 활성 destination 화이트리스트 (있는 destination만 큐에 넣음)
-  const { data: pkgs } = await supabaseAdmin
-    .from('travel_packages')
-    .select('destination')
-    .in('status', [...CUSTOMER_VISIBLE_STATUSES]);
-  const activeDestinations = new Set(
-    ((pkgs || []) as Array<{ destination: string | null }>)
-      .map(p => p.destination)
-      .filter((d): d is string => Boolean(d))
-  );
+  // 2) 고객에게 이미 검증된 destination 화이트리스트.
+  // 판매 중 상품이 잠시 없어도 공개 블로그 코퍼스가 있는 목적지는 정보성
+  // 트렌드 글을 계속 만들 수 있어야 한다.
+  const [{ data: pkgs }, { data: publishedBlogs }] = await Promise.all([
+    supabaseAdmin
+      .from('travel_packages')
+      .select('destination')
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES]),
+    supabaseAdmin
+      .from('content_creatives')
+      .select('destination')
+      .eq('channel', 'naver_blog')
+      .eq('status', 'published')
+      .not('destination', 'is', null)
+      .limit(1000),
+  ]);
+  const supportedDestinations = buildSupportedBlogTrendDestinations({
+    activeCatalogDestinations: ((pkgs || []) as Array<{ destination: string | null }>)
+      .map((pkg) => pkg.destination),
+    publishedBlogDestinations: ((publishedBlogs || []) as Array<{ destination: string | null }>)
+      .map((post) => post.destination),
+  });
 
   // 3) trend_keyword_archive 일괄 저장 (UNIQUE: observed_at,source,keyword 충돌은 무시)
   const archiveRows = trends.map(t => ({
@@ -91,7 +107,7 @@ async function runTrendMiner(request: NextRequest) {
     .filter(t => {
       if ((t.trend_score ?? 0) < MIN_TREND_SCORE) return false;
       const dest = t.related_destination || detectDestination(t.keyword);
-      return dest && activeDestinations.has(dest);
+      return isSupportedBlogTrendDestination(dest, supportedDestinations);
     })
     .sort((a, b) => (b.trend_score ?? 0) - (a.trend_score ?? 0))
     .slice(0, MAX_TOPICS_PER_DAY);

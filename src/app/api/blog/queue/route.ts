@@ -269,6 +269,8 @@ export async function POST(request: NextRequest) {
       const { topic, destination, angle_type, category, target_publish_at, priority, seasonal_month } = body;
       if (!topic) return NextResponse.json({ error: 'topic 필수' }, { status: 400 });
 
+      const editorApprovedAt = new Date().toISOString();
+
       // 검색 의도 분류 → 우선순위 보정 (informational +5, commercial -2)
       const intent = classifySearchIntent(topic + (destination ?? ''));
       const basePriority = typeof priority === 'number' ? priority : 90;
@@ -289,6 +291,15 @@ export async function POST(request: NextRequest) {
         category: category ?? null,
         target_publish_at: resolvedPublishAt,
         search_intent: intent,
+        meta: {
+          // Reaching this branch already requires an authenticated admin. Preserve
+          // that explicit editorial decision as a verified demand signal so the
+          // scheduler does not immediately quarantine the manually approved seed.
+          editor_approved_seed: true,
+          editor_approved_at: editorApprovedAt,
+          editor_approval_channel: 'admin_blog_queue',
+          demand_source_reference: `admin_blog_queue:add_topic:${editorApprovedAt}`,
+        },
       }));
       const topicFit = queueRow.meta?.topic_fit_gate as ReturnType<typeof evaluateBlogTopicFit> | undefined;
       if (!topicFit?.passed) {
