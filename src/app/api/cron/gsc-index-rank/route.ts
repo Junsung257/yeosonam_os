@@ -10,6 +10,7 @@ import {
 } from '@/lib/gsc-api';
 import {
   buildGoogleVisibilitySnapshot,
+  googleInspectionToIndexStatus,
   recordBlogVisibilitySnapshot,
 } from '@/lib/blog-visibility-snapshots';
 import {
@@ -220,14 +221,6 @@ function buildRankHistoryRows(
   }));
 }
 
-function isGoogleIndexed(verdict: string | null, coverageState: string | null): boolean {
-  if (verdict === 'PASS') return true;
-  const coverage = String(coverageState || '').toLowerCase();
-  return coverage.includes('indexed')
-    || coverage.includes('색인이 생성')
-    || coverage.includes('색인 생성');
-}
-
 async function runGscIndexRank(request: NextRequest) {
   if (!isCronAuthorized(request)) {
     return cronUnauthorizedResponse();
@@ -355,7 +348,11 @@ async function runGscIndexRank(request: NextRequest) {
       }
       continue;
     }
-    const isIndexed = isGoogleIndexed(r.verdict, r.coverageState);
+    const isIndexed = googleInspectionToIndexStatus({
+      verdict: r.verdict,
+      coverage_state: r.coverageState,
+      page_fetch_state: r.pageFetchState,
+    }) === 'indexed';
     if (!isIndexed) notIndexed += 1;
     inspectionReportRows.push({
       url,

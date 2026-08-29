@@ -11,6 +11,7 @@
 
 import { requestGoogleIndexing, submitGoogleSitemap, IndexingResult } from './gsc-client';
 import { getSecret } from '@/lib/secret-registry';
+import { isValidNaverIndexNowKey } from '@/lib/indexnow-key';
 
 const DEFAULT_INDEXNOW_RECENT_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_INDEXNOW_PROVIDER_MIN_INTERVAL_MS = 250;
@@ -249,6 +250,9 @@ export async function notifyIndexing(
   if (!indexNowKey) {
     report.indexnow = 'skipped';
     report.indexnow_error = 'INDEXNOW_KEY 미설정';
+  } else if (!isValidNaverIndexNowKey(indexNowKey)) {
+    report.indexnow = 'failed';
+    report.indexnow_error = 'INDEXNOW_KEY_invalid_naver_shape';
   } else {
     const { submitUrls, cachedUrls } = splitIndexNowUrlsByCache([url], type);
     if (submitUrls.length === 0) {
@@ -394,7 +398,8 @@ export async function notifyIndexingBatch(
   let submittedIndexNowUrls = new Set<string>();
   let cachedIndexNowUrls = new Set<string>();
   let indexnowRetryAfterMs: number | undefined;
-  if (indexNowKey) {
+  const indexNowKeyValid = isValidNaverIndexNowKey(indexNowKey);
+  if (indexNowKeyValid) {
     const { submitUrls, cachedUrls } = splitIndexNowUrlsByCache(urls, type);
     submittedIndexNowUrls = new Set(submitUrls);
     cachedIndexNowUrls = new Set(cachedUrls);
@@ -456,7 +461,9 @@ export async function notifyIndexingBatch(
       }
     }
   } else {
-    indexnowError = 'INDEXNOW_KEY 미설정';
+    indexnowError = indexNowKey
+      ? 'INDEXNOW_KEY_invalid_naver_shape'
+      : 'INDEXNOW_KEY 미설정';
   }
 
   const durationMs = Date.now() - startedAt;
@@ -467,6 +474,8 @@ export async function notifyIndexingBatch(
     google_error: googleResults[idx].error,
     indexnow: !indexNowKey
       ? 'skipped'
+      : !indexNowKeyValid
+        ? 'failed'
       : cachedIndexNowUrls.has(url) && !submittedIndexNowUrls.has(url)
         ? 'skipped'
         : indexnowOk

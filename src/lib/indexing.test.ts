@@ -8,6 +8,7 @@ vi.mock('./gsc-client', () => ({
 }));
 
 describe('notifyIndexingBatch', () => {
+  const validIndexNowKey = 'deadbeef';
   const originalIndexNowKey = process.env.INDEXNOW_KEY;
   const originalGoogleIndexingFlag = process.env.GOOGLE_INDEXING_API_FOR_BLOGS;
   const originalIndexNowRecentTtl = process.env.INDEXNOW_RECENT_TTL_MS;
@@ -17,7 +18,7 @@ describe('notifyIndexingBatch', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     clearIndexNowRuntimeStateForTests();
-    process.env.INDEXNOW_KEY = 'test-indexnow-key';
+    process.env.INDEXNOW_KEY = validIndexNowKey;
     process.env.INDEXNOW_PROVIDER_MIN_INTERVAL_MS = '0';
     process.env.INDEXNOW_RECENT_TTL_MS = String(10 * 60 * 1000);
     delete process.env.INDEXNOW_MAX_URLS_PER_REQUEST;
@@ -57,7 +58,7 @@ describe('notifyIndexingBatch', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body))).toMatchObject({
       host: 'www.yeosonam.com',
-      key: 'test-indexnow-key',
+      key: validIndexNowKey,
       urlList: urls,
     });
     expect(reports).toHaveLength(2);
@@ -80,6 +81,19 @@ describe('notifyIndexingBatch', () => {
     expect(fetch).not.toHaveBeenCalled();
     expect(reports[0]?.indexnow).toBe('skipped');
     expect(reports[0]?.indexnow_error).toBe('INDEXNOW_KEY 미설정');
+  });
+
+  it('fails closed before provider calls when the key is not Naver-compatible', async () => {
+    process.env.INDEXNOW_KEY = 'test-indexnow-key_123';
+
+    const reports = await notifyIndexingBatch(
+      ['https://www.yeosonam.com/blog/test'],
+      'https://www.yeosonam.com',
+    );
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(reports[0]?.indexnow).toBe('failed');
+    expect(reports[0]?.indexnow_error).toBe('INDEXNOW_KEY_invalid_naver_shape');
   });
 
   it('does not resubmit recently submitted IndexNow URLs in the same runtime', async () => {

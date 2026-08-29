@@ -38,6 +38,7 @@ import {
 } from '@/lib/blog-public-eligibility';
 import { normalizeBlogTitleSkeletonV3 } from '@/lib/blog-corpus-diversity-v3';
 import { evaluateBlogSearchRefreshOpportunityV4 } from '@/lib/blog-search-refresh-opportunity-v4';
+import { googleInspectionToIndexStatus } from '@/lib/blog-visibility-snapshots';
 
 /**
  * 일일 발행 요약 + 저성과 글 자동 재생성 트리거.
@@ -101,13 +102,14 @@ async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, fallba
   }
 }
 
-function isGoogleIndexedReport(report: any): boolean {
-  if (report?.google_status === 'indexed') return true;
-  if (report?.google_index_verdict === 'PASS') return true;
-  const coverage = String(report?.google_coverage_state || '').toLowerCase();
-  return coverage.includes('indexed')
-    || coverage.includes('색인이 생성')
-    || coverage.includes('색인 생성');
+function googleIndexStatusForReport(
+  report: any,
+): ReturnType<typeof googleInspectionToIndexStatus> {
+  return googleInspectionToIndexStatus({
+    verdict: report?.google_index_verdict,
+    coverage_state: report?.google_coverage_state,
+    page_fetch_state: report?.google_page_fetch_state,
+  });
 }
 
 function isLocalhostIndexingReport(report: any): boolean {
@@ -347,7 +349,7 @@ async function runDailySummary(request: NextRequest) {
       .in('status', ['queued', 'generating', 'failed']),
     supabaseAdmin.from('rank_alerts').select('id', { count: 'exact' })
       .is('resolved_at', null),
-    supabaseAdmin.from('indexing_reports').select('google_status, google_error, indexnow_status, indexnow_error, sitemap_pings, google_index_verdict, google_coverage_state')
+    supabaseAdmin.from('indexing_reports').select('google_status, google_error, indexnow_status, indexnow_error, sitemap_pings, google_index_verdict, google_coverage_state, google_page_fetch_state')
       .gte('reported_at', recentSearchStart.toISOString())
       .order('reported_at', { ascending: false })
       .limit(200),
@@ -387,10 +389,13 @@ async function runDailySummary(request: NextRequest) {
   const googleInspectionReports = indexReports.filter((r: any) =>
     ['indexed', 'not_indexed'].includes(String(r.google_status || '')) || r.google_index_verdict,
   );
-  const googleIndexed = googleInspectionReports.filter(isGoogleIndexedReport).length;
-  const googleNotIndexed = googleInspectionReports.filter((r: any) => !isGoogleIndexedReport(r)).length;
-  const googleIndexedRate = googleInspectionReports.length > 0
-    ? +((googleIndexed / googleInspectionReports.length) * 100).toFixed(1)
+  const googleInspectionStatuses: Array<ReturnType<typeof googleInspectionToIndexStatus>> =
+    googleInspectionReports.map(googleIndexStatusForReport);
+  const googleIndexed = googleInspectionStatuses.filter((status) => status === 'indexed').length;
+  const googleNotIndexed = googleInspectionStatuses.filter((status) => status === 'not_indexed').length;
+  const googleClassified = googleIndexed + googleNotIndexed;
+  const googleIndexedRate = googleClassified > 0
+    ? +((googleIndexed / googleClassified) * 100).toFixed(1)
     : null;
 
   const providerStats = indexReports.reduce((acc: Record<string, { total: number; ok: number }>, report: any) => {
