@@ -14,6 +14,7 @@ import {
   isDeepSeekPeakAt,
   nextBlogPublicationSlotKstV4,
   normalizeBlogWriterHeadingV4,
+  repairFoodBudgetRewriteOpeningV4,
   resolveBlogGenerationModelV4,
   resolveBlogPublicationRampCapV4,
   resolveDeepSeekPriceV4,
@@ -21,6 +22,46 @@ import {
 } from './blog-deepseek-orchestrator-v4';
 
 describe('blog DeepSeek orchestrator V4', () => {
+  it('repairs a generic food-budget rewrite opening with reviewed source domains', () => {
+    const repaired = repairFoodBudgetRewriteOpeningV4({
+      markdown: [
+        '# 괌 여행 식비 예산',
+        '',
+        '이 예산은 여행 방식별 포함 범위에 따라 달라집니다.',
+        '',
+        '## 근거 확인',
+        '승인 문장',
+      ].join('\n'),
+      primaryQuery: '괌 여행 식비 예산',
+      intentType: 'food_budget',
+      approvedClaims: [{
+        claimText: '승인 문장',
+        claimType: 'price',
+        riskLevel: 'MEDIUM',
+        sourceUrls: ['https://chinfe.menuguam.com/', 'https://www.numbeo.com/example'],
+      }],
+    });
+
+    expect(repaired).toContain('chinfe.menuguam.com·numbeo.com 근거 링크부터 확인');
+    expect(repaired).not.toContain('이 예산은 여행 방식별 포함 범위에 따라 달라집니다.');
+    expect(repaired).toContain('## 근거 확인');
+  });
+
+  it('does not replace a food-budget opening containing a number', () => {
+    const markdown = '# 괌 식비\n\n승인된 가격은 25 USD이다.\n\n## 근거\n본문';
+    expect(repairFoodBudgetRewriteOpeningV4({
+      markdown,
+      primaryQuery: '괌 식비',
+      intentType: 'food_budget',
+      approvedClaims: [{
+        claimText: '승인된 가격은 25 USD이다.',
+        claimType: 'price',
+        riskLevel: 'MEDIUM',
+        sourceUrls: ['https://example.com'],
+      }],
+    })).toBe(markdown);
+  });
+
   it('publishes only a blocker-free score of 90 or more', () => {
     expect(decideBlogQualityRouteV4({ score: 90, completedAttempts: 1 })).toMatchObject({
       route: 'approved_for_slot', publishable: true,

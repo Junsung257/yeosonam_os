@@ -132,6 +132,7 @@ import {
 } from '@/lib/blog-information-claim-publish-gate';
 import {
   parseBlogInformationWriterOutput,
+  restoreApprovedRewriteClaimLabels,
   type BlogInformationClaimLedgerEntry,
 } from '@/lib/blog-information-claim-ledger';
 import {
@@ -203,6 +204,7 @@ import {
   decideBlogQualityRouteV4,
   nextBlogPublicationSlotKstV4,
   normalizeBlogWriterHeadingV4,
+  repairFoodBudgetRewriteOpeningV4,
   resolveBlogGenerationModelV4,
   selectDecisionRelevantRewriteClaimsV4,
   type BlogDeepSeekStage,
@@ -4983,7 +4985,21 @@ async function generateFromTopic(
         attemptNumber: generationAttemptNumber,
         stage: generationStage,
       });
-  const writerOutput = parseBlogInformationWriterOutput(generation.text);
+  const parsedWriterOutput = parseBlogInformationWriterOutput(generation.text);
+  const labelRepairedWriterOutput = generationStage === 'draft_flash'
+    ? parsedWriterOutput
+    : restoreApprovedRewriteClaimLabels(parsedWriterOutput, rewriteApprovedClaims);
+  const writerOutput = generationStage === 'draft_flash'
+    ? labelRepairedWriterOutput
+    : {
+        ...labelRepairedWriterOutput,
+        markdown: repairFoodBudgetRewriteOpeningV4({
+          markdown: labelRepairedWriterOutput.markdown,
+          primaryQuery: contentBriefV3.primaryQuery,
+          intentType: contentBrief.intentType,
+          approvedClaims: rewriteApprovedClaims,
+        }),
+      };
   let blog_html = writerOutput.markdown
     .replace(/^```markdown\s*/i, '')
     .replace(/^```\s*/i, '')

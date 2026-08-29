@@ -722,6 +722,50 @@ export function buildDeepSeekRewritePromptV4(input: {
   ].join('\n');
 }
 
+/**
+ * Food-budget rewrites often converge on the same generic opening even after
+ * the factual body is grounded. Replace only a number-free, claim-free opening
+ * with a source-domain-specific reader action. Any opening that contains an
+ * approved claim or a numeric expression remains untouched.
+ */
+export function repairFoodBudgetRewriteOpeningV4(input: {
+  markdown: string;
+  primaryQuery: string;
+  intentType: string;
+  approvedClaims: BlogRewriteApprovedClaimV4[];
+}): string {
+  if (input.intentType !== 'food_budget') return input.markdown;
+  const lines = input.markdown.trim().split(/\r?\n/);
+  const h1Index = lines.findIndex((line) => /^#\s+\S/.test(line.trim()));
+  const h2Index = lines.findIndex((line, index) => index > h1Index && /^##\s+\S/.test(line.trim()));
+  if (h1Index < 0 || h2Index <= h1Index + 1) return input.markdown;
+  const opening = lines.slice(h1Index + 1, h2Index).join('\n').trim();
+  if (!opening || /\d|[₩￦¥￥$€₫]|\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\b/i.test(opening)) {
+    return input.markdown;
+  }
+  if (input.approvedClaims.some((claim) => opening.includes(claim.claimText))) return input.markdown;
+  const domains = [...new Set(input.approvedClaims.flatMap((claim) =>
+    (claim.sourceUrls ?? []).flatMap((url) => {
+      try {
+        return [new URL(url).hostname.toLowerCase().replace(/^www\./, '')];
+      } catch {
+        return [];
+      }
+    })))].slice(0, 3);
+  if (domains.length === 0) return input.markdown;
+  const repairedOpening = [
+    `${input.primaryQuery} 기준을 세우려면 ${domains.join('·')} 근거 링크부터 확인하고, 실제로 먹을 항목만 고르세요.`,
+    '고른 항목을 절약형·일반형·여유형 중 자신의 식사 계획에 맞는 기준으로 비교하세요.',
+  ].join(' ');
+  return [
+    ...lines.slice(0, h1Index + 1),
+    '',
+    repairedOpening,
+    '',
+    ...lines.slice(h2Index),
+  ].join('\n').trim();
+}
+
 /** Safe Markdown normalization: the writer sometimes returns the fixed H1 as plain text. */
 export function normalizeBlogWriterHeadingV4(markdown: string, fixedTitle: string): string {
   const title = fixedTitle.trim();
