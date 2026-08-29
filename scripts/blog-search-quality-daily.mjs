@@ -38,6 +38,7 @@ const hardTimeoutMs = Math.max(
   Number(argValue('--hard-timeout-ms', process.env.BLOG_AUDIT_HARD_TIMEOUT_MS || String(DEFAULT_HARD_TIMEOUT_MS))) || 0,
 );
 const retries = Math.max(0, Number(argValue('--retries', process.env.BLOG_AUDIT_RETRIES || '1')) || 0);
+const skipImageQuality = hasFlag('--skip-image-quality') || process.env.BLOG_AUDIT_SKIP_IMAGE_QUALITY === '1';
 const outDir = argValue('--out-dir', '.tmp') || '.tmp';
 const hasSupabaseAdminEnv = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 const editorialSource = argValue('--editorial-source', hasSupabaseAdminEnv ? 'db' : 'web') || (hasSupabaseAdminEnv ? 'db' : 'web');
@@ -63,14 +64,14 @@ const checks = [
     script: 'audit:blog-render:browser',
     args: withLimit([`--base=${baseUrl}`, '--json', timeoutArg, hardTimeoutArg], limit),
   },
-  {
+  ...(skipImageQuality ? [] : [{
     id: 'image_quality',
     label: 'Blog image quality',
     owner: 'content',
     required: true,
     script: 'audit:blog-images',
     args: withLimit([`--base=${baseUrl}`, '--json', timeoutArg, hardTimeoutArg], limit),
-  },
+  }]),
   {
     id: 'seo_quality',
     label: 'Naver-first blog SEO quality',
@@ -378,6 +379,7 @@ function summarize(results) {
     baseUrl,
     preferredOrigin,
     mode: full ? 'full' : 'daily-sample',
+    excludedChecks: skipImageQuality ? ['image_quality'] : [],
     limit: limit || null,
     siteLimit: siteLimit || null,
     averageScore,
