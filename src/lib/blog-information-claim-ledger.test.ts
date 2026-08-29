@@ -3,9 +3,47 @@ import {
   BLOG_INFORMATION_CLAIM_LEDGER_MAX_ENTRIES,
   buildBlogInformationClaimLedgerPromptContract,
   parseBlogInformationWriterOutput,
+  restoreApprovedRewriteClaimLabels,
 } from './blog-information-claim-ledger';
 
 describe('blog information writer claim ledger', () => {
+  it('restores only an exact label-stripped approved rewrite claim', () => {
+    const parsed = parseBlogInformationWriterOutput([
+      'House of Chin Fe 괌의 커피는 확인일 기준 2.50 USD이다.',
+      '<!-- INFORMATION_CLAIM_LEDGER_START',
+      '{"claims":[{"claim_text":"House of Chin Fe 괌의 커피는 확인일 기준 2.50 USD이다.","claim_type":"price","risk_level":"MEDIUM"}]}',
+      'INFORMATION_CLAIM_LEDGER_END -->',
+    ].join('\n'));
+
+    const repaired = restoreApprovedRewriteClaimLabels(parsed, [{
+      claimText: '[절약형 하루 예산] [간식] House of Chin Fe 괌의 커피는 확인일 기준 2.50 USD이다.',
+      claimType: 'price',
+      riskLevel: 'MEDIUM',
+    }]);
+
+    expect(repaired.markdown).toContain(
+      '[절약형 하루 예산] [간식] House of Chin Fe 괌의 커피는 확인일 기준 2.50 USD이다.',
+    );
+    expect(repaired.claimLedger[0]).toMatchObject({
+      claimText: '[절약형 하루 예산] [간식] House of Chin Fe 괌의 커피는 확인일 기준 2.50 USD이다.',
+      claimType: 'price',
+      riskLevel: 'MEDIUM',
+    });
+  });
+
+  it('does not repair a paraphrased rewrite claim', () => {
+    const output = {
+      markdown: 'House of Chin Fe 커피 가격은 2.50 USD이다.',
+      claimLedger: [],
+      ledgerIssues: [],
+    };
+    expect(restoreApprovedRewriteClaimLabels(output, [{
+      claimText: '[간식] House of Chin Fe 괌의 커피는 확인일 기준 2.50 USD이다.',
+      claimType: 'price',
+      riskLevel: 'MEDIUM',
+    }])).toEqual(output);
+  });
+
   it('parses and removes a valid hidden ledger from the reader-visible article', () => {
     const output = parseBlogInformationWriterOutput([
       '# 공항 이동',

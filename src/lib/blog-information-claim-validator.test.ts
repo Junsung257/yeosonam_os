@@ -360,6 +360,36 @@ describe('blog information claim validator', () => {
     expect(report.issues).toEqual([]);
   });
 
+  it('treats source-neutral food-budget selection guidance as editorial prose', () => {
+    const report = validateBlogInformationClaims({
+      markdown: [
+        '괌 여행 식비 예산에 필요한 비용을 여행 방식별로 나누어 비교합니다.',
+        '예산에 포함할 항목을 고르고 나면 하루 식비 총액을 정할 수 있습니다.',
+      ].join('\n\n'),
+      persistedClaims: [],
+      claimLedger: [],
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(true);
+    expect(report.claims).toEqual([]);
+    expect(report.issues).toEqual([]);
+  });
+
+  it('does not treat a numeric food-budget assertion as editorial guidance', () => {
+    const report = validateBlogInformationClaims({
+      markdown: '괌 여행 식비 예산은 하루 80 USD로 정하면 됩니다.',
+      persistedClaims: [],
+      claimLedger: [],
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues).toContainEqual(expect.objectContaining({
+      code: 'unclassified_factual_candidate',
+    }));
+  });
+
   it('blocks the legacy metadata description that asserted unsupported route grouping', () => {
     const report = validateBlogInformationClaims({
       markdown: '확인된 공식 정보를 바탕으로 함께 묶을 동선과 따로 둘 일정을 나눕니다.',

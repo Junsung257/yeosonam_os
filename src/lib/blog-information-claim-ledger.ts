@@ -40,6 +40,12 @@ export interface BlogInformationWriterOutput {
   ledgerIssues: string[];
 }
 
+type ApprovedRewriteClaim = {
+  claimText: string;
+  claimType: string;
+  riskLevel: string;
+};
+
 function cleanClaimText(value: string): string {
   return value
     .normalize('NFKC')
@@ -134,6 +140,45 @@ export function parseBlogInformationWriterOutput(raw: string): BlogInformationWr
       ledgerIssues: ['claim_ledger_invalid_json'],
     };
   }
+}
+
+/**
+ * Restore reviewed semantic labels only when the model copied the remainder
+ * of an approved claim exactly once in both the body and hidden ledger.
+ * Paraphrases and ambiguous matches remain untouched and fail closed later.
+ */
+export function restoreApprovedRewriteClaimLabels(
+  output: BlogInformationWriterOutput,
+  approvedClaims: ApprovedRewriteClaim[],
+): BlogInformationWriterOutput {
+  let markdown = output.markdown;
+  let claimLedger = [...output.claimLedger];
+
+  for (const approved of approvedClaims) {
+    const exactClaim = cleanClaimText(approved.claimText);
+    if (!exactClaim || markdown.includes(exactClaim)) continue;
+    const strippedClaim = exactClaim.replace(/^(?:\[[^\]\r\n]{1,80}\]\s*)+/, '').trim();
+    if (!strippedClaim || strippedClaim === exactClaim) continue;
+    const bodyMatches = markdown.split(strippedClaim).length - 1;
+    const ledgerMatches = claimLedger.filter((claim) =>
+      claim.claimText === strippedClaim
+      && claim.claimType === approved.claimType
+      && claim.riskLevel === approved.riskLevel);
+    if (bodyMatches !== 1 || ledgerMatches.length !== 1) continue;
+    if (!isClaimType(approved.claimType) || !isRiskLevel(approved.riskLevel)) continue;
+
+    markdown = markdown.replace(strippedClaim, exactClaim);
+    claimLedger = claimLedger.map((claim) => claim === ledgerMatches[0]
+      ? {
+          claimFingerprint: createBlogInformationClaimFingerprint(exactClaim),
+          claimText: exactClaim,
+          claimType: ledgerMatches[0]!.claimType,
+          riskLevel: ledgerMatches[0]!.riskLevel,
+        }
+      : claim);
+  }
+
+  return { ...output, markdown, claimLedger };
 }
 
 export function buildBlogInformationClaimLedgerPromptContract(): string {
