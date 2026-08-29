@@ -38,6 +38,15 @@ describe('public blog render normalizer', () => {
     expect(html).toContain('src="/real.jpg" alt="후쿠오카 모모치 해변과 후쿠오카 타워"');
   });
 
+  it('restores a descriptive fallback alt from the destination and nearest section', () => {
+    const html = sanitizePublicBlogBodyHtml(
+      '<h2>10초 판단</h2><p><img src="/generic.jpg" alt=""></p>',
+      { imageAltPrefix: '후쿠오카' },
+    );
+
+    expect(html).toContain('alt="후쿠오카 10초 판단 이미지"');
+  });
+
   it('removes only a leading body heading that repeats the page title', () => {
     expect(
       stripPublicDuplicateBodyTitleHeading(

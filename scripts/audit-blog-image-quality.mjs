@@ -266,11 +266,12 @@ async function auditPage(page, path) {
   await page.evaluate(async () => {
     const article = document.querySelector('article') || document.body;
     const imgs = [...article.querySelectorAll('img')];
+    const imageLoadTimeoutMs = 10_000;
     await Promise.all(imgs.map((img) => {
       if (img.complete) return null;
       return new Promise((resolve) => {
         const done = () => resolve(null);
-        const timer = window.setTimeout(done, 3000);
+        const timer = window.setTimeout(done, imageLoadTimeoutMs);
         img.addEventListener('load', () => {
           window.clearTimeout(timer);
           done();
