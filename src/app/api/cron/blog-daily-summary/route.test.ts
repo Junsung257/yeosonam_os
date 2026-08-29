@@ -120,6 +120,10 @@ describe('blog daily summary report day', () => {
     expect(selectStep).toContain('private_queue_id is allowed only with blog-publisher');
     expect(selectStep).toContain('private_queue_id must be a UUID');
     expect(selectStep).toContain('query="${query}&privateQueueId=${private_queue_id}"');
+    expect(workflow).toContain('target_queue_id:');
+    expect(selectStep).toContain('target_queue_id is allowed only with blog-generate');
+    expect(selectStep).toContain('target_queue_id must be a UUID');
+    expect(selectStep).toContain('query="${query}&targetQueueId=${target_queue_id}"');
     expect(workflow).not.toContain('MAX_PUBLISHER_ATTEMPTS');
     expect(workflow).not.toContain('while [ "$attempt"');
     expect(workflow).toContain('timeout-minutes: 45');
