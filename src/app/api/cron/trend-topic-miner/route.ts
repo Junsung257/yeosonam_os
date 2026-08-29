@@ -8,6 +8,7 @@ import { normalizeBlogTopicQueueRow } from '@/lib/blog-queue-normalize';
 import { filterTopicFitPassed } from '@/lib/blog-topic-fit-gate';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import {
+  buildClaimedMonthlyWeatherTrendDestinations,
   buildBlogTrendCandidateMeta,
   buildBlogTrendCandidateTopic,
   buildSupportedBlogTrendDestinations,
@@ -61,7 +62,11 @@ async function runTrendMiner(request: NextRequest) {
   // 2) 고객에게 이미 검증된 destination 화이트리스트.
   // 판매 중 상품이 잠시 없어도 공개 블로그 코퍼스가 있는 목적지는 정보성
   // 트렌드 글을 계속 만들 수 있어야 한다.
-  const [{ data: pkgs }, { data: publishedBlogs }] = await Promise.all([
+  const [
+    { data: pkgs },
+    { data: publishedBlogs },
+    { data: activeRepresentatives, error: representativeError },
+  ] = await Promise.all([
     supabaseAdmin
       .from('travel_packages')
       .select('destination')
@@ -73,6 +78,13 @@ async function runTrendMiner(request: NextRequest) {
       .eq('status', 'published')
       .not('destination', 'is', null)
       .limit(1000),
+    supabaseAdmin
+      .from('blog_information_representatives')
+      .select('destination_id,intent,audience,locale,status')
+      .eq('status', 'active')
+      .eq('intent', 'monthly_weather')
+      .eq('audience', 'general')
+      .eq('locale', 'ko-KR'),
   ]);
   const supportedDestinations = buildSupportedBlogTrendDestinations({
     activeCatalogDestinations: ((pkgs || []) as Array<{ destination: string | null }>)
@@ -80,6 +92,15 @@ async function runTrendMiner(request: NextRequest) {
     publishedBlogDestinations: ((publishedBlogs || []) as Array<{ destination: string | null }>)
       .map((post) => post.destination),
   });
+  const claimedMonthlyWeatherDestinations = buildClaimedMonthlyWeatherTrendDestinations(
+    (activeRepresentatives || []) as Array<{
+      destination_id: string | null;
+      intent: string | null;
+      audience: string | null;
+      locale: string | null;
+      status: string | null;
+    }>,
+  );
 
   // 3) trend_keyword_archive 일괄 저장 (UNIQUE: observed_at,source,keyword 충돌은 무시)
   const archiveRows = trends.map(t => ({
@@ -99,6 +120,17 @@ async function runTrendMiner(request: NextRequest) {
       .upsert(archiveRows, { onConflict: 'observed_at,source,keyword', ignoreDuplicates: true });
     if (archErr) errors.push(`archive 실패: ${archErr.message}`);
     else archived = archiveRows.length;
+  }
+
+  if (representativeError) {
+    errors.push(`대표 원장 조회 실패: ${representativeError.message}`);
+    return {
+      collected: trends.length,
+      archived,
+      queued: 0,
+      errors,
+      message: '대표 원장 확인 실패로 큐잉 중단',
+    };
   }
 
   // 4) 큐잉 후보 선별:
@@ -141,12 +173,19 @@ async function runTrendMiner(request: NextRequest) {
     search_intent: ReturnType<typeof classifySearchIntent>;
     raw: object;
   }> = [];
-  const archiveLink: Array<{ keyword: string; observed_at: string; source: string }> = [];
+  const archiveLink: Array<{ keyword: string; primary_keyword: string; observed_at: string; source: string }> = [];
+  const selectedDestinations = new Set<string>();
+  let skippedActiveRepresentative = 0;
 
   for (const c of candidates) {
     const dest = c.related_destination || detectDestination(c.keyword)!;
     const key = `${dest}::${c.keyword}`;
     if (recentKeys.has(key)) continue;
+    if (claimedMonthlyWeatherDestinations.has(dest) || selectedDestinations.has(dest)) {
+      skippedActiveRepresentative += 1;
+      continue;
+    }
+    selectedDestinations.add(dest);
 
     const tier = classifyKeywordTier(c.keyword, c.search_volume);
     const topic = buildBlogTrendCandidateTopic({
@@ -154,6 +193,7 @@ async function runTrendMiner(request: NextRequest) {
       destination: dest,
     });
     const candidateMeta = buildBlogTrendCandidateMeta(topic);
+    const primaryKeyword = `${dest} 월별 날씨와 옷차림`;
 
     poolRowsPending.push({
       keyword: c.keyword,
@@ -171,7 +211,7 @@ async function runTrendMiner(request: NextRequest) {
       destination: dest,
       angle_type: 'trend',
       category: 'travel_tips',
-      primary_keyword: c.keyword,
+      primary_keyword: primaryKeyword,
       keyword_tier: tier,
       monthly_search_volume: c.search_volume ?? null,
       competition_level: tier === 'head' ? 'high' : tier === 'mid' ? 'medium' : 'low',
@@ -180,11 +220,12 @@ async function runTrendMiner(request: NextRequest) {
         ...candidateMeta,
         keywords: [c.keyword, dest],
         trend_source: c.source,
+        trend_keyword: c.keyword,
         raw: c.raw,
         search_intent: classifySearchIntent(c.keyword),
       },
     }));
-    archiveLink.push({ keyword: c.keyword, observed_at, source: c.source });
+    archiveLink.push({ keyword: c.keyword, primary_keyword: primaryKeyword, observed_at, source: c.source });
   }
 
   const topicFit = filterTopicFitPassed(queueRows);
@@ -206,7 +247,7 @@ async function runTrendMiner(request: NextRequest) {
       // 아카이브에 used_at + topic_queue_id 연결
       if (inserted && inserted.length > 0) {
         const updates = inserted.map((row: any) => {
-          const link = archiveLink.find(l => l.keyword === row.primary_keyword);
+          const link = archiveLink.find(l => l.primary_keyword === row.primary_keyword);
           return link ? {
             ...link,
             used_at: new Date().toISOString(),
@@ -231,6 +272,7 @@ async function runTrendMiner(request: NextRequest) {
     archived,
     queued,
     candidates: candidates.length,
+    skippedActiveRepresentative,
     errors,
     ranAt: new Date().toISOString(),
   };
