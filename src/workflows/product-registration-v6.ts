@@ -29,7 +29,11 @@ import {
 } from '@/lib/product-registration-v6/snapshot-publication';
 import { evaluateRegistrationPublicationPolicy } from '@/lib/product-registration-kernel/publication-policy';
 import { loadProductRegistrationV6PublicationBlockers } from '@/lib/product-registration-v6/publication-control';
-import { buildProductRegistrationV6Copy, persistProductRegistrationV6Copy } from '@/lib/product-registration-v6/copy-revision';
+import {
+  generateProductRegistrationV6Copy,
+  persistProductRegistrationV6Copy,
+  type ProductRegistrationCopyClaim,
+} from '@/lib/product-registration-v6/copy-revision';
 import {
   buildPackageProjectionFromRevision,
   loadProductRegistrationRevisionAggregate,
@@ -69,14 +73,13 @@ async function recordStage(input: {
   jobId: string;
   fencingToken: number;
   stage: ProductRegistrationV6Stage;
-  status: 'running' | 'succeeded' | 'failed';
+  status: 'running' | 'succeeded' | 'failed_retryable' | 'failed_terminal' | 'abandoned';
   output?: JsonObject;
   error?: string | null;
 }) {
   const supabase = db();
   const inputHash = sha256Hex(JSON.stringify({
     jobId: input.jobId,
-    fencingToken: input.fencingToken,
     stage: input.stage,
     workflowVersion: PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION,
   }));
@@ -89,8 +92,7 @@ async function recordStage(input: {
     .maybeSingle();
   if (jobError) throw jobError;
   if (!job) throw new FatalError('V6_WORKFLOW_FENCING_CONFLICT');
-  const { error: stageError } = await supabase.rpc('record_product_registration_v6_stage_run', {
-    p_payload: {
+  const stagePayload = {
       tenant_id: job.tenant_id,
       job_id: input.jobId,
       workflow_run_id: job.v6_workflow_run_id,
@@ -102,7 +104,18 @@ async function recordStage(input: {
       output: input.output ?? {},
       error_code: input.error?.split(':')[0] ?? null,
       error_detail: input.error ?? null,
-    },
+  };
+  // V6.1 persists one mutable RUNNING attempt and fences its one-way terminal
+  // transition. Some historical steps only emitted the terminal event, so the
+  // adapter opens the attempt first without changing step call sites.
+  if (input.status !== 'running') {
+    const { error: startError } = await supabase.rpc('record_product_registration_v6_stage_run', {
+      p_payload: { ...stagePayload, status: 'running', output: {} },
+    });
+    if (startError) throw startError;
+  }
+  const { error: stageError } = await supabase.rpc('record_product_registration_v6_stage_run', {
+    p_payload: stagePayload,
   });
   if (stageError) throw stageError;
   const currentState = job.v4_stage_state && typeof job.v4_stage_state === 'object'
@@ -480,6 +493,9 @@ async function projectCompatibilityStep(
   const bindings: Array<{
     catalogProductId: string;
     packageId: string;
+    projectionHash: string;
+    productPriceCount: number;
+    representativePrice: number | null;
     operationalIdentity: JsonObject;
   }> = [];
 
@@ -533,6 +549,9 @@ async function projectCompatibilityStep(
     bindings.push({
       catalogProductId,
       packageId: projected.packageId,
+      projectionHash: projected.projectionHash,
+      productPriceCount: projected.productPriceCount,
+      representativePrice: projected.representativePrice,
       operationalIdentity: {
         internal_code: projected.internalCode,
         land_operator: landOperator,
@@ -888,6 +907,12 @@ async function generateCopyStep(
   const supabase = db();
   const blockers: string[] = [];
   const copyHashes: string[] = [];
+  const generationStates: string[] = [];
+  let chargedCopyCostKrw = 0;
+  const allowAiRewrite = decision.outcome !== 'blocked'
+    && !decision.terminalOutcome.startsWith('discarded_')
+    && !decision.terminalOutcome.startsWith('archived_')
+    && !decision.terminalOutcome.startsWith('quarantined_');
   for (const [index, packageId] of decision.packageIds.entries()) {
     const revisionId = decision.revisionIds[index] ?? decision.revisionIds[0];
     if (!revisionId) {
@@ -906,23 +931,50 @@ async function generateCopyStep(
       blockers.push(`package:${packageId}:${error instanceof Error ? error.message : 'COPY_REVISION_PROJECTION_FAILED'}`);
       continue;
     }
-    const built = buildProductRegistrationV6Copy({
-      pkg: pkg as JsonObject,
-      claims: (claims ?? []) as Array<{ id: string; field_path: string; normalized_value: unknown; criticality: string; evidence_status: string; conflict_status: string }>,
-      degradedReasons: decision.degradedReasons,
-    });
-    blockers.push(...built.blockers.map(reason => `package:${packageId}:${reason}`));
-    const persisted = await persistProductRegistrationV6Copy({
+    const typedClaims = (claims ?? []) as ProductRegistrationCopyClaim[];
+    const built = await generateProductRegistrationV6Copy({
       supabase,
       tenantId: aggregate.revision.tenant_id,
+      jobId: input.jobId,
       revisionId,
       revisionHash: aggregate.revision.payload_hash,
       sourceHash: input.fileHash,
-      payload: built.payload,
-      claimLinks: built.claimLinks,
-      validationState: built.blockers.length > 0 ? 'blocked' : 'verified',
+      pkg: pkg as JsonObject,
+      claims: typedClaims,
+      degradedReasons: decision.degradedReasons,
+      allowAiRewrite,
     });
-    copyHashes.push(persisted.copyHash);
+    blockers.push(...built.blockers.map(reason => `package:${packageId}:${reason}`));
+    chargedCopyCostKrw += built.chargedCostKrw;
+    generationStates.push(built.generationState);
+    if (built.alreadyPersisted) {
+      copyHashes.push(built.copyHash);
+    } else {
+      const persisted = await persistProductRegistrationV6Copy({
+        supabase,
+        tenantId: aggregate.revision.tenant_id,
+        revisionId,
+        revisionHash: aggregate.revision.payload_hash,
+        sourceHash: input.fileHash,
+        payload: built.payload,
+        claimLinks: built.claimLinks,
+        validationState: built.blockers.length > 0 ? 'blocked' : 'verified',
+        deterministicFactsHash: built.deterministicFactsHash,
+        generationState: built.generationState,
+        qualityScore: built.qualityScore,
+        modelId: built.modelId,
+        promptHash: built.promptHash,
+      });
+      copyHashes.push(persisted.copyHash);
+    }
+  }
+  if (chargedCopyCostKrw > 0) {
+    const { error: costError } = await supabase.rpc('add_product_registration_v6_external_cost', {
+      p_job_id: input.jobId,
+      p_expected_fencing_token: input.fencingToken,
+      p_cost_krw: chargedCopyCostKrw,
+    });
+    if (costError) throw costError;
   }
   const nextDecision: ProductRegistrationV6Decision = blockers.length > 0
     ? {
@@ -938,9 +990,12 @@ async function generateCopyStep(
     stage: 'generate_copy',
     status: 'succeeded',
     output: {
-      copyPolicy: 'validated-facts-template-only',
+      copyPolicy: 'product-registration-customer-copy-v2',
       degradedNoticeApplied: decision.outcome === 'degraded',
       copyHashes,
+      generationStates,
+      aiRewriteAllowed: allowAiRewrite,
+      chargedCopyCostKrw,
       blockers,
     },
   });
@@ -954,6 +1009,7 @@ async function buildSnapshotsStep(
   compatibilityBindings: Array<{
     catalogProductId: string;
     packageId: string;
+    projectionHash: string;
     operationalIdentity?: JsonObject;
   }>,
 ) {
@@ -1039,6 +1095,9 @@ async function publicationControlStep(
     supplierKeys: [metadataString(input.uploadSourceMetadata, 'landOperator')].filter(
       (value): value is string => Boolean(value),
     ),
+    // The durable workflow never bypasses the global freeze. A manually
+    // reviewed canary is released by the exact one-time authorization route.
+    allowSourceProofAutoPublish: false,
   });
   if (blockers.length === 0) {
     return { allowed: true, publicationState: 'proof_passed', blockers: [] };
@@ -1061,10 +1120,22 @@ async function convergeStep(input: ProductRegistrationV6WorkflowInput, snapshots
   'use step';
   await recordStage({ jobId: input.jobId, fencingToken: input.fencingToken, stage: 'converge_surfaces', status: 'running' });
   const supabase = db();
+  // The package and LP pages are the customer journey and must converge before
+  // the workflow is considered publishable. OG/affiliate are secondary image
+  // projections: they remain durable pending rows and are repaired by the
+  // essential convergence cron without blocking a valid customer snapshot.
+  const requiredSurfaces = ['packages', 'lp'];
+  const secondarySurfaces = ['og', 'affiliate'];
+  const workerId = `v6:${input.jobId}`;
+  // Cache invalidation is an external side effect. A just-published OG image
+  // can briefly serve the previous snapshot while the pointer and HTML pages
+  // are already current. Return that as a retryable result; the workflow body
+  // owns the durable sleep between attempts (Workflow DevKit forbids sleep in
+  // a step function).
   const outbox = await processProductRegistrationV5OutboxBatch({
     supabase,
     limit: Math.max(10, snapshots.length * 10),
-    workerId: `v6:${input.jobId}`,
+    workerId,
     aggregateIds: snapshots.map(snapshot => snapshot.packageId),
   });
   const convergence = await observeProductRegistrationV5ConvergenceBatch({
@@ -1078,19 +1149,50 @@ async function convergeStep(input: ProductRegistrationV6WorkflowInput, snapshots
     .select('snapshot_hash,surface,status')
     .in('snapshot_hash', snapshots.map(snapshot => snapshot.snapshotHash));
   if (convergenceError) throw convergenceError;
-  const requiredSurfaces = ['packages', 'lp', 'og', 'affiliate'];
+  const { data: currentPointers, error: pointerError } = await supabase
+    .from('product_registration_v5_publication_pointers')
+    .select('package_id,current_snapshot_id,state')
+    .in('package_id', snapshots.map(snapshot => snapshot.packageId))
+    .eq('channel', 'customer')
+    .eq('locale', 'ko-KR');
+  if (pointerError) throw pointerError;
+  // A forced reprocess or correction may legitimately publish a newer
+  // immutable snapshot while this run is still proving cache convergence.
+  // That older run must finish as a consolidated duplicate, not as a system
+  // quarantine, otherwise an expected CAS replacement looks like a broken
+  // registration and pollutes the dead-letter queue.
+  const supersededSnapshotIds = snapshots
+    .filter(snapshot => (currentPointers ?? []).some(pointer =>
+      pointer.package_id === snapshot.packageId
+      && pointer.state === 'published'
+      && pointer.current_snapshot_id
+      && pointer.current_snapshot_id !== snapshot.snapshotId))
+    .map(snapshot => snapshot.snapshotId);
+  const superseded = supersededSnapshotIds.length > 0;
   const incomplete = snapshots.filter(snapshot => requiredSurfaces.some(surface =>
     !(convergenceRows ?? []).some(row => row.snapshot_hash === snapshot.snapshotHash
       && row.surface === surface
       && row.status === 'converged')));
-  if (incomplete.length > 0) throw new Error(`V6_SURFACE_CONVERGENCE_PENDING:${incomplete.length}`);
+  const pendingSecondarySurfaces = snapshots.flatMap(snapshot => secondarySurfaces
+    .filter(surface => !(convergenceRows ?? []).some(row => row.snapshot_hash === snapshot.snapshotHash
+      && row.surface === surface
+      && row.status === 'converged'))
+    .map(surface => `${snapshot.snapshotHash}:${surface}`));
   await recordStage({
     jobId: input.jobId,
     fencingToken: input.fencingToken,
     stage: 'converge_surfaces',
     status: 'succeeded',
-    output: { outboxDelivered: outbox.filter(row => row.ok).length, converged: convergence.length },
+    output: {
+      outboxDelivered: outbox.filter(row => row.ok).length,
+      converged: convergence.length,
+      pending: incomplete.length,
+      superseded,
+      supersededSnapshotIds,
+      pendingSecondarySurfaces,
+    },
   });
+  return { complete: incomplete.length === 0, pending: incomplete.length, superseded };
 }
 
 async function terminalStep(
@@ -1233,7 +1335,7 @@ async function blockFailedWorkflowStep(
       jobId: input.jobId,
       fencingToken: input.fencingToken,
       stage: failedStage as ProductRegistrationV6Stage,
-      status: 'failed',
+      status: expectedPublicationBlock ? 'abandoned' : 'failed_terminal',
       error,
     }).catch(() => undefined);
   }
@@ -1387,20 +1489,13 @@ export async function productRegistrationV6Workflow(
     if (copyDecision.outcome === 'blocked') return await terminalStep(input, workflowRunId, copyDecision, 'not_requested');
     const compatibility = await projectCompatibilityStep(input, canonical);
     const snapshots = await buildSnapshotsStep(input, copyDecision, shared, compatibility.bindings);
-    const proofs = await proveSnapshotsStep(input, snapshots);
-    const publication = await publicationControlStep(input, copyDecision);
-    if (!publication.allowed) {
-      return await terminalStep(
-        input,
-        workflowRunId,
-        unpublishedReadyDecision(copyDecision),
-        publication.publicationState,
-        publication.blockers,
-      );
-    }
-    await publishSnapshotsStep(input, copyDecision, proofs);
-    await convergeStep(input, snapshots);
-    return await terminalStep(input, workflowRunId, copyDecision, 'converged');
+    return await terminalStep(
+      input,
+      workflowRunId,
+      unpublishedReadyDecision(copyDecision),
+      'not_requested',
+      snapshots.length > 0 ? ['PUBLICATION_REQUEST_REQUIRED'] : ['CANDIDATE_SNAPSHOT_MISSING'],
+    );
   } catch (error) {
     return await blockFailedWorkflowStep(input, workflowRunId, error instanceof Error ? error.message : String(error));
   }

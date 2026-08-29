@@ -10,6 +10,7 @@ import {
 
 const annotation: ReviewedBenchmarkAnnotation = {
   sections: [{
+    expectedOutcome: 'EXPECTED_PUBLISHABLE',
     title: '\uBD80\uC0B0 \uB2E4\uB0AD 3\uBC155\uC77C',
     sourceSalePricePresent: true,
     departurePrices: [{ date: '2026-09-01', amount: 699000, currency: 'KRW' }],

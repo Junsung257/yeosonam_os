@@ -1,5 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { sha256Hex } from '@/lib/product-registration-v4/document-ir';
+import { stableJson } from '@/lib/product-registration-v4/revision';
+
 type JsonObject = Record<string, unknown>;
 
 export type ProductRegistrationV6DomainProjection = {
@@ -7,7 +10,14 @@ export type ProductRegistrationV6DomainProjection = {
   transportSegments: JsonObject[];
   lodgingStays: JsonObject[];
   golfRounds: JsonObject[];
+  entityRelations?: JsonObject[];
 };
+
+export type DeparturePricingState = 'PRICED' | 'REQUEST_ONLY' | 'CONFLICTING' | 'MISSING' | 'UNRESOLVED';
+export type SourcePriceKind = 'NET' | 'SELLING' | 'REQUEST_ONLY';
+export const PRODUCT_REGISTRATION_MARGIN_POLICY_VERSION = 'product-registration-margin-policy-v1';
+export type DepartureBookingState = 'AVAILABLE' | 'MANUAL_CONFIRMATION_REQUIRED' | 'SALES_CLOSED' | 'SOLD_OUT' | 'CANCELLED' | 'UNKNOWN';
+export type DepartureInventoryState = 'AVAILABLE' | 'ON_REQUEST' | 'SOLD_OUT' | 'CLOSED' | 'UNKNOWN';
 
 function object(value: unknown): JsonObject | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as JsonObject : null;
@@ -21,6 +31,182 @@ function text(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+function number(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const clean = value.replace(/[₩원\s]/gu, '');
+  if (clean.includes(',') && !/^\d{1,3}(,\d{3})+$/u.test(clean)) return null;
+  const normalized = clean.replace(/,/gu, '');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function rawAmount(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return null;
+}
+
+function labels(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())).map(item => item.trim())
+    : [];
+}
+
+function hasRequestLabel(price: JsonObject): boolean {
+  const haystack = [
+    text(price.label),
+    text(price.note),
+    text(price.booking_state),
+    ...labels(price.source_labels),
+  ].filter(Boolean).join(' ');
+  return /별도\s*문의|가격\s*문의|문의\s*(?:필요|필수)|예약\s*문의|request|on\s*request/iu.test(haystack);
+}
+
+function hasClosedLabel(price: JsonObject): boolean {
+  const haystack = [
+    text(price.label),
+    text(price.note),
+    text(price.booking_state),
+    text(price.inventory_state),
+    ...labels(price.source_labels),
+  ].filter(Boolean).join(' ');
+  return /미운항|운항\s*없음|판매\s*마감|예약\s*마감|closed|sold\s*out|cancel/iu.test(haystack);
+}
+
+function sourcePriceKind(price: JsonObject, requestOnly: boolean): SourcePriceKind | null {
+  const explicit = text(price.source_price_kind ?? price.price_kind)?.toUpperCase();
+  if (explicit === 'NET' || explicit === 'SELLING' || explicit === 'REQUEST_ONLY') return explicit;
+  if (price.net_price !== null && price.net_price !== undefined) return 'NET';
+  if (price.adult_selling_price !== null && price.adult_selling_price !== undefined
+    || price.selling_price !== null && price.selling_price !== undefined) return 'SELLING';
+  const haystack = [text(price.label), text(price.note), ...labels(price.source_labels)].filter(Boolean).join(' ');
+  if (/(?:\bNET\b|넷가|원가)/iu.test(haystack)) return 'NET';
+  if (/(?:판매가|상품가|소비자가|고객가)/iu.test(haystack)) return 'SELLING';
+  // V3 price_calendar.amount is a customer selling-price field by contract.
+  if (price.amount !== null && price.amount !== undefined) return 'SELLING';
+  return requestOnly ? 'REQUEST_ONLY' : null;
+}
+
+function commissionPercent(value: unknown): number {
+  const parsed = number(value);
+  if (parsed === null) return 9;
+  // Accept both common input conventions: 0.09 and 9 mean 9%.
+  return parsed > 0 && parsed <= 1 ? parsed * 100 : parsed;
+}
+
+function customerSellingPrice(input: {
+  sourceKind: SourcePriceKind | null;
+  sourceAmount: number | null;
+  commissionRate: number;
+  commissionFixedAmount: number | null;
+}): number | null {
+  if (input.sourceKind === 'SELLING') return input.sourceAmount;
+  if (input.sourceKind !== 'NET' || input.sourceAmount === null) return null;
+  if (input.commissionFixedAmount !== null) return Math.round(input.sourceAmount + input.commissionFixedAmount);
+  if (input.commissionRate < 0 || input.commissionRate >= 100) return null;
+  // Product commission is a percentage of the customer selling price.
+  // Therefore NET = selling * (1 - rate), not NET * (1 + rate).
+  return Math.round(input.sourceAmount / (1 - input.commissionRate / 100));
+}
+
+function bookingState(price: JsonObject, requestOnly: boolean, closed: boolean): DepartureBookingState {
+  const explicit = text(price.booking_state)?.toUpperCase();
+  if (explicit === 'SOLD_OUT') return 'SOLD_OUT';
+  if (explicit === 'CANCELLED') return 'CANCELLED';
+  if (explicit === 'SALES_CLOSED' || closed) return 'SALES_CLOSED';
+  if (explicit === 'AVAILABLE' && !requestOnly) return 'AVAILABLE';
+  if (requestOnly) return 'MANUAL_CONFIRMATION_REQUIRED';
+  return 'UNKNOWN';
+}
+
+function inventoryState(price: JsonObject, booking: DepartureBookingState): DepartureInventoryState {
+  const explicit = text(price.inventory_state)?.toUpperCase();
+  if (explicit === 'AVAILABLE') return 'AVAILABLE';
+  if (explicit === 'ON_REQUEST') return 'ON_REQUEST';
+  if (explicit === 'SOLD_OUT') return 'SOLD_OUT';
+  if (explicit === 'CLOSED') return 'CLOSED';
+  if (booking === 'SOLD_OUT') return 'SOLD_OUT';
+  if (booking === 'SALES_CLOSED' || booking === 'CANCELLED') return 'CLOSED';
+  if (booking === 'MANUAL_CONFIRMATION_REQUIRED') return 'ON_REQUEST';
+  return 'UNKNOWN';
+}
+
+function departurePricing(price: JsonObject, fieldPath: string): JsonObject {
+  const requestOnly = hasRequestLabel(price);
+  const sourceKind = sourcePriceKind(price, requestOnly);
+  const sourceValue = sourceKind === 'NET'
+    ? price.net_price ?? price.amount
+    : price.adult_selling_price ?? price.selling_price ?? price.amount;
+  const raw = rawAmount(sourceValue);
+  const sourceAmount = number(sourceValue);
+  const commissionRate = commissionPercent(price.commission_rate ?? price.margin_rate);
+  const commissionFixedAmount = number(price.commission_fixed_amount);
+  const amount = customerSellingPrice({ sourceKind, sourceAmount, commissionRate, commissionFixedAmount });
+  const childSourceValue = price.child_net_price ?? price.child_amount ?? price.child_selling_price;
+  const childSourceAmount = number(childSourceValue);
+  const childSellingPrice = childSourceAmount === null
+    ? null
+    : customerSellingPrice({ sourceKind, sourceAmount: childSourceAmount, commissionRate, commissionFixedAmount });
+  const closed = hasClosedLabel(price);
+  const booking = bookingState(price, requestOnly, closed);
+  const pricingState: DeparturePricingState = sourceKind === 'REQUEST_ONLY'
+    ? 'REQUEST_ONLY'
+    : amount !== null
+    ? 'PRICED'
+    : raw
+      ? sourceKind === null ? 'UNRESOLVED' : 'CONFLICTING'
+      : requestOnly
+        ? 'REQUEST_ONLY'
+        : 'MISSING';
+  const ruleType = text(price.rule_type)
+    ?? (text(price.date) ? 'EXACT_DATE_OVERRIDE' : text(price.date_range) ? 'DATE_RANGE_RULE' : 'WEEKDAY_RULE');
+  const ruleHash = sha256Hex(stableJson({
+    fieldPath,
+    ruleType,
+    sourceKind,
+    sourceAmount,
+    netPrice: sourceKind === 'NET' ? sourceAmount : null,
+    amount,
+    currency: text(price.currency) ?? 'KRW',
+    commissionRate,
+    commissionFixedAmount,
+    marginPolicyVersion: PRODUCT_REGISTRATION_MARGIN_POLICY_VERSION,
+  }));
+  return {
+    source_field_path: fieldPath,
+    source_price_kind: sourceKind,
+    source_amount: sourceAmount,
+    net_price: sourceKind === 'NET' ? sourceAmount : null,
+    adult_selling_price: amount,
+    child_selling_price: childSellingPrice,
+    margin_policy_version: PRODUCT_REGISTRATION_MARGIN_POLICY_VERSION,
+    commission_rate_applied: sourceKind === 'NET' && commissionFixedAmount === null ? commissionRate : null,
+    commission_fixed_amount_applied: sourceKind === 'NET' ? commissionFixedAmount : null,
+    currency: (text(price.currency) ?? 'KRW').toUpperCase(),
+    raw_amount: raw,
+    pricing_state: pricingState,
+    booking_state: booking,
+    inventory_state: inventoryState(price, booking),
+    price_rule_type: ruleType,
+    price_rule_hash: ruleHash,
+    price_override_key: text(price.date) ? `${fieldPath}:${text(price.date)}` : null,
+    source_labels: labels(price.source_labels),
+    source_ref_ids: labels(price.source_ref_ids),
+    source_confidence: number(price.source_confidence),
+    price_revision: text(price.price_revision),
+    sale_state: booking === 'AVAILABLE'
+      ? 'available'
+      : booking === 'MANUAL_CONFIRMATION_REQUIRED'
+        ? 'request'
+        : booking === 'SOLD_OUT'
+          ? 'sold_out'
+          : booking === 'CANCELLED'
+            ? 'cancelled'
+            : 'closed',
+  };
+}
+
 function time(value: unknown): string | null {
   const match = text(value)?.match(/\b([01]?\d|2[0-3]):?([0-5]\d)\b/);
   return match ? `${match[1]!.padStart(2, '0')}:${match[2]}` : null;
@@ -29,6 +215,20 @@ function time(value: unknown): string | null {
 function evidence(value: unknown, fieldPath: string): unknown[] {
   if (Array.isArray(value)) return value;
   return value && typeof value === 'object' ? [value] : [{ field_path: fieldPath }];
+}
+
+function mergeEvidence(existing: unknown, incoming: unknown): unknown[] {
+  const rows = [
+    ...(Array.isArray(existing) ? existing : existing ? [existing] : []),
+    ...(Array.isArray(incoming) ? incoming : incoming ? [incoming] : []),
+  ];
+  const seen = new Set<string>();
+  return rows.filter(row => {
+    const key = JSON.stringify(row);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function flightIdentity(value: unknown): { carrierCode: string | null; serviceNumber: string | null } {
@@ -56,6 +256,7 @@ export function buildProductRegistrationV6DomainProjection(input: {
     transportSegments: [],
     lodgingStays: [],
     golfRounds: [],
+    entityRelations: [],
   };
   array(input.canonicalPayload.sections).forEach((rawSection, sectionIndex) => {
     const ledger = object(object(object(rawSection)?.v3)?.ledger);
@@ -67,14 +268,39 @@ export function buildProductRegistrationV6DomainProjection(input: {
         const departureDate = text(price?.date);
         if (!departureDate || !/^\d{4}-\d{2}-\d{2}$/.test(departureDate)) return;
         const fieldPath = `sections[${sectionIndex}].v3.ledger.variants[${variantIndex}].price_calendar[${priceIndex}]`;
-        projection.departures.push({
+        const pricingFact = departurePricing(price ?? {}, fieldPath);
+        const departure = {
           package_id: input.packageId ?? null,
           section_index: sectionIndex,
           variant_key: variantKey,
           departure_date: departureDate,
-          sale_state: 'available',
+          ...pricingFact,
           evidence: evidence(price?.evidence, fieldPath),
-        });
+        };
+        // A source table can repeat a date while presenting the same fare in
+        // multiple rows (for example, a hotel/meal note beside the fare).
+        // The relational projection is unique by revision/section/variant/date;
+        // collapse only that projection duplicate and retain every evidence
+        // anchor. Price ambiguity is still resolved and gated before this step.
+        const existing = projection.departures.find(row =>
+          row.section_index === sectionIndex
+          && row.variant_key === variantKey
+          && row.departure_date === departureDate,
+        );
+        if (existing) {
+          existing.evidence = mergeEvidence(existing.evidence, departure.evidence);
+          if (existing.pricing_state !== pricingFact.pricing_state
+            || existing.adult_selling_price !== pricingFact.adult_selling_price
+            || existing.source_price_kind !== pricingFact.source_price_kind
+            || existing.source_amount !== pricingFact.source_amount
+            || existing.booking_state !== pricingFact.booking_state) {
+            existing.pricing_state = 'CONFLICTING';
+            existing.booking_state = 'MANUAL_CONFIRMATION_REQUIRED';
+            existing.sale_state = 'request';
+          }
+        } else {
+          projection.departures.push(departure);
+        }
       });
       array(variant.flight_segments).forEach((rawSegment, sequenceNo) => {
         const segment = object(rawSegment) ?? {};
@@ -118,6 +344,8 @@ export function buildProductRegistrationV6DomainProjection(input: {
             nights: 1,
             lodging_name: lodgingName,
             lodging_state: classifyLodgingState(lodgingName),
+            canonical_entity_id: text(hotel?.canonical_entity_id),
+            entity_revision_id: text(hotel?.entity_revision_id),
             source_field_path: fieldPath,
             evidence: evidence(hotel?.evidence, fieldPath),
           });
@@ -134,6 +362,8 @@ export function buildProductRegistrationV6DomainProjection(input: {
             variant_key: variantKey,
             day_index: dayIndex,
             course_name_raw: rawName,
+            canonical_entity_id: text(event.canonical_entity_id),
+            entity_revision_id: text(event.entity_revision_id),
             tee_time: time(event.time),
             holes: Number.isFinite(holes) ? holes : null,
             green_fee_inclusion: null,

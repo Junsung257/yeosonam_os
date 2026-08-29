@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { createHash } from 'node:crypto';
 
 import { buildV5ItineraryItems, buildV5PriceRules } from '@/lib/product-registration-v4/typed-projections';
 import { buildCanonicalTermsRevisions } from './terms';
@@ -75,7 +76,7 @@ export async function commitCanonicalRevisionAtomic(input: {
     priceRules,
     departures: domainProjection.departures,
   });
-  const { data, error } = await input.supabase.rpc('commit_product_registration_revision_atomic', {
+  const { data, error } = await input.supabase.rpc('commit_product_registration_revision_v62_atomic', {
     p_payload: {
       tenant_id: input.commit.tenantId,
       catalog_product_id: input.commit.catalogProductId ?? null,
@@ -165,6 +166,7 @@ export async function commitCanonicalRevisionAtomic(input: {
       transport_segments: domainProjection.transportSegments,
       lodging_stays: domainProjection.lodgingStays,
       golf_rounds: domainProjection.golfRounds,
+      entity_relations: domainProjection.entityRelations ?? [],
       terms: terms.map(row => ({
         terms_type: row.termsType,
         terms_payload: row.termsPayload,
@@ -221,7 +223,14 @@ export async function projectCompatibilityFromRevisionAtomic(input: {
   supplierCode: string;
   landOperator?: string | null;
   commissionRate?: number | null;
-}): Promise<{ packageId: string; internalCode: string }> {
+}): Promise<{
+  packageId: string;
+  internalCode: string;
+  projectionHash: string;
+  productPriceCount: number;
+  representativePrice: number | null;
+}> {
+  const projectionHash = createHash('sha256').update(JSON.stringify(input.projection)).digest('hex');
   const { data, error } = await input.supabase.rpc('project_product_registration_compatibility_atomic', {
     p_payload: {
       tenant_id: input.tenantId,
@@ -233,6 +242,7 @@ export async function projectCompatibilityFromRevisionAtomic(input: {
       supplier_code: input.supplierCode,
       land_operator: input.landOperator ?? null,
       commission_rate: input.commissionRate ?? null,
+      projection_hash: projectionHash,
       projection: input.projection,
     },
   });
@@ -241,6 +251,11 @@ export async function projectCompatibilityFromRevisionAtomic(input: {
   return {
     packageId: requiredString(result.package_id, 'package_id'),
     internalCode: requiredString(result.internal_code, 'internal_code'),
+    projectionHash: requiredString(result.projection_hash, 'projection_hash'),
+    productPriceCount: Number(result.product_price_count ?? 0),
+    representativePrice: result.representative_price == null
+      ? null
+      : Number(result.representative_price),
   };
 }
 

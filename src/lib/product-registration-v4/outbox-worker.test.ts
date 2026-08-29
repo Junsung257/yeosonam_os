@@ -25,6 +25,7 @@ describe('V5 publication outbox worker contracts', () => {
     const rows = buildProductRegistrationV5ConvergenceRows({
       payload: {
         package_id: 'package-1',
+        catalog_product_id: 'catalog-1',
         revision_id: 'revision-1',
         snapshot_id: 'snapshot-1',
         snapshot_hash: 'a'.repeat(64),
@@ -40,5 +41,6 @@ describe('V5 publication outbox worker contracts', () => {
       '/api/og/affiliate?pkg=package-1',
     ]);
     expect(rows.every(row => row.status === 'pending')).toBe(true);
+    expect(rows.every(row => row.catalog_product_id === 'catalog-1')).toBe(true);
   });
 });

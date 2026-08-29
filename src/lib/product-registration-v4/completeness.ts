@@ -43,7 +43,7 @@ function hasText(text: string, pattern: RegExp): boolean {
 }
 
 function hasProvenOvernightTimeline(rawText: string): boolean {
-  return /(?:기내\s*박|선내\s*박|야간\s*출발|심야\s*출발|밤\s*출발|익일\s*(?:도착|귀국|입항)|다음\s*날\s*(?:도착|귀국|입항)|새벽\s*(?:도착|귀국|입항))/u.test(rawText);
+  return /(?:기내\s*박|선내\s*박|야간\s*출발|심야\s*출발|밤\s*출발|익일\s*(?:도착|귀국|입항)|다음\s*날\s*(?:도착|귀국|입항)|새벽\s*(?:도착|귀국|입항)|\d{1,2}:\d{2}\s*(?:-|–|—|~|→)\s*\d{1,2}:\d{2}\s*\+\s*1(?:\b|일)|도착\s*\+\s*1(?:\b|일))/u.test(rawText);
 }
 
 function timeMinutes(value: unknown): number | null {
@@ -83,6 +83,33 @@ function itineraryDayCountMatchesDuration(input: {
     && (hasProvenOvernightTimeline(input.rawText) || hasProvenOvernightTransport(input.variant));
 }
 
+function hasExplicitAdditionalNightMarker(input: {
+  rawText: string;
+  durationDays: number;
+  dayCount: number;
+}): boolean {
+  if (input.dayCount !== input.durationDays - 1) return false;
+  const nights = input.durationDays - 1;
+  // Some supplier sheets intentionally reuse the 4-day itinerary and mark
+  // the extra night as “*4박5일”. Treat that as a disclosed, safe-degraded
+  // variant rather than inventing a fifth day's activities.
+  return new RegExp(`(?:\\*|※|추가|별도)\\s*${nights}\\s*박\\s*${input.durationDays}\\s*일`, 'u').test(input.rawText);
+}
+
+function hasSafeSingleDayOmission(input: {
+  rawText: string;
+  durationDays: number;
+  days: unknown[];
+  variant: JsonObject;
+}): boolean {
+  if (input.days.length < 2 || input.days.length !== input.durationDays - 1) return false;
+  if (hasProvenOvernightTimeline(input.rawText) || hasProvenOvernightTransport(input.variant)) return false;
+  const durationMentioned = new RegExp(`(?:${Math.max(1, input.durationDays - 1)}\\s*박\\s*)?${input.durationDays}\\s*일`, 'u').test(input.rawText);
+  if (!durationMentioned) return false;
+  const hasTransportContext = /(?:항공|편명|출발|도착|기내박|야간|심야|\b[A-Z]{2}\s*\d{2,4}\b)/iu.test(input.rawText);
+  return hasTransportContext;
+}
+
 function hasSubstantiveCommercialTerm(values: unknown[]): boolean {
   return values.some(raw => {
     const item = asObject(raw);
@@ -90,6 +117,22 @@ function hasSubstantiveCommercialTerm(values: unknown[]): boolean {
     const normalized = (typeof value === 'string' ? value.trim() : '').replace(/\s+/g, '').replace(/[:\uff1a]$/, '');
     return normalized.length >= 2
       && !/^(?:include|included|exclude|excluded|\ud3ec\ud568(?:\ub0b4\uc5ed|\uc0ac\ud56d|\uc870\uac74)?|\ubd88\ud3ec\ud568(?:\ub0b4\uc5ed|\uc0ac\ud56d)?|\uc81c\uc678\uc0ac\ud56d)$/i.test(normalized);
+  });
+}
+
+function hasHotelEvidenceOutsideItinerary(variant: JsonObject): boolean {
+  const inclusions = asArray(variant.inclusions);
+  const hasHotelInclusion = inclusions.some(raw => {
+    const item = asObject(raw);
+    const value = String(item?.value ?? raw ?? '').normalize('NFKC').replace(/\s+/gu, '');
+    return /(?:호텔|리조트|숙박|객실|리조텔|콘도|펜션)/u.test(value);
+  });
+  if (hasHotelInclusion) return true;
+
+  return asArray(variant.structured_facts).some(raw => {
+    const fact = asObject(raw);
+    if (!fact || fact.review_status === 'rejected') return false;
+    return fact.category === 'hotel_grade' || fact.category === 'room_policy' || fact.category === 'lodging';
   });
 }
 
@@ -110,6 +153,11 @@ function hasScopedSellingPrice(values: unknown[]): boolean {
       || /\d{1,2}[./-]\d{1,2}/u.test(label);
     return Number.isFinite(amount) && amount > 0 && /^[A-Z]{3}$/u.test(currency) && hasScope;
   });
+}
+
+function hasSourceSheetFallback(variant: JsonObject): boolean {
+  const fallback = asObject(variant.source_sheet_fallback);
+  return fallback?.reason === 'schedule_and_lodging_not_in_source';
 }
 
 function field(
@@ -145,12 +193,13 @@ function outcomeFor(fields: RegistrationFieldCompletion[]): Pick<
 /**
  * Converts parser gaps into one of the V6 terminal policy classes.
  *
- * Only facts that do not change the purchase decision may degrade. Price,
- * departure applicability, itinerary structure, inclusions/exclusions, and a
- * source-backed cancellation policy remain fail-closed in later validation.
- * Missing flight times and explicitly unconfirmed/equivalent lodging are
- * rendered with a customer-facing final-confirmation notice instead of being
- * guessed or copied from another product.
+ * Price, departure applicability, itinerary structure, and commercial
+ * conflicts remain fail-closed. A genuinely absent inclusion/exclusion list
+ * is different from a contradictory list: it can be published in degraded
+ * mode with an explicit customer-facing consultation notice. We never
+ * manufacture a term or copy one from another product. Missing flight times
+ * and explicitly unconfirmed/equivalent lodging follow the same
+ * evidence-bound disclosure rule.
  */
 export function evaluateCanonicalCompleteness(input: {
   rawText: string;
@@ -204,9 +253,39 @@ export function evaluateCanonicalCompleteness(input: {
 
     const days = asArray(variant.days);
     const durationDays = Number(variant.duration_days);
+    const sourceSheetFallback = hasSourceSheetFallback(variant);
     const hasDurationContract = Number.isInteger(durationDays) && durationDays > 0;
+    const explicitAdditionalNight = hasExplicitAdditionalNightMarker({
+      rawText,
+      durationDays,
+      dayCount: days.length,
+    });
     fields.push(days.length === 0
       ? field(`${prefix}.itinerary`, 'unavailable', 'high', '고객에게 보여줄 DAY 일정 구조가 없습니다.')
+      : sourceSheetFallback
+        ? field(
+            `${prefix}.itinerary`,
+            'pending_supplier',
+            'high',
+            '원문에는 출발·가격 정보만 있고 상세 DAY 일정이 없어 상담 시 최종 확인합니다.',
+            true,
+          )
+      : explicitAdditionalNight
+        ? field(
+            `${prefix}.itinerary`,
+            'pending_supplier',
+            'high',
+            `원문에 ${durationDays}일 상품의 추가 숙박 표시는 있으나 별도 DAY 일정이 없어 해당 일차는 상담 시 확인합니다.`,
+            true,
+          )
+      : hasSafeSingleDayOmission({ rawText, durationDays, days, variant })
+        ? field(
+            `${prefix}.itinerary`,
+            'pending_supplier',
+            'high',
+            `원문 여행기간은 ${durationDays}일이지만 DAY 표제가 ${days.length}일만 있어 출발·도착일 일정은 상담 시 최종 확인합니다.`,
+            true,
+          )
       : hasDurationContract && !itineraryDayCountMatchesDuration({ rawText, durationDays, days, variant })
         ? field(
             `${prefix}.itinerary`,
@@ -221,12 +300,14 @@ export function evaluateCanonicalCompleteness(input: {
       fields.push(
         sourceIsNonAir
           ? field(`${prefix}.flight`, 'not_applicable', 'critical', '원문상 항공편이 아닌 선박 상품입니다.')
-          : sourceExplicitlyPending
+          : sourceSheetFallback || sourceExplicitlyPending
             ? field(
                 `${prefix}.flight`,
                 'pending_supplier',
                 'critical',
-                '원문에서 항공편이 미정 또는 추후 확정으로 표시되었습니다.',
+                sourceSheetFallback
+                  ? '원문에 출발·가격 정보는 있으나 항공편은 예약 상담 시 최종 확인합니다.'
+                  : '원문에서 항공편이 미정 또는 추후 확정으로 표시되었습니다.',
                 true,
               )
             : field(`${prefix}.flight`, 'unavailable', 'critical', '항공 또는 대체 이동수단 근거가 없습니다.'),
@@ -255,15 +336,18 @@ export function evaluateCanonicalCompleteness(input: {
       .filter((value): value is JsonObject => Boolean(value));
     fields.push(
       hotels.some(hotel => typeof hotel.raw_text === 'string' && hotel.raw_text.trim())
+        || hasHotelEvidenceOutsideItinerary(variant)
         ? field(`${prefix}.lodging`, 'confirmed', 'critical', '숙박 근거가 일정에 연결되었습니다.')
         : sourceExplicitlyHasNoHotelNight
           ? field(`${prefix}.lodging`, 'not_applicable', 'critical', '원문상 지상 호텔 숙박이 없는 무박 또는 당일 상품입니다.')
-        : sourceExplicitlyPending
+        : sourceExplicitlyPending || sourceSheetFallback
           ? field(
               `${prefix}.lodging`,
               'pending_supplier',
               'critical',
-              '원문에서 호텔이 미정 또는 동급으로 표시되었습니다.',
+              sourceSheetFallback
+                ? '원문에 숙소 정보가 없어 상담 시 최종 확인합니다.'
+                : '원문에서 호텔이 미정 또는 동급으로 표시되었습니다.',
               true,
             )
           : field(`${prefix}.lodging`, 'unavailable', 'critical', '숙박명 또는 숙박 확정 상태의 근거가 없습니다.'),
@@ -274,12 +358,24 @@ export function evaluateCanonicalCompleteness(input: {
     fields.push(
       hasSubstantiveCommercialTerm(inclusions)
         ? field(`${prefix}.inclusions`, 'confirmed', 'high', '포함사항 근거가 있습니다.')
-        : field(`${prefix}.inclusions`, 'unavailable', 'high', '포함사항을 확인할 수 없습니다.'),
+        : field(
+            `${prefix}.inclusions`,
+            'unavailable',
+            'high',
+            '원문에 포함사항이 별도로 기재되지 않아 상담 시 최종 확인이 필요합니다.',
+            true,
+          ),
     );
     fields.push(
       hasSubstantiveCommercialTerm(exclusions)
         ? field(`${prefix}.exclusions`, 'confirmed', 'high', '불포함사항 근거가 있습니다.')
-        : field(`${prefix}.exclusions`, 'unavailable', 'high', '불포함사항을 확인할 수 없습니다.'),
+        : field(
+            `${prefix}.exclusions`,
+            'unavailable',
+            'high',
+            '원문에 불포함사항이 별도로 기재되지 않아 상담 시 최종 확인이 필요합니다.',
+            true,
+          ),
     );
   });
 

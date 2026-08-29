@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { buildPublicPackageSnapshot } from '@/lib/package-publication/public-snapshot';
+import type { PublicPackageMedia } from '@/lib/package-publication/types';
 import {
   buildPackageProjectionFromRevision,
   loadProductRegistrationRevisionAggregate,
@@ -11,12 +12,97 @@ import { createCandidateSnapshot } from '@/lib/product-registration-authority/re
 import { persistProductRegistrationV5ProofRun } from '@/lib/product-registration-v4/proof';
 import { PRODUCT_SOURCE_BUCKET } from '@/lib/product-registration-v4/source-documents';
 import { runProductRegistrationV6ChromeProof } from './browser-proof';
+import { PRODUCT_REGISTRATION_COPY_POLICY_V3 } from './copy-revision';
 import { createProductRegistrationV6ProofToken } from './proof-token';
 import { currentProductRegistrationRendererBuildId } from './renderer-build';
-import type { ProductRegistrationV6Decision } from './types';
+import {
+  PRODUCT_REGISTRATION_V6_POLICY_VERSION,
+  PRODUCT_REGISTRATION_V6_WORDING_RULES_VERSION,
+  type ProductRegistrationV6Decision,
+} from './types';
 import type { ResolvedTransportForSnapshot } from './shared-fact-orchestrator';
 
 type JsonObject = Record<string, unknown>;
+
+function record(value: unknown): JsonObject | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as JsonObject : null;
+}
+
+export function selectVerifiedDocumentaryProductMedia(input: {
+  revisionMedia: JsonObject[];
+  projectedMedia: unknown;
+}): PublicPackageMedia | null {
+  const verifiedUrls = new Set(input.revisionMedia.flatMap((row) => {
+    const provenance = typeof row.provenance_type === 'string' ? row.provenance_type : '';
+    const rights = typeof row.rights_status === 'string' ? row.rights_status : '';
+    const contentSafety = typeof row.content_safety_state === 'string' ? row.content_safety_state : '';
+    const relevance = typeof row.relevance_state === 'string' ? row.relevance_state : '';
+    const referenceOnly = row.reference_only === true;
+    const url = typeof row.external_url === 'string' ? row.external_url.trim() : '';
+    return ['supplier_product', 'operator_product'].includes(provenance)
+      && ['verified', 'attribution_required'].includes(rights)
+      && contentSafety === 'safe'
+      && relevance === 'verified'
+      && !referenceOnly
+      && url
+      && !/(^|\/)logo(?:[._/-]|$)/iu.test(url)
+      ? [url]
+      : [];
+  }));
+  if (!Array.isArray(input.projectedMedia) || verifiedUrls.size === 0) return null;
+  const media = input.projectedMedia
+    .map(record)
+    .filter((row): row is JsonObject => Boolean(row))
+    .filter(row => typeof row.url === 'string' && verifiedUrls.has(row.url));
+  const hero = media.find(row => row.role === 'hero') ?? media[0] ?? null;
+  return hero as unknown as PublicPackageMedia | null;
+}
+
+function stableSurfaceJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableSurfaceJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value as JsonObject)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableSurfaceJson(item)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function formatSupabaseError(prefix: string, error: unknown): Error {
+  if (error && typeof error === 'object') {
+    const value = error as { code?: unknown; message?: unknown; details?: unknown; hint?: unknown };
+    const parts = [
+      typeof value.code === 'string' ? value.code : null,
+      typeof value.message === 'string' ? value.message : null,
+      typeof value.details === 'string' && value.details ? value.details : null,
+      typeof value.hint === 'string' && value.hint ? value.hint : null,
+    ].filter((part): part is string => Boolean(part));
+    if (parts.length > 0) return new Error(`${prefix}:${parts.join(' | ')}`);
+  }
+  return new Error(`${prefix}:${String(error)}`);
+}
+
+export function customerSnapshotHygieneBlockers(value: unknown): string[] {
+  const strings: string[] = [];
+  const visit = (candidate: unknown) => {
+    if (typeof candidate === 'string') strings.push(candidate.normalize('NFKC').replace(/\s+/gu, ' ').trim());
+    else if (Array.isArray(candidate)) candidate.forEach(visit);
+    else if (candidate && typeof candidate === 'object') Object.values(candidate as JsonObject).forEach(visit);
+  };
+  visit(value);
+  const blockers = new Set<string>();
+  for (const text of strings) {
+    if (!text) continue;
+    if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(text)) blockers.add('CUSTOMER_TEXT_CONTROL_CHARACTER');
+    if (/(?:^|\s)(?:HOTEL|REMARK)\s*:/iu.test(text)) blockers.add('CUSTOMER_TEXT_SUPPLIER_MARKER');
+    if (/\/\/\s*(?:지정\s*불가|미정)/u.test(text)) blockers.add('CUSTOMER_TEXT_RAW_DIRECTIVE');
+    if (/^(?:조|중|석)\s*:/u.test(text)) blockers.add('CUSTOMER_TEXT_RAW_MEAL_MARKER');
+    if (/(?:가이드\s*미팅\s*후|이동\s*후|식사\s*후)$/u.test(text)) blockers.add('CUSTOMER_TEXT_INCOMPLETE_FRAGMENT');
+    if (/[→⇒]{2,}|(?:^|\s)=>?(?:\s|$)/u.test(text)) blockers.add('CUSTOMER_TEXT_CONTROL_ARROW');
+  }
+  return [...blockers];
+}
 
 export function productRegistrationProofScreenshotPath(input: {
   tenantId: string;
@@ -93,6 +179,8 @@ export type ProductRegistrationV6CandidateSnapshot = {
   revisionId: string;
   snapshotId: string;
   snapshotHash: string;
+  revisionContentHash: string;
+  customerSnapshotHash: string;
   rendererBuildId: string;
   proofAssertions: {
     requiredText: string[];
@@ -100,7 +188,7 @@ export type ProductRegistrationV6CandidateSnapshot = {
   };
 };
 
-function customerProofAssertions(input: {
+export function customerProofAssertions(input: {
   snapshot: JsonObject;
   packageId: string;
   resolvedTransport: ResolvedTransportForSnapshot[];
@@ -146,6 +234,137 @@ function customerProofAssertions(input: {
   };
 }
 
+export async function loadProductRegistrationV6CandidateSnapshot(input: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  catalogProductId: string;
+  packageId: string;
+  revisionId: string;
+}): Promise<ProductRegistrationV6CandidateSnapshot> {
+  const { data, error } = await input.supabase
+    .from('public_package_snapshots')
+    .select([
+      'id',
+      'tenant_id',
+      'package_id',
+      'catalog_product_id',
+      'canonical_revision_id',
+      'snapshot_hash',
+      'revision_content_hash',
+      'customer_snapshot_hash',
+      'renderer_build_id',
+      'snapshot_json',
+      'status',
+      'created_at',
+    ].join(','))
+    .eq('tenant_id', input.tenantId)
+    .eq('catalog_product_id', input.catalogProductId)
+    .eq('package_id', input.packageId)
+    .eq('canonical_revision_id', input.revisionId)
+    .in('status', ['candidate', 'published'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw formatSupabaseError('REGISTRATION_PUBLICATION_SNAPSHOT_LOOKUP_FAILED', error);
+  if (!data) throw new Error('REGISTRATION_PUBLICATION_CANDIDATE_SNAPSHOT_MISSING');
+  const row = data as unknown as JsonObject;
+  const snapshotJson = row.snapshot_json;
+  const currentRendererBuildId = currentProductRegistrationRendererBuildId();
+  if (!snapshotJson || typeof snapshotJson !== 'object' || Array.isArray(snapshotJson)
+    || row.tenant_id !== input.tenantId
+    || row.catalog_product_id !== input.catalogProductId
+    || row.package_id !== input.packageId
+    || row.canonical_revision_id !== input.revisionId
+    || row.renderer_build_id !== currentRendererBuildId
+    || typeof row.snapshot_hash !== 'string'
+    || typeof row.revision_content_hash !== 'string'
+    || typeof row.customer_snapshot_hash !== 'string') {
+    throw new Error('REGISTRATION_PUBLICATION_SNAPSHOT_REVALIDATION_REQUIRED');
+  }
+  const snapshot = snapshotJson as JsonObject;
+  return {
+    tenantId: input.tenantId,
+    catalogProductId: input.catalogProductId,
+    packageId: input.packageId,
+    revisionId: input.revisionId,
+    snapshotId: String(row.id),
+    snapshotHash: row.snapshot_hash,
+    revisionContentHash: row.revision_content_hash,
+    customerSnapshotHash: row.customer_snapshot_hash,
+    rendererBuildId: currentRendererBuildId,
+    proofAssertions: customerProofAssertions({
+      snapshot,
+      packageId: input.catalogProductId,
+      resolvedTransport: [],
+    }),
+  };
+}
+
+function reusableProofPassed(result: unknown): boolean {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return false;
+  const chromeProof = (result as JsonObject).chromeProof;
+  if (!chromeProof || typeof chromeProof !== 'object' || Array.isArray(chromeProof)) return false;
+  const surfaces = (chromeProof as JsonObject).surfaces;
+  if (!Array.isArray(surfaces) || surfaces.length !== 2) return false;
+  const names = new Set<string>();
+  for (const raw of surfaces) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+    const surface = raw as JsonObject;
+    if (surface.status !== 'passed' || surface.ctaOpened !== true
+      || !surface.screenshotStorage || typeof surface.screenshotStorage !== 'object') return false;
+    if (surface.surface === 'packages' || surface.surface === 'lp') names.add(surface.surface);
+  }
+  return names.has('packages') && names.has('lp');
+}
+
+export async function proveOrReuseProductRegistrationV6Snapshot(input: {
+  supabase: SupabaseClient;
+  snapshot: ProductRegistrationV6CandidateSnapshot;
+  baseUrl: string;
+}): Promise<{ proofRunId: string; reused: boolean }> {
+  const { data: existing, error } = await input.supabase
+    .from('product_registration_v5_proof_runs')
+    .select('id,result,route')
+    .eq('tenant_id', input.snapshot.tenantId)
+    .eq('catalog_product_id', input.snapshot.catalogProductId)
+    .eq('package_id', input.snapshot.packageId)
+    .eq('revision_id', input.snapshot.revisionId)
+    .eq('public_snapshot_id', input.snapshot.snapshotId)
+    .eq('snapshot_hash', input.snapshot.snapshotHash)
+    .eq('renderer_build_id', input.snapshot.rendererBuildId)
+    .eq('status', 'passed')
+    .order('checked_at', { ascending: false })
+    .limit(5);
+  if (error) throw formatSupabaseError('REGISTRATION_PUBLICATION_PROOF_LOOKUP_FAILED', error);
+  const reusable = (existing ?? []).find(row => {
+    const route = typeof row.route === 'string' ? row.route : '';
+    return route.includes('/product-registration-proof/packages/')
+      && route.includes('/product-registration-proof/lp/')
+      && reusableProofPassed(row.result);
+  });
+  if (reusable) return { proofRunId: String(reusable.id), reused: true };
+  const proof = await proveProductRegistrationV6Snapshot(input);
+  return { proofRunId: proof.proofRunId, reused: false };
+}
+
+export async function runProductRegistrationV6LiveCanary(input: {
+  snapshot: ProductRegistrationV6CandidateSnapshot;
+  baseUrl: string;
+}): Promise<Awaited<ReturnType<typeof runProductRegistrationV6ChromeProof>>> {
+  const baseUrl = input.baseUrl.replace(/\/$/u, '');
+  return runProductRegistrationV6ChromeProof({
+    surfaceUrls: {
+      packages: `${baseUrl}/packages/${input.snapshot.packageId}`,
+      lp: `${baseUrl}/lp/${input.snapshot.packageId}`,
+    },
+    proofToken: `live-canary:${input.snapshot.snapshotId}:${input.snapshot.snapshotHash}`,
+    expectedSnapshotHash: input.snapshot.snapshotHash,
+    expectedRendererBuildId: input.snapshot.rendererBuildId,
+    requiredText: input.snapshot.proofAssertions.requiredText,
+    forbiddenText: input.snapshot.proofAssertions.forbiddenText,
+  });
+}
+
 const DEGRADED_SCHEDULE_LODGING_NOTICE = '항공 운항 시각과 미정 숙소는 상담 시 최종 확인해 드립니다.';
 
 export function degradedPackageCopy(pkg: JsonObject, decision: ProductRegistrationV6Decision): JsonObject {
@@ -153,11 +372,16 @@ export function degradedPackageCopy(pkg: JsonObject, decision: ProductRegistrati
   const ticketingReconfirmation = decision.degradedReasons.some(reason => reason.includes('TICKETING_'));
   const scheduleOrLodgingReconfirmation = decision.degradedReasons.some(reason =>
     /FLIGHT_|HOTEL|LODGING|숙소|항공/i.test(reason));
+  const commercialTermsReconfirmation = decision.degradedReasons.some(reason =>
+    /\.inclusions\b|\.exclusions\b|포함사항|불포함사항|GUIDE_TIP_SCOPE|OPTION_SCOPE|SHOPPING_SCOPE|가이드|기사|노옵션|노쇼핑|선택관광/i.test(reason));
   const notices = [
     ...(ticketingReconfirmation
       ? ['발권기한 경과 또는 출발일별 조건 차이로 현재 좌석과 요금은 상담 시 최종 확인해 드립니다.']
       : []),
     ...(scheduleOrLodgingReconfirmation ? [DEGRADED_SCHEDULE_LODGING_NOTICE] : []),
+    ...(commercialTermsReconfirmation
+      ? ['가이드비·노옵션·노쇼핑·선택관광 조건은 상품별 적용 범위가 달라 상담 시 최종 확인해 드립니다.']
+      : []),
   ];
   if (notices.length === 0) notices.push('일부 정보는 상담 시 최종 확인해 드립니다.');
   const notice = notices.join('\n');
@@ -353,6 +577,7 @@ export async function buildProductRegistrationV6CandidateSnapshots(input: {
   compatibilityBindings: Array<{
     catalogProductId: string;
     packageId: string;
+    projectionHash: string;
     operationalIdentity?: JsonObject;
   }>;
   resolvedTransport?: ResolvedTransportForSnapshot[];
@@ -364,7 +589,7 @@ export async function buildProductRegistrationV6CandidateSnapshots(input: {
     revisionId: input.decision.revisionIds[index] ?? input.decision.revisionIds[0],
   })).filter((pair): pair is {
     catalogProductId: string;
-    binding: { catalogProductId: string; packageId: string; operationalIdentity?: JsonObject };
+    binding: { catalogProductId: string; packageId: string; projectionHash: string; operationalIdentity?: JsonObject };
     revisionId: string;
   } => Boolean(pair.catalogProductId && pair.binding?.packageId && pair.revisionId));
   if (pairs.length !== input.decision.packageIds.length) {
@@ -393,6 +618,13 @@ export async function buildProductRegistrationV6CandidateSnapshots(input: {
     if (!copyPayload || typeof copyPayload !== 'object' || Array.isArray(copyPayload)) {
       throw new Error('V6_VERIFIED_COPY_PAYLOAD_INVALID');
     }
+    if ((copyResult as JsonObject).copy_policy_version !== PRODUCT_REGISTRATION_COPY_POLICY_V3
+      || (copyPayload as JsonObject).copy_policy_version !== PRODUCT_REGISTRATION_COPY_POLICY_V3
+      || (copyResult as JsonObject).revision_hash !== revision.payload_hash
+      || (copyResult as JsonObject).source_hash !== revision.source_hash
+      || Number((copyResult as JsonObject).quality_score ?? 0) < 82) {
+      throw new Error('V6_VERIFIED_COPY_CONTRACT_MISMATCH');
+    }
     const copy = copyPayload as JsonObject;
 
     const revisionPackage = buildPackageProjectionFromRevision({
@@ -400,7 +632,13 @@ export async function buildProductRegistrationV6CandidateSnapshots(input: {
       aggregate,
       operationalIdentity: pair.binding.operationalIdentity,
     });
-    const source = degradedPackageCopy(
+    const documentaryMedia = selectVerifiedDocumentaryProductMedia({
+      revisionMedia: aggregate.media,
+      projectedMedia: revisionPackage.images_public,
+    });
+    if (!documentaryMedia) throw new Error('V6_DOCUMENTARY_PRODUCT_MEDIA_REQUIRED');
+    const source: JsonObject = {
+      ...degradedPackageCopy(
       applySafeLodgingCopy(applyResolvedTransport({
         ...revisionPackage,
         title: copy.title ?? revisionPackage.title,
@@ -410,7 +648,11 @@ export async function buildProductRegistrationV6CandidateSnapshots(input: {
         terms_snapshot: input.decision.termsPolicies?.find(policy => policy.revisionId === pair.revisionId),
       }, pair.catalogProductId, input.resolvedTransport ?? []), aggregate.lodgingStays),
       input.decision,
-    );
+      ),
+      media_readiness_state: 'verified_documentary',
+      hero_media: documentaryMedia,
+      hero_image_url: documentaryMedia.url,
+    };
     if (!source.terms_snapshot) throw new Error('V6_TERMS_POLICY_SNAPSHOT_MISSING');
     const { snapshot, snapshotHash } = buildPublicPackageSnapshot({
       ...source,
@@ -418,6 +660,10 @@ export async function buildProductRegistrationV6CandidateSnapshots(input: {
       canonical_payload_hash: revision.payload_hash,
       package_revision: revision.revision_no,
     });
+    const hygieneBlockers = customerSnapshotHygieneBlockers(snapshot);
+    if (hygieneBlockers.length > 0) {
+      throw new Error(`V61_CUSTOMER_SNAPSHOT_HYGIENE_FAILED:${hygieneBlockers.join(',')}`);
+    }
     const rendererBuildId = currentProductRegistrationRendererBuildId();
     const row = {
       tenant_id: tenantId,
@@ -426,6 +672,10 @@ export async function buildProductRegistrationV6CandidateSnapshots(input: {
       package_revision: Number(revision.revision_no),
       canonical_revision_id: pair.revisionId,
       snapshot_hash: snapshotHash,
+      revision_content_hash: revision.payload_hash,
+      customer_snapshot_hash: snapshotHash,
+      publication_policy_version: PRODUCT_REGISTRATION_V6_POLICY_VERSION,
+      customer_wording_rules_version: PRODUCT_REGISTRATION_V6_WORDING_RULES_VERSION,
       snapshot_version: snapshot.snapshot_version,
       snapshot_json: snapshot,
       card_projection: snapshot.card_projection,
@@ -444,6 +694,47 @@ export async function buildProductRegistrationV6CandidateSnapshots(input: {
     };
     const persistedSnapshot = await createCandidateSnapshot({ supabase: input.supabase, row });
     const snapshotId = persistedSnapshot.snapshotId;
+    for (const [surfaceName, projection] of [
+      ['package_listing_card', snapshot.card_projection],
+      ['a4_artifact', {
+        package: snapshot.package,
+        canonicalView: snapshot.canonical_view,
+        artifactContract: 'canonical-a4-component-projection-v61',
+      }],
+    ] as const) {
+      const surfaceRenderHash = createHash('sha256').update(stableSurfaceJson({
+        customerSnapshotHash: snapshotHash,
+        rendererBuildId,
+        policyVersion: PRODUCT_REGISTRATION_V6_POLICY_VERSION,
+        wordingRulesVersion: PRODUCT_REGISTRATION_V6_WORDING_RULES_VERSION,
+        surfaceName,
+        projection,
+      })).digest('hex');
+      const { error: surfaceError } = await input.supabase.rpc(
+        'record_product_registration_surface_render',
+        { p_payload: {
+          snapshot_id: snapshotId,
+          revision_content_hash: revision.payload_hash,
+          customer_snapshot_hash: snapshotHash,
+          renderer_build_id: rendererBuildId,
+          publication_policy_version: PRODUCT_REGISTRATION_V6_POLICY_VERSION,
+          customer_wording_rules_version: PRODUCT_REGISTRATION_V6_WORDING_RULES_VERSION,
+          surface_name: surfaceName,
+          artifact_kind: 'component_projection',
+          surface_render_hash: surfaceRenderHash,
+        } },
+      );
+      if (surfaceError) throw surfaceError;
+    }
+    const { error: projectionLinkError } = await input.supabase.rpc(
+      'link_product_registration_projection_snapshot_atomic',
+      { p_payload: {
+        revision_id: pair.revisionId,
+        snapshot_id: snapshotId,
+        projection_hash: pair.binding.projectionHash,
+      } },
+    );
+    if (projectionLinkError) throw projectionLinkError;
     results.push({
       tenantId,
       catalogProductId: pair.catalogProductId,
@@ -451,6 +742,8 @@ export async function buildProductRegistrationV6CandidateSnapshots(input: {
       revisionId: pair.revisionId,
       snapshotId,
       snapshotHash,
+      revisionContentHash: revision.payload_hash,
+      customerSnapshotHash: snapshotHash,
       rendererBuildId,
       proofAssertions: customerProofAssertions({
         snapshot: snapshot as unknown as JsonObject,
@@ -498,6 +791,43 @@ export async function proveProductRegistrationV6Snapshot(input: {
       && surface.ctaOpened
       && surface.hydrationErrors.length === 0)
     && persistedChromeProof.surfaces.every(surface => Boolean(surface.screenshotStorage));
+  const surfaceArtifacts: Array<{ surfaceRenderId: string; surfaceRenderHash: string }> = [];
+  for (const surface of persistedChromeProof.surfaces) {
+    if (!surface.bodyTextHash || !surface.screenshotHash) continue;
+    const surfaceName = surface.surface === 'packages' ? 'package_detail' : 'landing_page';
+    const surfaceRenderHash = createHash('sha256').update(JSON.stringify({
+      customerSnapshotHash: input.snapshot.customerSnapshotHash,
+      rendererBuildId: input.snapshot.rendererBuildId,
+      publicationPolicyVersion: PRODUCT_REGISTRATION_V6_POLICY_VERSION,
+      wordingRulesVersion: PRODUCT_REGISTRATION_V6_WORDING_RULES_VERSION,
+      surfaceName,
+      normalizedDomTextHash: surface.bodyTextHash,
+      screenshotHash: surface.screenshotHash,
+    })).digest('hex');
+    const { data: artifact, error: artifactError } = await input.supabase.rpc(
+      'record_product_registration_surface_render',
+      { p_payload: {
+        snapshot_id: input.snapshot.snapshotId,
+        revision_content_hash: input.snapshot.revisionContentHash,
+        customer_snapshot_hash: input.snapshot.customerSnapshotHash,
+        renderer_build_id: input.snapshot.rendererBuildId,
+        publication_policy_version: PRODUCT_REGISTRATION_V6_POLICY_VERSION,
+        customer_wording_rules_version: PRODUCT_REGISTRATION_V6_WORDING_RULES_VERSION,
+        surface_name: surfaceName,
+        artifact_kind: 'normalized_dom_text',
+        surface_render_hash: surfaceRenderHash,
+        normalized_dom_text_hash: surface.bodyTextHash,
+        artifact_bytes_hash: surface.screenshotHash,
+        artifact_uri: surface.screenshotStorage?.path ?? null,
+      } },
+    );
+    if (artifactError || !artifact || typeof artifact !== 'object') {
+      throw artifactError ?? new Error('V61_SURFACE_RENDER_PERSIST_FAILED');
+    }
+    const surfaceRenderId = String((artifact as JsonObject).surface_render_id ?? '');
+    if (!surfaceRenderId) throw new Error('V61_SURFACE_RENDER_ID_MISSING');
+    surfaceArtifacts.push({ surfaceRenderId, surfaceRenderHash });
+  }
   const persisted = await persistProductRegistrationV5ProofRun({
     supabase: input.supabase,
     proof: {
@@ -523,10 +853,18 @@ export async function proveProductRegistrationV6Snapshot(input: {
         tokenBound: true,
         legacyPackageMutation: false,
         screenshotArtifactsPrivate: true,
+        surfaceRenderHashes: surfaceArtifacts.map(item => item.surfaceRenderHash),
       },
       checkedAt: new Date().toISOString(),
     },
   });
+  for (const artifact of surfaceArtifacts) {
+    const { error: linkError } = await input.supabase.rpc(
+      'link_product_registration_browser_proof_surface',
+      { p_payload: { proof_id: persisted.proofRunId, surface_render_id: artifact.surfaceRenderId } },
+    );
+    if (linkError) throw linkError;
+  }
   if (!passed) throw new Error('V6_BROWSER_PROOF_FAILED');
   return { proofRunId: persisted.proofRunId, token };
 }
@@ -538,6 +876,7 @@ export async function publishProductRegistrationV6Snapshot(input: {
   outcome: 'published_verified' | 'published_degraded';
   policyVersion: string;
   idempotencyKey: string;
+  releaseAuthorizationId?: string | null;
   channel?: 'customer' | 'b2b' | 'partner';
   locale?: string;
 }): Promise<Record<string, unknown>> {
@@ -552,7 +891,7 @@ export async function publishProductRegistrationV6Snapshot(input: {
     .eq('channel', channel)
     .eq('locale', locale)
     .maybeSingle();
-  if (pointerError) throw pointerError;
+  if (pointerError) throw formatSupabaseError('REGISTRATION_PUBLICATION_POINTER_LOOKUP_FAILED', pointerError);
   const { data, error } = await input.supabase.rpc('publish_product_registration_snapshot_atomic', {
     p_payload: {
       tenant_id: input.snapshot.tenantId,
@@ -566,10 +905,11 @@ export async function publishProductRegistrationV6Snapshot(input: {
       operation_key: input.idempotencyKey,
       policy_version: input.policyVersion,
       outcome: input.outcome,
+      release_authorization_id: input.releaseAuthorizationId ?? null,
       channel,
       locale,
     },
   });
-  if (error) throw error;
+  if (error) throw formatSupabaseError('REGISTRATION_PUBLICATION_RPC_FAILED', error);
   return data as Record<string, unknown>;
 }

@@ -13,8 +13,7 @@ import { notFound, redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
-import { getCurrentPublicPackage } from '@/lib/package-publication/repository';
-import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
+import { getPublicCatalogDetail } from '@/lib/public-catalog';
 
 interface Params {
   params: Promise<{ code?: string | string[]; slug?: string | string[] }>;
@@ -86,19 +85,12 @@ export async function generateMetadata(props: Params): Promise<Metadata> {
   let description = '여소남 제휴 콘텐츠 · 추천 보상 포함 (광고)';
   if (isSupabaseConfigured) {
     try {
-      const current = await getCurrentPublicPackage(supabaseAdmin, {
-        tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
-        packageRef: decodedSlug,
-        channel: 'customer',
-        locale: 'ko-KR',
-      });
+      const current = await getPublicCatalogDetail(supabaseAdmin, decodedSlug);
       if (current) {
-        const p = current.package as { title?: string; destination?: string; product_summary?: string };
-        if (!p) return { title, description, robots: { index: false, follow: false } };
-        const packageTitle = p.title || title;
+        const packageTitle = current.item.title || title;
         title = `${packageTitle} · ${metadataCode}`;
         socialTitle = `${packageTitle} · ${metadataCode} × 여소남`;
-        description = (p.product_summary || `${p.destination || ''} 여행 패키지`) + ' · 여소남 제휴 콘텐츠 (광고)';
+        description = `${current.item.destination || ''} 여행상품 · 가격과 예약 조건은 상담 시 재확인 · 여소남 제휴 콘텐츠 (광고)`;
       }
     } catch { /* */ }
   }

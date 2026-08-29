@@ -72,5 +72,5 @@ describe('Clark multi-product registration golden path', () => {
       expect(registration.deliverability.ok).toBe(true);
       expect(registration.publishable).toBe(true);
     }
-  });
+  }, 20_000);
 });

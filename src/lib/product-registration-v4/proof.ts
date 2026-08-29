@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { createHash } from 'node:crypto';
 
 export type ProductRegistrationV5ProofStatus = 'pending' | 'passed' | 'failed' | 'stale' | 'blocked';
 
@@ -32,6 +33,18 @@ export function buildProductRegistrationV5ProofRow(input: ProductRegistrationV5P
   if (!input.rendererBuildId.trim()) throw new Error('V5_PROOF_RENDERER_BUILD_REQUIRED');
   if (!input.proofSuiteVersion.trim()) throw new Error('V5_PROOF_SUITE_VERSION_REQUIRED');
   if (!input.route.trim()) throw new Error('V5_PROOF_ROUTE_REQUIRED');
+  const proofHash = createHash('sha256').update(JSON.stringify({
+    snapshotHash: input.snapshotHash,
+    rendererBuildId: input.rendererBuildId,
+    proofSuiteVersion: input.proofSuiteVersion,
+    route: input.route,
+    viewport: input.viewport,
+    locale: input.locale ?? 'ko-KR',
+    deviceProfile: input.deviceProfile ?? 'mobile',
+    status: input.status,
+    result: input.result,
+    screenshotHash: input.screenshotHash ?? null,
+  })).digest('hex');
   return {
     tenant_id: input.tenantId ?? null,
     catalog_product_id: input.catalogProductId ?? null,
@@ -49,6 +62,7 @@ export function buildProductRegistrationV5ProofRow(input: ProductRegistrationV5P
     result: input.result,
     screenshot_hash: input.screenshotHash ?? null,
     checked_at: input.checkedAt ?? null,
+    proof_hash: proofHash,
   };
 }
 

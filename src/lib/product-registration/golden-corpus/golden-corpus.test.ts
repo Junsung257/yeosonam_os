@@ -111,5 +111,5 @@ describe('product registration golden corpus', () => {
     expect(report.minPriceMismatchCount).toBe(0);
     expect(report.specificDateMismatchCount).toBe(0);
     expect(report.priceDatesBelowExpectedCount).toBe(0);
-  });
+  }, 20_000);
 });

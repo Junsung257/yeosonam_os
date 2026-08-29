@@ -163,4 +163,56 @@ describe('mobile proof refresh candidates', () => {
     expect(candidate?.reason).toBe('source_invalid');
     expect(candidate?.detail).toContain('auto-mobile-fetch-proof');
   });
+
+  it('accepts immutable V5 proof evidence without reading legacy audit_report', () => {
+    const snapshotHash = 'a'.repeat(64);
+    const immutableProof = {
+      status: 'pass',
+      checked_at: '2026-07-01T00:01:00.000Z',
+      package_updated_at: '2026-07-01T00:00:00.000Z',
+      package_revision: 1,
+      public_snapshot_hash: snapshotHash,
+      app_build_id: 'build-1',
+      source: 'hwp-mobile-browser-proof',
+      screen_hash: 'screen',
+      customer_visible_hash: 'visible',
+      surfaces: ['packages', 'lp'],
+      surface_results: [
+        {
+          surface: 'packages',
+          status: 'pass',
+          screen_hash: 'p-screen',
+          customer_visible_hash: 'p-visible',
+          public_snapshot_hash: snapshotHash,
+          checks: [
+            { name: 'packages_reservation_cta_visible', ok: true },
+            { name: 'packages_reservation_sheet_opens', ok: true },
+            { name: 'packages_reservation_sheet_has_product_context', ok: true },
+          ],
+        },
+        {
+          surface: 'lp',
+          status: 'pass',
+          screen_hash: 'l-screen',
+          customer_visible_hash: 'l-visible',
+          public_snapshot_hash: snapshotHash,
+          checks: [
+            { name: 'lp_lead_cta_visible', ok: true },
+            { name: 'lp_lead_sheet_opens', ok: true },
+            { name: 'lp_lead_sheet_has_customer_copy', ok: true },
+          ],
+        },
+      ],
+    };
+    expect(classifyMobileProofRefreshCandidate({
+      id: 'immutable-proof',
+      status: 'active',
+      package_revision: 1,
+      updated_at: '2026-07-01T00:00:00.000Z',
+      audit_report: {},
+      immutable_snapshot_hash: snapshotHash,
+      immutable_renderer_build_id: 'build-1',
+      immutable_proof: immutableProof,
+    })).toBeNull();
+  });
 });

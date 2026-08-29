@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { buildPublicPackageSnapshot } from '@/lib/package-publication/public-snapshot';
 import type { ResolvedTransportForSnapshot } from './shared-fact-orchestrator';
-import { applyResolvedTransport, applySafeLodgingCopy, degradedPackageCopy, productRegistrationProofScreenshotPath, productRegistrationProofSuiteVersion } from './snapshot-publication';
+import { applyResolvedTransport, applySafeLodgingCopy, customerSnapshotHygieneBlockers, degradedPackageCopy, productRegistrationProofScreenshotPath, productRegistrationProofSuiteVersion, selectVerifiedDocumentaryProductMedia } from './snapshot-publication';
 
 function packageWithFlight() {
   return {
@@ -38,6 +38,71 @@ function fact(overrides: Partial<ResolvedTransportForSnapshot> = {}): ResolvedTr
 function flight(result: Record<string, unknown>): Record<string, unknown> {
   return ((result.itinerary_data as { flight_segments: Record<string, unknown>[] }).flight_segments[0]);
 }
+
+describe('documentary product media readiness', () => {
+  const projected = [{
+    url: 'https://supplier.example/product.jpg',
+    source: 'supplier_product',
+    kind: 'product',
+    role: 'hero',
+    label: '상품 제공 이미지',
+    alt: '다낭 상품 이미지',
+    reference_only: false,
+    provider: null,
+    provider_asset_id: null,
+    attribution_text: null,
+    attribution_url: null,
+    source_page_url: null,
+    license_code: null,
+    license_url: null,
+  }];
+
+  it('accepts only rights-cleared supplier or operator product media', () => {
+    expect(selectVerifiedDocumentaryProductMedia({
+      revisionMedia: [{
+        external_url: 'https://supplier.example/product.jpg',
+        provenance_type: 'supplier_product',
+        rights_status: 'verified',
+        content_safety_state: 'safe',
+        relevance_state: 'verified',
+        reference_only: false,
+      }],
+      projectedMedia: projected,
+    })?.url).toBe('https://supplier.example/product.jpg');
+  });
+
+  it('rejects destination references, generated assets and logos as product evidence', () => {
+    expect(selectVerifiedDocumentaryProductMedia({
+      revisionMedia: [{
+        external_url: 'https://supplier.example/product.jpg',
+        provenance_type: 'destination_reference',
+        rights_status: 'verified',
+        content_safety_state: 'safe',
+        relevance_state: 'verified',
+        reference_only: true,
+      }],
+      projectedMedia: projected,
+    })).toBeNull();
+    expect(selectVerifiedDocumentaryProductMedia({
+      revisionMedia: [{ external_url: '/logo.png', provenance_type: 'supplier_product', rights_status: 'verified', content_safety_state: 'safe', relevance_state: 'verified', reference_only: false }],
+      projectedMedia: [{ ...projected[0], url: '/logo.png' }],
+    })).toBeNull();
+  });
+
+  it('rejects rights-cleared media until safety and product relevance are verified', () => {
+    expect(selectVerifiedDocumentaryProductMedia({
+      revisionMedia: [{
+        external_url: 'https://supplier.example/product.jpg',
+        provenance_type: 'operator_product',
+        rights_status: 'verified',
+        content_safety_state: 'unchecked',
+        relevance_state: 'verified',
+        reference_only: false,
+      }],
+      projectedMedia: projected,
+    })).toBeNull();
+  });
+});
 
 describe('applyResolvedTransport', () => {
   it('keeps times explicitly stated in the current supplier source', () => {
@@ -224,6 +289,7 @@ describe('productRegistrationProofSuiteVersion', () => {
     };
     const failed = productRegistrationProofSuiteVersion({
       status: 'failed',
+      browserVersion: 'test-browser',
       browserMode: 'local-chrome',
       viewport: { width: 390, height: 844, deviceScaleFactor: 3 },
       checkedAt: '2026-08-17T00:00:00Z',
@@ -231,6 +297,7 @@ describe('productRegistrationProofSuiteVersion', () => {
     });
     const passed = productRegistrationProofSuiteVersion({
       status: 'passed',
+      browserVersion: 'test-browser',
       browserMode: 'local-chrome',
       viewport: { width: 390, height: 844, deviceScaleFactor: 3 },
       checkedAt: '2026-08-17T00:01:00Z',
@@ -238,5 +305,23 @@ describe('productRegistrationProofSuiteVersion', () => {
     });
     expect(failed).not.toBe(passed);
     expect(failed).toMatch(/^product-registration-v6-mobile-chrome-3\+result\.[0-9a-f]{24}$/);
+  });
+});
+
+describe('customerSnapshotHygieneBlockers', () => {
+  it('blocks operational supplier markers and incomplete fragments', () => {
+    expect(customerSnapshotHygieneBlockers({
+      itinerary: ['HOTEL : 지정불가', '// 지정불가', '가이드 미팅 후'],
+    })).toEqual(expect.arrayContaining([
+      'CUSTOMER_TEXT_SUPPLIER_MARKER',
+      'CUSTOMER_TEXT_RAW_DIRECTIVE',
+      'CUSTOMER_TEXT_INCOMPLETE_FRAGMENT',
+    ]));
+  });
+
+  it('allows a complete typed customer sentence', () => {
+    expect(customerSnapshotHygieneBlockers({
+      itinerary: ['가이드 미팅 후 공항으로 이동합니다.'],
+    })).toEqual([]);
   });
 });

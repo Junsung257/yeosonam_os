@@ -1,5 +1,30 @@
 # /register 변경 이력 (P0~P1 정책 + 결정 이력)
 
+## 2026-08-30 — V6.2 격리 Preview·서명 모바일 증명 완료
+
+- 최신 `main`을 병합한 후보 커밋 `161ef4991`을 Supabase rehearsal 전용 보호 Preview에 배포하고 390×844에서 공개 목록, 서명 상세, 서명 LP, 두 CTA를 검증했다. 운영 DB 쓰기·운영 배포·pointer 변경은 0이고 auto-publish와 publication freeze는 그대로다.
+- 검수 토큰은 검증 후 최대 10분의 `HttpOnly`, `Secure`, `SameSite=Strict`, 상품 경로 제한 쿠키로 교환한다. redirect는 token을 제거하고 private/no-store/noindex를 강제한다.
+- 첫 브라우저 검사에서 LP proof가 `index,follow`인 결함을 재현해 `noindex,nofollow,nocache`로 수정했다. 최종 상세/LP는 같은 snapshot hash·revision·renderer build·KRW 699,000을 표시했고 두 상담 sheet가 열렸으며 제출은 하지 않았다.
+- 공개 목록은 0건으로 fail-closed했다. 사용한 legacy rehearsal snapshot은 최신 revision이 아니고 logo media를 사용하므로 고객 판매 준비 증거가 아니며, 다음 단계는 다낭 2건을 원문부터 새 golden cohort로 재구축하는 것이다.
+
+## 2026-08-29 — V6.2 다상품 공용 가격표 영속 기준선 B
+
+- 격리 Supabase rehearsal에서 기존 Clark 골든 원문 한 건을 네 상품으로 분리해 V62에 영속했다. 동일 source hash 아래 4 revision, 54 departure, 54 immutable SELLING price-lineage가 생성됐고, 상품별 동일 재시도 후에도 authority event는 각 1건만 남았다.
+- 알뜰/풀빌라와 3박5일/4박6일의 날짜·가격 범위가 서로 섞이지 않았고 원문 제외일 5개는 0건이었다. SELLING 원문에서 NET를 역산하지 않았으며 copy/media/proof가 없으므로 고객 catalog는 계속 fail-closed다.
+- 후보 브랜치는 아직 배포되지 않았고 rehearsal 서버 자격증명도 없으므로 인증 390×844 `/packages`·`/lp`·CTA 증거는 다음 게이트다. 권한 완화, 운영 쓰기, 자동 공개는 수행하지 않았다.
+
+## 2026-08-29 — V162 고객 공개 권위·가격·카피·미디어 통합
+
+- 등록 원문 가격은 `NET` / `SELLING` / `REQUEST_ONLY`로 구분한다. NET만 저장된 마진 정책으로 판매가를 계산하며, 랜드사 판매가에서 가짜 NET를 역산하지 않는다.
+- 고객 카피는 `customer-copy-v3-2026-08-29`, 근거 점수 82점 이상, 최대 출력 900토큰을 통과해야 한다. 내부 작업 문구, 숫자 오염, 다른 상품 문구 혼입, 근거 없는 상투어는 공개 차단 사유다.
+- 고객 대표 이미지는 정확한 상품·revision에 연결된 공급사/운영사 다큐멘터리 미디어만 허용한다. 권리·안전·관련성 검증이 없는 사진, 목적지 범용 사진, 로고, 참고용 이미지는 공개 준비를 만족하지 않는다.
+- 고객 공개 요청은 `/admin/product-registration`의 단일 명령으로만 시작한다. 레거시 `approved`, `/admin/packages`의 status, B2B/partner 채널은 고객 공개 조건이 아니다.
+- 홈·목록·상세·LP·검색·목적지·사이트맵·추천/마케팅/리뷰/인쇄/Jarvis는 동일한 published-only catalog를 읽는다. 미래 출발일, 현재 pointer/revision, copy V3, documentary media, generation lineage 중 하나라도 없으면 fail closed한다.
+- 공개 순서는 exact 모바일 proof → customer pointer CAS → cache outbox/convergence → 실제 `/packages`·`/lp` canary다. 실패하면 고객 pointer를 숨기며 자동 PASS 또는 브라우저의 직접 상태 변경은 금지한다.
+- 리허설 적용 중 V62가 append-only `departure_instances`를 UPDATE하던 P0를 재현했다. 가격 의미는 이제 같은 revision 트랜잭션에서 별도 `departure_price_lineage` 불변 원장에 1:1 INSERT하며, 동일 재시도는 정확히 같은 행만 재사용한다. V61 가격 override도 conflict UPDATE 대신 exact reuse로 전환했다.
+- 격리 Supabase 리허설에서 정상 저장, 동일 재시도, 잘못된 REQUEST_ONLY 전체 롤백, 직접 변경 차단, 차단 상품, service-role catalog fail-closed를 통과했다. 다상품 DB fixture와 인증된 모바일 `/packages`·`/lp`·CTA 증거는 아직 필수다.
+- 프로덕션 DB 쓰기·배포·pointer 변경·auto-publish는 계속 금지한다. 격리 리허설 통과는 운영 적용 승인이 아니다.
+
 ## 2026-08-11 — V6 durable workflow·immutable publication 전환
 
 - `/api/upload`은 V6 flag 활성 시 원본 보존과 fencing claim 후 Vercel Workflow를 시작하고 `202`를 반환한다.

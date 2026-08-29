@@ -1,17 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import {
   normalizeDepartureHub,
   hubMatchesDepartureAirport,
   type DepartureHubId,
 } from '@/lib/departure-hub';
-import { pickUnusedAttractionPhotoUrl } from '@/lib/image-url';
 import { logError } from '@/lib/sentry-logger';
 import { getPersonalizedOverride } from '@/lib/recommendation/personalized';
 import { getActivePolicy } from '@/lib/scoring/policy';
 import { buildRecommendationDisplay, type PackageScoreDisplayRow } from '@/lib/scoring/recommendation-display';
-import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
-import { hasUpcomingPublicDepartureDate } from '@/lib/package-public-eligibility';
+import { listPublicCatalog, type PublicCatalogItem } from '@/lib/public-catalog';
 
 // 옵션 4a 패턴 — Page 정적 prerender 를 위해 server-side fetch 를 API 로 이관.
 // 응답에 Cache-Control 헤더 적용 → Vercel Edge CDN 이 query string 별 cache.
@@ -20,7 +19,7 @@ import { hasUpcomingPublicDepartureDate } from '@/lib/package-public-eligibility
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({
+    return apiResponse({
       packages: [],
       imageByPkgId: {},
       recommendedIds: [],
@@ -56,98 +55,60 @@ export async function GET(request: NextRequest) {
     cutoff.setDate(cutoff.getDate() + 14);
     const cutoffStr = cutoff.toISOString().slice(0, 10);
     const safeQuery = q.replace(/[%,]/g, ' ').toLowerCase();
-    const rawPackages = (await listCurrentPublicPackageCardSnapshots(sb, { limit: 5_000 }))
-      .filter((pkg: any) => !destination || String(pkg.destination ?? '').toLowerCase().includes(destination.toLowerCase()))
-      .filter((pkg: any) => !urgencyOn || pkg.product_type === 'urgency' || String(pkg.ticketing_deadline ?? '') <= cutoffStr)
-      .filter((pkg: any) => urgencyOn || hub === 'all' || hubMatchesDepartureAirport(hub, pkg.departure_airport))
-      .filter((pkg: any) => !category || pkg.category === category)
-      .filter((pkg: any) => !safeQuery || `${String(pkg.destination ?? '')} ${String(pkg.title ?? '')} ${String(pkg.display_title ?? '')}`.toLowerCase().includes(safeQuery))
-      .slice(0, fetchLimit) as any[];
+    const minimum = priceMin ? Number(priceMin) : null;
+    const maximum = priceMax ? Number(priceMax) : null;
+    const catalog = await listPublicCatalog(sb, { limit: 5_000 });
+    const visibleCatalog = catalog.filter((item) => {
+      const itemMinimum = item.availableDates
+        .map(entry => entry.price)
+        .filter((price): price is number => typeof price === 'number' && price > 0)
+        .sort((left, right) => left - right)[0] ?? item.price;
+      const matchesBudget = itemMinimum === null
+        ? minimum === null && maximum === null
+        : (minimum === null || itemMinimum >= minimum) && (maximum === null || itemMinimum <= maximum);
+      const matchesMonth = !month || item.availableDates.some(entry => entry.date.startsWith(month));
+      const matchesUrgency = !urgencyOn || item.availableDates.some(entry => entry.date <= cutoffStr);
+      return (!destination || String(item.destination ?? '').toLowerCase().includes(destination.toLowerCase()))
+        && (hub === 'all' || hubMatchesDepartureAirport(hub, item.departureAirport))
+        && (!category || item.productKind === category)
+        && (!safeQuery || `${item.destination ?? ''} ${item.title}`.toLowerCase().includes(safeQuery))
+        && matchesBudget
+        && matchesMonth
+        && matchesUrgency;
+    }).slice(0, fetchLimit);
 
-    let aliveRaw = rawPackages.filter((p: any) => hasUpcomingPublicDepartureDate(p));
-
-    if (urgencyOn && hub !== 'all') {
-      aliveRaw = aliveRaw.filter((p: any) => hubMatchesDepartureAirport(hub, p.departure_airport));
-    }
-
-    aliveRaw = aliveRaw.slice(0, 50);
-
-    const packages = aliveRaw.map((pkg: any) => ({
-      ...pkg,
-      products: Array.isArray(pkg.products) ? pkg.products[0] ?? null : pkg.products,
+    const packages = visibleCatalog.slice(0, 50).map((item: PublicCatalogItem) => ({
+      id: item.id,
+      slug: item.slug,
+      productKind: item.productKind,
+      title: item.title,
+      departureAirport: item.departureAirport,
+      heroImage: item.heroImage,
+      priceDisplay: item.priceDisplay,
+      availableDates: item.availableDates,
+      badges: item.badges,
+      bookingMode: item.bookingMode,
+      lastVerifiedAt: item.lastVerifiedAt,
+      display_title: item.title,
+      destination: item.destination,
+      country: item.country,
+      duration: item.duration,
+      nights: item.nights,
+      price: item.price,
+      price_dates: item.availableDates.map(entry => ({
+        date: entry.date,
+        price: entry.price ?? 0,
+        confirmed: entry.confirmed ?? false,
+      })),
+      product_type: item.productKind,
+      departure_airport: item.departureAirport,
+      product_highlights: item.badges,
+      hero_image_url: item.heroImage,
+      thumbnail_urls: item.heroImage ? [item.heroImage] : [],
+      booking_mode: item.bookingMode,
+      last_verified_at: item.lastVerifiedAt,
     }));
-
-    // 관광지 사진 — 지역/국가별 Map으로 O(1) 조회 (기존 O(N²) 루프 제거)
-    const attractionLimit = destination || q ? 180 : 240;
-    let attractionQuery = sb
-      .from('attractions')
-      .select('name, photos, country, region, mention_count')
-      .not('photos', 'is', null)
-      .order('mention_count', { ascending: false })
-      .limit(attractionLimit);
-
-    const hintParts = Array.from(
-      new Set(
-        (aliveRaw ?? [])
-          .flatMap((p: any) => String(p?.destination || '').split(/[\/,\s]/))
-          .map((s: string) => s.trim())
-          .filter((s: string) => s.length >= 2),
-      ),
-    ).slice(0, 6);
-    if (hintParts.length > 0) {
-      const ors = hintParts
-        .map((part) => `region.ilike.%${part}%,country.ilike.%${part}%`)
-        .join(',');
-      attractionQuery = attractionQuery.or(ors);
-    }
-
-    const { data: attractions } = await attractionQuery;
-
-    // attractions를 region/country별 Map으로 인덱싱 (O(1) 조회)
-    const countryIndex = new Map<string, any[]>();
-    const regionIndex = new Map<string, any[]>();
-    for (const a of (attractions ?? [])) {
-      const c = (a.country || '').toLowerCase();
-      const r = (a.region || '').toLowerCase();
-      if (a.photos?.length > 0) {
-        if (c) {
-          if (!countryIndex.has(c)) countryIndex.set(c, []);
-          countryIndex.get(c)!.push(a);
-        }
-        if (r && r !== c) {
-          if (!regionIndex.has(r)) regionIndex.set(r, []);
-          regionIndex.get(r)!.push(a);
-        }
-      }
-    }
-    // 각 버킷 mention_count 내림차순 정렬 (1회)
-    for (const idx of [countryIndex, regionIndex]) {
-      for (const [, list] of idx) {
-        list.sort((a: any, b: any) => (b.mention_count || 0) - (a.mention_count || 0));
-      }
-    }
-
-    const _usedPhotoUrls = new Set<string>();
-    const imageByPkgId: Record<string, string | null> = {};
-    for (const pkg of packages) {
-      let chosen: string | null = null;
-      const destParts = (pkg.destination || '').split(/[\/,\s]/).map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-      // Map 조회로 O(1): 패키지 destination → country/region 키로 바로 찾기
-      for (const part of destParts) {
-        const partLc = part.toLowerCase();
-        const candidates = countryIndex.get(partLc) ?? regionIndex.get(partLc) ?? [];
-        for (const attr of candidates) {
-          const url = pickUnusedAttractionPhotoUrl(attr.photos, _usedPhotoUrls);
-          if (url) { chosen = url; break; }
-        }
-        if (chosen) break;
-      }
-      if (!chosen) {
-        const thumb = ((pkg as Record<string, unknown>).thumbnail_urls as string[] | undefined)?.find((u: string) => u?.startsWith('http'));
-        if (thumb) chosen = thumb;
-      }
-      imageByPkgId[pkg.id] = chosen ?? null;
-    }
+    const imageByPkgId = Object.fromEntries(visibleCatalog.map(item => [item.id, item.heroImage]));
 
     // ── 개인화 추천 (x-customer-id 헤더 기반) ──────────────
     const customerId = request.headers.get('x-customer-id') || '';
@@ -209,7 +170,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json(
+    return apiResponse(
       {
         packages,
         imageByPkgId,
@@ -231,7 +192,7 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     logError('[api/packages/search] GET failed', error);
-    return NextResponse.json(
+    return apiResponse(
       { error: error instanceof Error ? error.message : '검색 실패' },
       { status: 500 },
     );

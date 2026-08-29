@@ -2,7 +2,7 @@ import type { MetadataRoute } from 'next';
 import { supabaseAdmin } from '@/lib/supabase';
 import { encodeDestinationPathSegment } from '@/lib/regions';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
-import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { listPublicCatalog } from '@/lib/public-catalog';
 import { loadPublicBlogCatalog } from '@/lib/blog-public-catalog';
 import { isBlogSlugRedirectTombstone } from '@/lib/blog-slug-redirects';
 import { formatKstDate } from '@/lib/kst-date';
@@ -73,10 +73,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   const [packageDestinations, canonicalPosts] = await Promise.all([
-    listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: PACKAGE_LIMIT })
-      .then(rows => rows as unknown as PublicPackageDestinationSitemapRow[])
+    listPublicCatalog(supabaseAdmin, { limit: PACKAGE_LIMIT })
+      .then(rows => rows.map(row => ({
+        id: row.id,
+        destination: row.destination,
+        price_dates: row.availableDates,
+        updated_at: row.lastVerifiedAt,
+      })) as PublicPackageDestinationSitemapRow[])
       .catch(error => {
-        console.warn('[sitemap] pointer-only package catalog unavailable:', error);
+        console.warn('[sitemap] exact public catalog unavailable:', error);
         return [];
       }),
     loadPublicBlogCatalog()
@@ -95,6 +100,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // package filter. Expired-only packages render as not-found/noindex and
     // must not remain discoverable from the sitemap.
     if (!hasUpcomingPublicDepartureDate(pkg, today)) continue;
+    if (pkg.id?.trim()) {
+      routes.push({
+        url: `${BASE_URL}/packages/${encodeURIComponent(pkg.id.trim())}`,
+        lastModified: safeLastModified(pkg.updated_at),
+        changeFrequency: 'daily',
+        priority: 0.9,
+      });
+    }
     const destination = pkg.destination?.trim();
     if (!destination) continue;
     const current = publicDestinations.get(destination) ?? { destination, package_count: 0 };

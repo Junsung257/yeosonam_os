@@ -7,18 +7,14 @@ function source(): string {
 }
 
 describe('user action package helper publication boundary', () => {
-  it('requires public snapshots before returning similar package cards', () => {
+  it('requires public catalog eligibility before returning similar package cards', () => {
     const text = source();
-    const helperIndex = text.indexOf('async function toPublicSimilarPackageCards');
     const similarIndex = text.indexOf('export async function getSimilarPackages');
-    const snapshotIndex = text.indexOf('fetchAndMergeCurrentPublicPackageCardSnapshots', similarIndex);
 
-    expect(text).toContain('function isUserActionPublicSnapshotCandidate');
-    expect(text).toContain('isCustomerPubliclyOpenable');
-    expect(text).toContain('isPublicPublicationState');
-    expect(text).toContain(".in('publication_state', ['approved', 'published'])");
-    expect(helperIndex).toBeGreaterThan(0);
-    expect(snapshotIndex).toBeGreaterThan(similarIndex);
+    expect(text).toContain('listPublicCatalog');
+    expect(text).toContain('ids: [packageId]');
+    expect(text).not.toContain(".from('travel_packages')");
+    expect(similarIndex).toBeGreaterThan(0);
   });
 
   it('does not cast raw travel_packages rows as similar package cards', () => {
@@ -26,9 +22,7 @@ describe('user action package helper publication boundary', () => {
     const similarIndex = text.indexOf('export async function getSimilarPackages');
     const similarSource = text.slice(similarIndex);
 
-    expect(similarSource).not.toContain("select('id, title, destination, price')");
-    expect(similarSource).not.toContain('as Array<{ id: string; title: string; destination: string; price: number }>');
-    expect(similarSource).toContain('return toPublicSimilarPackageCards(similar)');
-    expect(similarSource).toContain('return toPublicSimilarPackageCards(catSimilar)');
+    expect(similarSource).not.toContain(".from('travel_packages')");
+    expect(similarSource).toContain('.map(toSimilarPackageCard)');
   });
 });

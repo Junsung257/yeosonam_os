@@ -8,7 +8,7 @@ import { DestinationImageFallback, SafeCoverImg } from '@/components/customer/Sa
 import { pickAttractionPhotoUrl } from '@/lib/image-url';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { getPublicDestinationQueryNames } from '@/lib/public-destinations';
-import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { listPublicCatalog } from '@/lib/public-catalog';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
@@ -71,7 +71,7 @@ async function getDestinations() {
   if (shouldSkipPublicDbReadsForResourceSaver()) return { stats: [], imagesByDest: {} };
 
   try {
-    const publicStats = await listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: 2_000 });
+    const publicStats = await listPublicCatalog(supabaseAdmin, { limit: 2_000 });
 
     const statsByDestination = new Map<string, {
       destination: string;
@@ -80,7 +80,7 @@ async function getDestinations() {
       avg_rating: number | null;
       total_reviews: number | null;
     }>();
-    (publicStats as unknown as Array<{ destination: string | null; price?: number | null }>)
+    (publicStats as Array<{ destination: string | null; price: number | null }>)
       .forEach((pkg) => {
         const destination = pkg.destination?.trim();
         if (!destination) return;

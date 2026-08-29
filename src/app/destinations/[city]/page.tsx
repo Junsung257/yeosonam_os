@@ -18,7 +18,7 @@ import {
   slugMatchesPublicDestination,
 } from '@/lib/public-destinations';
 import { sanitizePublicBlogBodyHtml } from '@/lib/blog-public-render-normalizer';
-import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { listPublicCatalog, publicCatalogItemToLegacyCard } from '@/lib/public-catalog';
 import type { FitnessScore, MonthlyNormal } from '@/lib/travel-fitness-score';
 import type { SeasonalSignal } from '@/lib/seasonal-signals';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
@@ -40,9 +40,10 @@ const DESTINATION_STATIC_PRERENDER_LIMIT = Math.max(
 
 async function listDestinationPublicSnapshotRows(limit = 5_000): Promise<Record<string, unknown>[]> {
   try {
-    return await listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit });
+    const catalog = await listPublicCatalog(supabaseAdmin, { limit });
+    return catalog.map(publicCatalogItemToLegacyCard);
   } catch (error) {
-    console.warn('[destination] pointer-only package catalog unavailable; hiding package-derived destination data', error);
+    console.warn('[destination] exact public catalog unavailable; hiding package-derived destination data', error);
     return [];
   }
 }

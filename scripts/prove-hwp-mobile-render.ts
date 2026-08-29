@@ -13,7 +13,11 @@ import { renderPackage } from '../src/lib/render-contract';
 import { auditCustomerVisibleScreenText } from '../src/lib/customer-visible-text-audit';
 import { buildPublicPackageSnapshot } from '../src/lib/package-publication/public-snapshot';
 import { isCustomerVisibleStatus } from '../src/lib/visibility-status';
-import { persistProductRegistrationV5ProofRun } from '../src/lib/product-registration-v4/proof';
+import {
+  loadCurrentCustomerSnapshotBinding,
+  persistCustomerMobileSnapshotProof,
+  type CustomerSnapshotBinding,
+} from '../src/lib/product-registration-v6/customer-proof-persistence';
 
 type PackageRow = {
   [key: string]: unknown;
@@ -57,6 +61,7 @@ type SurfaceProofResult = {
   screen_hash?: string;
   customer_visible_hash?: string;
   public_snapshot_hash?: string | null;
+  renderer_build_id?: string | null;
   screenshot_path?: string;
   error?: string;
 };
@@ -97,9 +102,10 @@ Options:
   --limit=...         Max packages to load, default 200.
   --base=...          Customer site base URL, default NEXT_PUBLIC_BASE_URL or http://127.0.0.1:3000.
   --output-dir=...    Report and screenshot directory.
-  --apply             Persist mobile_browser_proof into travel_packages.audit_report.
-  --apply-pass-only   Persist only passing mobile_browser_proof results; failed proofs stay report-only.
+  --apply             Persist immutable V5 proof evidence for passing results (and failed results unless pass-only).
+  --apply-pass-only   Persist only passing immutable V5 proof evidence; failed proofs stay report-only.
   --continue-on-fail  Keep exit code 0 when some packages fail; useful for pass-only refresh batches.
+  --summary-only      Print only the aggregate summary and report path.
   --skip-lp           Check /packages only. Default checks /packages and /lp.
   --skip-axe          Skip automated WCAG accessibility scan.
   --json              Print the full JSON report.
@@ -128,6 +134,7 @@ const apply = hasFlag('apply') || hasFlag('apply-pass-only');
 const applyPassOnly = hasFlag('apply-pass-only');
 const continueOnFail = hasFlag('continue-on-fail');
 const jsonOnly = hasFlag('json');
+const summaryOnly = hasFlag('summary-only');
 const checkLp = !hasFlag('skip-lp');
 const runAxe = !hasFlag('skip-axe');
 const baseUrl = (argValue('base') || process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'http://127.0.0.1:3000').replace(/\/+$/, '');
@@ -233,6 +240,7 @@ function getItineraryDays(value: unknown): Array<Record<string, unknown>> {
 function representativeScheduleTerms(pkg: PackageRow): string[] {
   const days = getItineraryDays(pkg.itinerary_data);
   const terms: string[] = [];
+  const genericTerms = new Set(['여행', '여행의', '일정', '관광', '투어', '체험', '방문']);
   for (const day of days) {
     for (const item of asArray((day as { schedule?: unknown }).schedule)) {
       if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
@@ -246,7 +254,7 @@ function representativeScheduleTerms(pkg: PackageRow): string[] {
         .split(/[,\s/]+/)
         .map(part => part.trim())
         .find(part => /[\uAC00-\uD7A3A-Za-z]/.test(part) && part.length >= 2);
-      if (token) terms.push(token);
+      if (token && !genericTerms.has(token)) terms.push(token);
       if (terms.length >= 3) return [...new Set(terms)];
     }
   }
@@ -410,6 +418,8 @@ async function inspectCustomerSurface(page: Page, pkg: PackageRow, proofSecret: 
     });
     const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
     result.http_status = response?.status() ?? null;
+    result.public_snapshot_hash = response?.headers()['x-product-registration-snapshot-hash'] ?? null;
+    result.renderer_build_id = response?.headers()['x-product-registration-renderer-build-id'] ?? null;
     await page.waitForTimeout(1800);
     await dismissCookieConsent(page);
 
@@ -424,6 +434,12 @@ async function inspectCustomerSurface(page: Page, pkg: PackageRow, proofSecret: 
     const rawBodyText = await page.locator('body').innerText({ timeout: 15_000 }).catch(() => '');
     const bodyText = normalizeText(rawBodyText);
     const html = await page.content().catch(() => '');
+    if (!result.public_snapshot_hash) {
+      result.public_snapshot_hash = await page.locator('meta[name="product-registration-v5-snapshot-hash"]').getAttribute('content').catch(() => null);
+    }
+    if (!result.renderer_build_id) {
+      result.renderer_build_id = await page.locator('meta[name="product-registration-v5-renderer-build-id"]').getAttribute('content').catch(() => null);
+    }
     result.screen_hash = sha256(html);
     result.customer_visible_hash = sha256(bodyText);
     const days = getItineraryDays(pkg.itinerary_data);
@@ -534,10 +550,10 @@ async function inspectCustomerSurface(page: Page, pkg: PackageRow, proofSecret: 
   return result;
 }
 
-async function inspectMobilePage(page: Page, pkg: PackageRow, proofSecret: string): Promise<PackageProofResult> {
+async function inspectMobilePage(page: Page, pkg: PackageRow, proofSecret: string, binding: CustomerSnapshotBinding | null): Promise<PackageProofResult> {
   const checkedAt = new Date().toISOString();
   const packageRevision = proofPackageRevision(pkg);
-  const publicSnapshotHash = proofSnapshotHash(pkg, packageRevision);
+  const publicSnapshotHash = binding?.snapshotHash ?? proofSnapshotHash(pkg, packageRevision);
   const result: PackageProofResult = {
     id: pkg.id,
     title: pkg.display_title || pkg.title,
@@ -549,7 +565,7 @@ async function inspectMobilePage(page: Page, pkg: PackageRow, proofSecret: strin
     package_updated_at: pkg.updated_at,
     package_revision: packageRevision,
     public_snapshot_hash: publicSnapshotHash,
-    app_build_id: appBuildId,
+    app_build_id: binding?.rendererBuildId ?? appBuildId,
     mobile_checks: [],
     a4_checks: auditA4PayloadForPackage(pkg),
     surface_results: [],
@@ -563,6 +579,27 @@ async function inspectMobilePage(page: Page, pkg: PackageRow, proofSecret: strin
     result.surface_results.push(await inspectCustomerSurface(page, pkg, proofSecret, 'lp'));
   }
   result.mobile_checks = result.surface_results.flatMap(surface => surface.checks);
+
+  const observedHashes = [...new Set(result.surface_results.map(surface => surface.public_snapshot_hash).filter(Boolean))];
+  const observedBuilds = [...new Set(result.surface_results.map(surface => surface.renderer_build_id).filter(Boolean))];
+  if (binding) {
+    result.mobile_checks.push({
+      name: 'mobile_proof_snapshot_lineage',
+      ok: observedHashes.length > 0 && observedHashes.every(hash => hash === binding.snapshotHash),
+      detail: observedHashes.length ? observedHashes.join(',') : 'snapshot hash header/meta missing',
+    });
+    result.mobile_checks.push({
+      name: 'mobile_proof_renderer_lineage',
+      ok: observedBuilds.length > 0 && observedBuilds.every(build => build === binding.rendererBuildId),
+      detail: observedBuilds.length ? observedBuilds.join(',') : 'renderer build header/meta missing',
+    });
+  } else {
+    result.mobile_checks.push({
+      name: 'mobile_proof_publication_binding',
+      ok: false,
+      detail: 'current customer publication pointer or immutable snapshot lineage is missing',
+    });
+  }
 
   const allChecks = [...result.mobile_checks, ...result.a4_checks];
   result.status = allChecks.every(check => check.ok) ? 'pass' : 'fail';
@@ -653,50 +690,6 @@ function buildProofPayload(result: PackageProofResult, status: 'pass' | 'fail', 
   };
 }
 
-async function persistPassProof(result: PackageProofResult) {
-  void result;
-  throw new Error('LEGACY_PROOF_PERSISTENCE_RETIRED_USE_SIGNED_IMMUTABLE_SNAPSHOT_PROOF');
-}
-
-async function persistFailProof(result: PackageProofResult) {
-  void result;
-  throw new Error('LEGACY_PROOF_PERSISTENCE_RETIRED_USE_SIGNED_IMMUTABLE_SNAPSHOT_PROOF');
-}
-
-async function persistV5ProofRunsIfEnabled(result: PackageProofResult) {
-  if (process.env.PRODUCT_REGISTRATION_V5_SHADOW !== '1') return;
-  if (!result.public_snapshot_hash || !result.app_build_id) return;
-  const { data: snapshot, error: snapshotError } = await supabaseAdmin
-    .from('public_package_snapshots')
-    .select('id, canonical_revision_id')
-    .eq('package_id', result.id)
-    .eq('snapshot_hash', result.public_snapshot_hash)
-    .maybeSingle();
-  if (snapshotError) throw new Error(snapshotError.message);
-  if (!snapshot?.id || !snapshot.canonical_revision_id) return;
-
-  for (const surface of result.surface_results) {
-    await persistProductRegistrationV5ProofRun({
-      supabase: supabaseAdmin,
-      proof: {
-        packageId: result.id,
-        revisionId: String(snapshot.canonical_revision_id),
-        publicSnapshotId: String(snapshot.id),
-        snapshotHash: result.public_snapshot_hash,
-        rendererBuildId: result.app_build_id,
-        proofSuiteVersion: 'hwp-mobile-browser-proof-v1',
-        route: `/${surface.surface}/${result.id}`,
-        viewport,
-        deviceProfile: 'mobile-hwp',
-        status: result.status === 'pass' && surface.status === 'pass' ? 'passed' : 'failed',
-        result: surface as unknown as Record<string, unknown>,
-        screenshotHash: surface.screen_hash ?? null,
-        checkedAt: result.checked_at,
-      },
-    });
-  }
-}
-
 async function main() {
   ensureDir(outputDir);
   const proofSecret = getSecret('REVALIDATE_SECRET') || getSecret('ADMIN_API_TOKEN');
@@ -725,15 +718,28 @@ async function main() {
     for (const pkg of packages) {
       let result: PackageProofResult;
       try {
-        result = await inspectMobilePage(page, pkg, proofSecret);
+        const binding = await loadCurrentCustomerSnapshotBinding({ supabase: supabaseAdmin, packageId: pkg.id });
+        result = await inspectMobilePage(page, pkg, proofSecret, binding);
         if (apply) {
           try {
-            if (result.status === 'pass') {
-              await persistPassProof(result);
-            } else if (!applyPassOnly) {
-              await persistFailProof(result);
+            if (!binding) {
+              throw new Error('CURRENT_CUSTOMER_PUBLICATION_BINDING_MISSING');
             }
-            await persistV5ProofRunsIfEnabled(result);
+            if (result.status === 'pass' || !applyPassOnly) {
+              await persistCustomerMobileSnapshotProof({
+                supabase: supabaseAdmin,
+                proof: {
+                  binding,
+                  status: result.status === 'pass' ? 'passed' : 'failed',
+                  checkedAt: result.checked_at,
+                  packageUpdatedAt: result.package_updated_at,
+                  packageRevision: result.package_revision,
+                  surfaceResults: result.surface_results as never,
+                  result: buildProofPayload(result, result.status === 'pass' ? 'pass' : 'fail', result.mobile_checks.filter(check => !check.ok)),
+                  screenshotHash: sha256(result.surface_results.map(surface => surface.screen_hash ?? '').join('|')),
+                },
+              });
+            }
           } catch (error) {
             result.status = 'fail';
             result.mobile_checks.push({
@@ -770,7 +776,7 @@ async function main() {
   const report = { summary, results };
   const reportPath = path.join(outputDir, `mobile-browser-proof-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2), 'utf8');
-  if (jsonOnly) {
+  if (jsonOnly && !summaryOnly) {
     console.log(JSON.stringify({ ...report, reportPath }, null, 2));
   } else {
     console.log(JSON.stringify({ summary, reportPath }, null, 2));

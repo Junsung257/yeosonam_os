@@ -14,7 +14,7 @@ import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-sav
 import {
   getPublicDestinationQueryNames,
 } from '@/lib/public-destinations';
-import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { listPublicCatalog, publicCatalogItemToLegacyCard } from '@/lib/public-catalog';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
@@ -135,9 +135,10 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
     return getEmptyRegionData();
   }
 
-  const publicCatalog = await listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: 5_000 })
+  const publicCatalog = await listPublicCatalog(supabaseAdmin, { limit: 5_000 })
+    .then(rows => rows.map(publicCatalogItemToLegacyCard))
     .catch((error) => {
-      console.warn('[region] pointer-only package catalog unavailable', error);
+      console.warn('[region] exact public catalog unavailable', error);
       return [];
     });
   const regionPackageRows = publicCatalog.filter(row => cityInRegion(String(row.destination ?? ''), slug));
@@ -225,7 +226,6 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
   });
 
   // 출발일 살아있는 상품만 + Supabase 의 products 배열을 단일 객체로 정규화
-  const currentPublicPackageRows = pkgs
   const alivePackageRows = pkgs.filter((p) => hasUpcomingPublicDepartureDate(p));
   const publicCardRows = alivePackageRows;
   const alivePkgs = publicCardRows
