@@ -783,6 +783,40 @@ describe('augmentGuamFoodBudgetPayload', () => {
     expect(payload.evidence?.some((evidence) =>
       evidence.evidenceKey === 'chin-fe-breakfast-corned-beef-rice')).toBe(true);
   });
+
+  it('replaces an equivalent model 아침 draft with one deterministic evidence link', () => {
+    const payload = augmentGuamFoodBudgetPayload([{
+      url: 'https://chinfe.menuguam.com/',
+      title: 'House of Chin Fe menu',
+      text: 'Breakfast Corned Beef Fried Rice $14.50',
+    }], '괌', {
+      sources: [{
+        sourceKey: 'model-menu',
+        groundingChunkIndex: 0,
+        sourceType: 'reputable_price_source',
+      }],
+      evidence: [{
+        evidenceKey: 'model-breakfast',
+        sourceKey: 'model-menu',
+        excerpt: 'Breakfast Corned Beef Fried Rice $14.50',
+        claimType: 'price',
+        normalizedValue: '14.50',
+        currency: 'USD',
+      }],
+      claims: [{
+        claimText: '[아침] House of Chin Fe 괌 조식은 14.50 USD이다.',
+        claimType: 'price',
+        evidenceKeys: ['model-breakfast'],
+        normalizedValue: '14.50',
+        currency: 'USD',
+      }],
+    });
+    const breakfastClaims = payload.claims?.filter((claim) =>
+      /아침/.test(claim.claimText ?? '') && claim.normalizedValue === '14.50') ?? [];
+
+    expect(breakfastClaims).toHaveLength(1);
+    expect(breakfastClaims[0]?.evidenceKeys).toEqual(['chin-fe-breakfast-corned-beef-rice']);
+  });
 });
 
 describe('augmentGuamFamilyMealPayload', () => {

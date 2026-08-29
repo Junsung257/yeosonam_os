@@ -1625,14 +1625,6 @@ export function augmentGuamFoodBudgetPayload(
   };
   const breakfastEvidenceKey = 'chin-fe-breakfast-corned-beef-rice';
   const coffeeEvidenceKey = 'chin-fe-snack-coffee';
-  const hasExactBreakfast = (payload.claims ?? []).some((claim) =>
-    /chin\s*fe/i.test(clean(claim.claimText))
-    // The downstream food-budget contract deliberately uses one canonical
-    // Korean label (`아침`). A model-supplied `조식`/`breakfast` claim may be
-    // factually valid, but it must not suppress the deterministic canonical
-    // claim below or semantic coverage will fail closed.
-    && /아침/.test(clean(claim.claimText))
-    && /14(?:\.50)?/.test(clean(claim.normalizedValue)));
   const hasExactCoffee = (payload.claims ?? []).some((claim) =>
     /chin\s*fe/i.test(clean(claim.claimText))
     && /(?:간식|커피|coffee|snack)/i.test(clean(claim.claimText))
@@ -1645,35 +1637,43 @@ export function augmentGuamFoodBudgetPayload(
   const claimDrafts = (payload.claims ?? [])
     .filter((claim) => {
       const keys = normalizeList(claim.evidenceKeys);
-      return !keys.includes(breakfastEvidenceKey) && !keys.includes(coffeeEvidenceKey);
+      const statement = clean(claim.claimText);
+      const isReplaceableBreakfastDraft = /chin\s*fe/i.test(statement)
+        && /(?:조식|아침|breakfast)/i.test(statement)
+        && /14(?:\.50)?/.test(clean(claim.normalizedValue));
+      return !keys.includes(breakfastEvidenceKey)
+        && !keys.includes(coffeeEvidenceKey)
+        && !isReplaceableBreakfastDraft;
     })
     .map((claim) => ({ ...claim, evidenceKeys: [...(claim.evidenceKeys ?? [])] }));
-  if (!hasExactBreakfast) {
-    evidenceDrafts.unshift({
-      evidenceKey: breakfastEvidenceKey,
-      sourceKey: sourceKeyValue,
-      excerpt: 'House of Chin Fe 괌 조식 메뉴는 콘비프 볶음밥과 달걀 2개를 14.50 USD에 제공하며 평일 6:30~10:30, 주말 6:30~13:30에 운영한다.',
-      sourceLocator: 'Breakfast > Fried Rice > Corned Beef Fried Rice',
-      claimType: 'price',
-      riskLevel: 'MEDIUM',
-      country: '괌',
-      destination,
-      applicableTo: `${destination} 아침 식사 여행자`,
-      normalizedValue: '14.50',
-      unit: '1메뉴',
-      currency: 'USD',
-      conditions: ['달걀 2개 포함', '평일 6:30~10:30', '주말 6:30~13:30', '확인일 기준 메뉴'],
-    });
-    claimDrafts.unshift({
-      claimText: '[아침] House of Chin Fe 괌의 콘비프 볶음밥 조식은 14.50 USD이다.',
-      claimType: 'price',
-      riskLevel: 'MEDIUM',
-      evidenceKeys: [breakfastEvidenceKey],
-      normalizedValue: '14.50',
-      unit: '1메뉴',
-      currency: 'USD',
-    });
-  }
+  // The reviewed page is the authority for this exact sample. Always replace
+  // an equivalent model draft with one canonical, correctly linked claim so a
+  // draft that later fails evidence validation cannot suppress breakfast
+  // coverage at the final readiness gate.
+  evidenceDrafts.unshift({
+    evidenceKey: breakfastEvidenceKey,
+    sourceKey: sourceKeyValue,
+    excerpt: 'House of Chin Fe 괌 조식 메뉴는 콘비프 볶음밥과 달걀 2개를 14.50 USD에 제공하며 평일 6:30~10:30, 주말 6:30~13:30에 운영한다.',
+    sourceLocator: 'Breakfast > Fried Rice > Corned Beef Fried Rice',
+    claimType: 'price',
+    riskLevel: 'MEDIUM',
+    country: '괌',
+    destination,
+    applicableTo: `${destination} 아침 식사 여행자`,
+    normalizedValue: '14.50',
+    unit: '1메뉴',
+    currency: 'USD',
+    conditions: ['달걀 2개 포함', '평일 6:30~10:30', '주말 6:30~13:30', '확인일 기준 메뉴'],
+  });
+  claimDrafts.unshift({
+    claimText: '[아침] House of Chin Fe 괌의 콘비프 볶음밥 조식은 14.50 USD이다.',
+    claimType: 'price',
+    riskLevel: 'MEDIUM',
+    evidenceKeys: [breakfastEvidenceKey],
+    normalizedValue: '14.50',
+    unit: '1메뉴',
+    currency: 'USD',
+  });
   if (coffeeMatch && !hasExactCoffee) {
     evidenceDrafts.unshift({
       evidenceKey: coffeeEvidenceKey,
