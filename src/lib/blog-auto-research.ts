@@ -8,6 +8,7 @@ import {
   BLOG_INFORMATION_SOURCE_TYPES,
   createBlogInformationClaimFingerprint,
   createBlogInformationSourceContentHash,
+  inspectBlogInformationClaimLiteralSupport,
   normalizeBlogInformationSourceSnapshot,
   type BlogInformationAuthorityLevel,
   type BlogInformationClaimInput,
@@ -1157,6 +1158,22 @@ export function buildBlogResearchBundleFromGrounding(input: {
       evidenceKeys: linkedEvidence,
     }];
   }));
+  const builtEvidenceByKey = new Map(evidence.map((item) => [item.evidenceKey, item]));
+  const literalSupportedClaims = claims.filter((claim) => {
+    const linkedEvidence = claim.evidenceKeys
+      .map((key) => builtEvidenceByKey.get(key))
+      .filter((item): item is BlogInformationEvidenceInput => Boolean(item));
+    const report = inspectBlogInformationClaimLiteralSupport({
+      claimText: claim.claimText,
+      evidence: linkedEvidence,
+    });
+    if (report.passed) return true;
+    for (const token of report.missingNumericTokens) {
+      issues.push(`claim_rejected:unsupported_numeric_token:${token}:${claim.claimFingerprint}`);
+    }
+    return false;
+  });
+  claims.splice(0, claims.length, ...literalSupportedClaims);
   const claimedEvidenceKeys = new Set(claims.flatMap((claim) => claim.evidenceKeys));
   const claimFingerprints = new Set(claims.map((claim) => claim.claimFingerprint));
   for (const item of evidence) {
@@ -1183,6 +1200,31 @@ export function buildBlogResearchBundleFromGrounding(input: {
     });
     claimFingerprints.add(fingerprint);
     claimedEvidenceKeys.add(item.evidenceKey);
+  }
+  if (input.brief.intentType === 'food_budget') {
+    for (const claim of claims) {
+      const normalized = claim.claimText.replace(/^\[(?:절약|일반|여유)(?:형(?:\s*하루\s*예산)?)?\]\s*/u, '');
+      if (normalized !== claim.claimText) {
+        claim.claimText = normalized;
+        claim.claimFingerprint = createBlogInformationClaimFingerprint(normalized);
+      }
+    }
+    const numericPriceClaims = claims.flatMap((claim, index) => {
+      const value = Number(clean(claim.extractedValue?.normalizedValue).replace(/,/g, ''));
+      return claim.claimType === 'price' && Number.isFinite(value) ? [{ index, value }] : [];
+    }).sort((left, right) => left.value - right.value);
+    if (numericPriceClaims.length >= 3) {
+      const tiers = [
+        { label: '절약형 하루 예산', index: numericPriceClaims[0]!.index },
+        { label: '일반형 하루 예산', index: numericPriceClaims[Math.floor(numericPriceClaims.length / 2)]!.index },
+        { label: '여유형 하루 예산', index: numericPriceClaims[numericPriceClaims.length - 1]!.index },
+      ];
+      for (const tier of tiers) {
+        const claim = claims[tier.index]!;
+        claim.claimText = `[${tier.label}] ${claim.claimText}`;
+        claim.claimFingerprint = createBlogInformationClaimFingerprint(claim.claimText);
+      }
+    }
   }
   const sources: BlogInformationSourceInput[] = sourceRecords
     .filter((source) => snapshots.has(source.key))
