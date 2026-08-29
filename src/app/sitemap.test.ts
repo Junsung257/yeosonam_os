@@ -77,7 +77,30 @@ function queryResult(table: string) {
             hero_image_url: 'https://cdn.yeosonam.com/public/osaka-hero.jpg',
             publication_state: 'published',
             package_revision: 3,
-            price_dates: [{ date: '2026-07-12', price: 599000 }],
+            price_dates: [{ date: '2099-07-12', price: 599000 }],
+          },
+          canonical_view: {},
+        },
+      },
+      {
+        id: 'snapshot-expired',
+        package_id: 'pkg-expired',
+        catalog_product_id: 'catalog-expired',
+        canonical_revision_id: 'revision-expired',
+        package_revision: 1,
+        status: 'published',
+        created_at: '2026-06-03T00:00:00.000Z',
+        card_projection: { id: 'pkg-expired', title: 'Expired public title', destination: 'expired' },
+        lp_projection: { id: 'pkg-expired', title: 'Expired public title', destination: 'expired' },
+        snapshot_json: {
+          package: {
+            id: 'pkg-expired',
+            title: 'Expired public title',
+            display_title: 'Expired public title',
+            destination: 'expired',
+            publication_state: 'published',
+            package_revision: 1,
+            price_dates: [{ date: '2020-01-01', price: 599000 }],
           },
           canonical_view: {},
         },
@@ -89,6 +112,13 @@ function queryResult(table: string) {
         catalog_product_id: 'catalog-osaka',
         current_revision_id: 'revision-osaka',
         current_snapshot_id: 'snapshot-osaka',
+        state: 'published',
+      },
+      {
+        package_id: 'pkg-expired',
+        catalog_product_id: 'catalog-expired',
+        current_revision_id: 'revision-expired',
+        current_snapshot_id: 'snapshot-expired',
         state: 'published',
       },
     ],
@@ -141,6 +171,7 @@ describe('sitemap', () => {
 
     expect(urls).toContain(`${expectedBaseUrl}/packages`);
     expect(urls).toContain(`${expectedBaseUrl}/destinations/osaka`);
+    expect(urls).not.toContain(`${expectedBaseUrl}/destinations/expired`);
     expect(urls).not.toContain(`${expectedBaseUrl}/destinations/hidden`);
     expect(urls).toContain(`${expectedBaseUrl}/blog/osaka-weather`);
     expect(urls).not.toContain(`${expectedBaseUrl}/blog/travel-emergency-medicine-summer-checklist`);
