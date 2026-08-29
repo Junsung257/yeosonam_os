@@ -34,6 +34,9 @@ create index if not exists idx_blog_generation_dedup_claims_title
 create index if not exists idx_blog_generation_dedup_claims_expiry
   on public.blog_generation_dedup_claims(expires_at);
 
+create index if not exists idx_blog_generation_dedup_claims_creative
+  on public.blog_generation_dedup_claims(content_creative_id);
+
 alter table public.blog_generation_dedup_claims enable row level security;
 
 revoke all on table public.blog_generation_dedup_claims from public, anon, authenticated;
