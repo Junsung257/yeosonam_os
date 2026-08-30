@@ -487,6 +487,43 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(new Set(selected.map((claim) => claim.sourceUrls?.[0])).size).toBe(8);
   });
 
+  it('keeps route fares, luggage and flight-delay support while dropping unrelated cancellation and surcharge facts', () => {
+    const sourceUrls = ['https://www.guamtransit.com/route14', 'https://support.kakaomobility.com/guam'];
+    const claims = [
+      { claimText: 'GRTA Route 14에서 GIAA부터 Kmart까지 5분이 소요됩니다.', claimType: 'duration', riskLevel: 'MEDIUM', sourceUrls: [sourceUrls[0]] },
+      { claimText: 'GRTA Route 14의 첫 출발 시각은 5:55입니다.', claimType: 'factual', riskLevel: 'MEDIUM', sourceUrls: [sourceUrls[0]] },
+      { claimText: 'GRTA의 1회 승차 요금은 1.50 USD입니다.', claimType: 'price', riskLevel: 'MEDIUM', sourceUrls: [sourceUrls[0]] },
+      { claimText: 'GRTA의 1일권 요금은 4 USD입니다.', claimType: 'price', riskLevel: 'MEDIUM', sourceUrls: [sourceUrls[0]] },
+      { claimText: '카카오 T 괌택시는 보통 24kg 캐리어 3~4개를 적재할 수 있다고 안내합니다.', claimType: 'factual', riskLevel: 'MEDIUM', sourceUrls: [sourceUrls[1]] },
+      { claimText: '카카오 T 괌택시는 비행편명을 입력하면 항공 지연 때 도착 시간을 확인한다고 안내합니다.', claimType: 'factual', riskLevel: 'MEDIUM', sourceUrls: [sourceUrls[1]] },
+      { claimText: '괌택시 예약 확정 후 5분 이내 취소 시 취소 수수료가 없습니다.', claimType: 'price', riskLevel: 'MEDIUM', sourceUrls: [sourceUrls[1]] },
+      { claimText: '출발 10분 전 취소하면 3 USD 수수료가 부과됩니다.', claimType: 'price', riskLevel: 'MEDIUM', sourceUrls: [sourceUrls[1]] },
+      { claimText: '공항 추가 인원 요금은 5 USD입니다.', claimType: 'price', riskLevel: 'MEDIUM', sourceUrls: [sourceUrls[1]] },
+    ];
+
+    const selected = selectDecisionRelevantRewriteClaimsV4({
+      primaryQuery: '괌 공항에서 투몬까지 교통수단별 이동 방법',
+      primaryDecision: '비용과 수하물 조건에 따라 어떤 이동수단을 고르는가?',
+      approvedClaims: claims,
+    });
+
+    expect(selected).toEqual(expect.arrayContaining(claims.slice(0, 6)));
+    expect(selected).not.toEqual(expect.arrayContaining(claims.slice(6)));
+  });
+
+  it('deduplicates equivalent luggage measurements from the same source', () => {
+    const selected = selectDecisionRelevantRewriteClaimsV4({
+      primaryQuery: '괌 공항 교통 이동수단',
+      primaryDecision: '수하물 조건에 맞는 이동수단을 고른다',
+      approvedClaims: [
+        { claimText: '카카오 T 괌택시는 24kg 캐리어 3~4개 적재를 안내합니다.', claimType: 'factual', riskLevel: 'MEDIUM', sourceUrls: ['https://example.com/faq'] },
+        { claimText: '괌택시 트렁크에는 24kg 캐리어 3~4개를 실을 수 있습니다.', claimType: 'factual', riskLevel: 'MEDIUM', sourceUrls: ['https://example.com/faq'] },
+      ],
+    });
+
+    expect(selected).toHaveLength(1);
+  });
+
   it('prioritizes schedule and movement claims over landmark dimensions for itinerary rewrites', () => {
     const claims = [
       { claimText: 'Golden Bridge is 150m long.', claimType: 'factual', riskLevel: 'MEDIUM', sourceUrls: ['https://example.com/a'] },

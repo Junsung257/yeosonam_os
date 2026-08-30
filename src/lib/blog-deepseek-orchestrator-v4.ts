@@ -108,6 +108,11 @@ function rewriteClaimDecisionScore(
   const itineraryOrRoute = /일정|코스|동선|이동|교통|route|itinerary/i.test(decisionText);
   if (itineraryOrRoute) {
     if (claim.claimType === 'duration') score += 10;
+    if (claim.claimType === 'price' && !/취소|변경|추가\s*인원|additional\s+person|cancellation|refund/i.test(text)) score += 14;
+    if (/수하물|캐리어|trunk|luggage|baggage/i.test(text)) score += 13;
+    if (/항공\s*지연|비행편명|flight\s*(?:number|delay)/i.test(text)) score += 13;
+    if (/취소|변경|cancellation|refund/i.test(text)) score -= 18;
+    if (/추가\s*인원|additional\s+person/i.test(text)) score -= 8;
     if (/주말|평일|오전|오후|저녁|밤|시\b|전(?:에|까지)|후(?:에|부터)|weekend|before|after|\d{1,2}:\d{2}/i.test(text)) score += 14;
     if (/예약|입장|계단|엘리베이터|출입|통제|운휴|폐쇄|휴무|reservation|admission|steps?|elevator|restricted|closed/i.test(text)) score += 12;
     if (/거리|차로|차량|도시에서|시내에서|에서\s*.+(?:분|시간)|drive|from\s+.+(?:minutes?|hours?)/i.test(text)) score += 8;
@@ -129,7 +134,7 @@ function rewriteClaimDecisionScore(
 function rewriteClaimDecisionKey(claim: BlogRewriteApprovedClaimV4, index: number): string {
   const source = claim.sourceUrls?.[0]?.replace(/[?#].*$/, '').replace(/\/$/, '').toLowerCase() || '';
   const measurements = [...claim.claimText.normalize('NFKC').toLowerCase().matchAll(
-    /\d+(?:\.\d+)?\s*(?:minutes?|hours?|metres?|meters?|분|시간|시|km|mm|미터|m|%|℃|°c)/g,
+    /(?:[₩￦¥￥$€₫]\s*)?\d+(?:\.\d+)?(?:\s*(?:~|-|–)\s*\d+(?:\.\d+)?)?\s*(?:usd|krw|jpy|vnd|sgd|eur|thb|원|엔|달러|minutes?|hours?|metres?|meters?|분|시간|시|km|mm|미터|m|%|℃|°c|개|명|대|kg|g)/g,
   )].map((match) => match[0]
     .replace(/\s+/g, '')
     .replace(/minutes?/, '분')
@@ -161,17 +166,28 @@ export function selectDecisionRelevantRewriteClaimsV4(input: {
   const claims = itineraryOrRoute && !asksForPhysicalDimension && nonDimensionClaims.length >= 3
     ? nonDimensionClaims
     : input.approvedClaims;
+  const routeTransport = /공항|교통|이동수단|airport|transport|transit/i.test(decisionText);
+  const asksCancellation = /취소|변경|환불|cancellation|refund/i.test(decisionText);
+  const asksSurcharge = /추가\s*(?:요금|인원)|할증|surcharge|additional\s+person/i.test(decisionText);
+  const decisionClaims = routeTransport
+    ? claims.filter((claim) => {
+        const text = claim.claimText.normalize('NFKC').toLowerCase();
+        if (!asksCancellation && /취소|변경|환불|cancellation|refund/i.test(text)) return false;
+        if (!asksSurcharge && /추가\s*인원|additional\s+person/i.test(text)) return false;
+        return true;
+      })
+    : claims;
   const isCompleteMonthlyClimateAssignment = /(?:월별|12\s*개월)/i.test(input.primaryQuery)
-    && claims.length <= 12
-    && claims.every((claim) => claim.claimType === 'climate');
-  if (isCompleteMonthlyClimateAssignment) return claims;
+    && decisionClaims.length <= 12
+    && decisionClaims.every((claim) => claim.claimType === 'climate');
+  if (isCompleteMonthlyClimateAssignment) return decisionClaims;
 
   const defaultLimit = itineraryOrRoute
     ? MAX_DECISION_REWRITE_CLAIMS
     : DEFAULT_DECISION_REWRITE_CLAIMS;
   const limit = Math.max(1, Math.min(input.maxClaims ?? defaultLimit, MAX_DECISION_REWRITE_CLAIMS));
   const decisionTokens = rewriteDecisionTokens(decisionText);
-  const scored = claims.map((claim, index) => ({
+  const scored = decisionClaims.map((claim, index) => ({
     claim,
     index,
     score: rewriteClaimDecisionScore(claim, decisionText, decisionTokens),
@@ -614,9 +630,12 @@ function buildRewriteArchetypeContractV4(
   if (archetype === 'route_walkthrough') {
     return [
       '[ARCHETYPE CONTRACT — route_walkthrough]',
-      '- The first paragraph must name the recommended decision rule and contain "동선" or "이동수단".',
+      '- The first paragraph must be a declarative answer, name the options supported by approved claims, state which evidence-backed condition selects each option, and contain "동선" or "이동수단". Do not open with 하세요, 확인하세요, or a question.',
       '- Organize the article as three distinct stages: departure/boarding, connection or middle segment, and arrival/alighting. Use only route/entity names already present in approved claims.',
+      '- In the visible body, not only headings, include one source-neutral sentence with "승차", one with "중간 구간" or "이동 구간", and one with "하차". These sentences must tell the reader what to verify; they must not invent a stop, platform, hotel, or travel time.',
+      '- If the approved packet lacks an exact boarding or alighting location, say to confirm the latest location in the official channel or booking screen. Never guess a terminal, curb, stop, or hotel entrance.',
       '- Put an exact approved time, distance, fare, or operating claim beside the segment it supports; never infer an unverified stop or duration.',
+      '- State any missing base fare, door-to-door duration, or exact boarding location as an evidence gap instead of filling it with generic advice.',
       '- Include a source-neutral official recheck and a delay, sell-out, or last-service fallback without asserting that the disruption will occur.',
       '- End with distinct reader actions, not a generic three-question block.',
     ];
@@ -721,12 +740,12 @@ export function buildDeepSeekRewritePromptV4(input: {
       '- Safe evidence headings describe the reader task, for example "공식 이동 시간으로 후보 비교하기". Never write headings such as "짧은 이동 구간" or "이동 시간이 긴 일정".',
       '- Write natural Korean with varied sentence shapes. Mix short explanations and actions; do not force every sentence to end in 하세요 or repeat a checklist rhythm.',
       '- Never shorten or repeat a schedule/measurement outside its exact approved sentence. Words such as 주말, 평일, 오전, 오후, 저녁, 밤, 시, 분, 시간, km, or m belong only inside an exact approved claim; the required N일차 headings are the sole structural exception.',
-      '- Start with one 2-3 sentence paragraph of source-neutral reader actions that directly answers how the reader should make the decision. Do not open with a question or repeat the H1.',
+      '- Start with one 2-3 sentence paragraph whose first sentence is a declarative, source-neutral decision answer. Do not open with a command ending such as 하세요, a question, or a repeat of the H1. Reader actions may follow after the answer.',
       '- Group selected claims into as many decision-purpose sections as the article needs. Never create one H2 per claim or force a fixed heading count.',
       '- Put 1-4 related approved claims in each evidence section. Every selected claim must still appear exactly once with its own citation.',
       '- Add at most one distinct reader instruction or question per evidence section, not after every claim. Do not repeat a four-word Korean phrase more than twice.',
       '- Semantic repetition also fails: do not repeat the same movement, reservation, rest, or fallback advice in multiple sections with only wording changes.',
-      '- Prefer direct reader actions ending in 확인하세요, 비교하세요, or 결정하세요. Do not turn those actions into a new assertion about the place.',
+      '- Outside the opening, use direct reader actions such as 확인하세요, 비교하세요, or 결정하세요 only when they add a distinct step. Do not turn those actions into a new assertion about the place.',
       '- Give every evidence-section H2 a distinct decision purpose. Do not use numbered month/entity + "공식 정보" as a repeated heading template.',
       ...buildRewriteArchetypeContractV4(packet.archetype, packet.primaryQuery),
       '- Do not write a new numeric table, route arrow, generic warning, generic FAQ, or generic checklist.',

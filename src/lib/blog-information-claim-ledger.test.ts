@@ -44,6 +44,33 @@ describe('blog information writer claim ledger', () => {
     }])).toEqual(output);
   });
 
+  it('canonicalizes an exact approved claim when the model weakens its ledger label', () => {
+    const claimText = 'GRTA Route 14의 1회 승차 요금은 1.50 USD입니다.';
+    const output = {
+      markdown: claimText,
+      claimLedger: [{
+        claimFingerprint: 'model-fingerprint',
+        claimText,
+        claimType: 'factual' as const,
+        riskLevel: 'LOW' as const,
+      }],
+      ledgerIssues: [],
+    };
+
+    const repaired = restoreApprovedRewriteClaimLabels(output, [{
+      claimText,
+      claimType: 'price',
+      riskLevel: 'MEDIUM',
+    }]);
+
+    expect(repaired.claimLedger[0]).toMatchObject({
+      claimText,
+      claimType: 'price',
+      riskLevel: 'MEDIUM',
+    });
+    expect(repaired.claimLedger[0]?.claimFingerprint).not.toBe('model-fingerprint');
+  });
+
   it('parses and removes a valid hidden ledger from the reader-visible article', () => {
     const output = parseBlogInformationWriterOutput([
       '# 공항 이동',

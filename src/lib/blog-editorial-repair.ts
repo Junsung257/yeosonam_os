@@ -558,7 +558,7 @@ function removeYeosonamEditorVoice(markdown: string): { text: string; changed: b
 function hasHardCtaSignal(text: string): boolean {
   return (
     READABLE_HARD_CTA_RE.test(text) ||
-    /(상품\s*보기|패키지\s*보기|지금\s*상품|카카오|group-inquiry|\/packages\?)/i.test(text) ||
+    /(상품\s*보기|패키지\s*보기|지금\s*상품|카카오(?:톡)?\s*(?:상담|문의|채널|연결)|group-inquiry|\/packages\?)/i.test(text) ||
     /(상담|문의)\s*(?:하기|신청|남기기|바로|가능|예약|마감)/i.test(text) ||
     /예약\s*(?:하기|문의|상담|신청|바로|마감|가능)/i.test(text)
   );
@@ -566,7 +566,7 @@ function hasHardCtaSignal(text: string): boolean {
 
 function hasReadableHardAction(text: string): boolean {
   if (READABLE_HARD_CTA_RE.test(text)) return true;
-  return /\/packages\?|group-inquiry|카카오|상품\s*보기|패키지\s*보기|상담\s*(?:하기|신청|문의|남기기|바로)|문의\s*(?:하기|신청|바로)|예약\s*(?:하기|신청|문의|상담|바로|마감)/i.test(text);
+  return /\/packages\?|group-inquiry|카카오(?:톡)?\s*(?:상담|문의|채널|연결)|상품\s*보기|패키지\s*보기|상담\s*(?:하기|신청|문의|남기기|바로)|문의\s*(?:하기|신청|바로)|예약\s*(?:하기|신청|문의|상담|바로|마감)/i.test(text);
 }
 
 function hasMarkdownLink(text: string): boolean {

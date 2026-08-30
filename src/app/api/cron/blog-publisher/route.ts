@@ -238,6 +238,7 @@ import {
   combineBlogEditorialHarnessV1,
   inspectBlogEditorialDeterministicallyV1,
   parseBlogEditorialJudgeReportV1,
+  restrictBlogDecisionArtifactFactsV1,
   withBlogDecisionArtifactClaimsV1,
   type BlogDecisionArtifactV1,
   type BlogEditorialHarnessReportV1,
@@ -510,6 +511,33 @@ async function loadBlogCorpusDiversityV3(input: {
 function getQueueMicroAngle(item: any): string | null {
   const value = item?.meta?.micro_angle;
   return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function microAngleForInformationIntent(intent: unknown): string | null {
+  const normalized = typeof intent === 'string' ? intent.trim() : '';
+  return ({
+    food_budget: 'food_budget',
+    monthly_weather: 'weather_packing',
+    airport_transport: 'airport_arrival',
+    local_transport: 'transport_cost',
+    hotel_areas: 'hotel_area',
+    family_budget: 'budget_family',
+    itinerary: 'itinerary',
+    shopping_souvenirs: 'shopping_souvenirs',
+    currency_payment: 'currency_payment',
+    entry_requirements: 'entry_requirements',
+    travel_insurance: 'travel_insurance',
+  } as Record<string, string>)[normalized] ?? null;
+}
+
+function getGeneratedQualityMicroAngle(generated: GeneratedBlog, item: any): string | null {
+  const explicitGenerated = generated.generation_meta?.micro_angle;
+  if (typeof explicitGenerated === 'string' && explicitGenerated.trim()) return explicitGenerated.trim();
+  const contentBrief = generated.generation_meta?.content_brief;
+  const intent = contentBrief && typeof contentBrief === 'object' && !Array.isArray(contentBrief)
+    ? (contentBrief as Record<string, unknown>).intent_type
+    : null;
+  return getQueueMicroAngle(item) ?? microAngleForInformationIntent(intent);
 }
 
 function buildQueueContentBrief(item: any) {
@@ -1043,7 +1071,7 @@ function buildQualityGateInput(
     category: item.category,
     content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
     product_id: item.product_id ?? null,
-    micro_angle: getQueueMicroAngle(item),
+    micro_angle: getGeneratedQualityMicroAngle(generated, item),
     generation_meta: generated.generation_meta ?? null,
     excludeContentCreativeId: item.content_creative_id ?? null,
     skipDuplicateCheck: isPublishedBlogAtomicUpgradeRequest(
@@ -5459,6 +5487,10 @@ async function generateFromTopic(
   if (generationStage !== 'draft_flash' && rewriteApprovedClaims.length === 0) {
     throw new Error('blog_rewrite_approved_claims_missing');
   }
+  const rewriteDecisionArtifact = restrictBlogDecisionArtifactFactsV1(
+    decisionArtifact,
+    rewriteApprovedClaims,
+  );
   const generationPrompt = generationStage === 'draft_flash'
     ? prompt
     : `${buildDeepSeekRewritePromptV4({
@@ -5483,7 +5515,7 @@ async function generateFromTopic(
           includeFaq: contentBriefV3.includeFaq,
           includeChecklist: contentBriefV3.includeChecklist,
         },
-      })}\n\n${buildBlogDecisionArtifactPromptBlockV1(decisionArtifact)}`;
+      })}\n\n${buildBlogDecisionArtifactPromptBlockV1(rewriteDecisionArtifact)}`;
   const generationOptions: {
     model: string;
     temperature: number;
@@ -5580,6 +5612,7 @@ async function generateFromTopic(
     prompt_manifest: promptManifest,
     prompt_trace_v1: promptTrace,
     decision_artifact_v1: decisionArtifact,
+    micro_angle: getQueueMicroAngle(item) ?? microAngleForInformationIntent(contentBrief.plan.intent),
     writer: 'info_writer',
     ai_orchestration_v4: {
       stage: generationStage,

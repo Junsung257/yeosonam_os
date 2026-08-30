@@ -119,7 +119,7 @@ function inspectRenderArtifacts(input: BlogStructureAuditInput, issues: BlogStru
   const $ = load(input.renderedHtml);
   const visibleText = normalizeText($.root().text());
   const sourceText = normalizeText(`${input.rawMarkdown} ${visibleText}`);
-  const artifact = sourceText.match(/(?:^|[\s>])(?:\$[1-9](?![\d.,])|\$\{[^}]+}|undefined|null|null원|NaN|object Object)(?:[\s<.,!?]|$)/i);
+  const artifact = sourceText.match(/(?:^|[\s>])(?:\$[1-9](?=\s+(?:이\s*문장|그\s*문장|저\s*문장|변수|치환|템플릿|자리표시자|placeholder)(?:\s|[<.,!?]|$))|\$\{[^}]+}|undefined|null|null원|NaN|object Object)(?:[\s<.,!?]|$)/i);
 
   if (artifact) {
     addIssue(

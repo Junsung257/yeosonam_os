@@ -5,7 +5,7 @@ import {
 import { readBlogEditorialBacklogDedupKey } from './blog-editorial-backlog-recheck';
 
 export const BLOG_INFORMATION_RESEARCH_RECHECK_VERSION =
-  'blog-information-research-recheck-20260831-v7';
+  'blog-information-research-recheck-20260831-v8';
 
 const AUTOMATED_RESEARCH_INTENTS = new Set<BlogInformationIntent>([
   'food_budget',
@@ -94,6 +94,38 @@ function isControlledBoundedRewriteFailure(
     && /^blog_quality_v4_rewrite_pro_high:/i.test(String(row.last_error ?? ''));
 }
 
+function isControlledHarnessDefectFailure(
+  row: BlogInformationResearchRecheckRow,
+  meta: Record<string, unknown>,
+): boolean {
+  const orchestration = asRecord(meta.ai_orchestration_v4);
+  const failureEvidence = Array.isArray(orchestration.failure_evidence)
+    ? orchestration.failure_evidence.map(String)
+    : [];
+  const joinedFailure = [row.last_error, ...failureEvidence].join(' ');
+  const requiredFailureMarkers = [
+    'editorial_harness_retry_exhausted',
+    'stale_claim_present',
+    'publish_gate:structure_integrity',
+    'publish_gate:intent_quality',
+    'publish_gate:engine_v2',
+    'editorial_harness_v5:semantic_usefulness',
+    'editorial_harness_v5:semantic_completeness',
+  ];
+  return row.source === 'user_seed'
+    && row.status === 'failed'
+    && meta.controlled_publish_canary === true
+    && meta.editor_approved_seed === true
+    && meta.information_research_bundle !== null
+    && typeof meta.information_research_bundle === 'object'
+    && meta.information_research_recheck_version === 'blog-information-research-recheck-20260831-v7'
+    && meta.information_research_recheck_result === 'bounded_orchestrator_rewrite_requeued'
+    && orchestration.version === 'blog-deepseek-orchestrator-v4'
+    && orchestration.route === 'quarantine'
+    && /^blog_quality_v4_quarantine:/i.test(String(row.last_error ?? ''))
+    && requiredFailureMarkers.every((marker) => joinedFailure.includes(marker));
+}
+
 function clearedResearchFailureMeta(
   meta: Record<string, unknown>,
   checkedAt: string,
@@ -147,6 +179,48 @@ function clearedBoundedRewriteFailureMeta(
   };
 }
 
+function clearedHarnessDefectFailureMeta(
+  meta: Record<string, unknown>,
+  checkedAt: string,
+  intent: BlogInformationIntent,
+): Record<string, unknown> {
+  const next = { ...meta };
+  for (const key of [
+    'failure_code',
+    'failure_retryable',
+    'quarantine_reason',
+    'self_heal_blocked',
+    'skipped_duplicate',
+  ]) {
+    delete next[key];
+  }
+  const orchestration = asRecord(meta.ai_orchestration_v4);
+  return {
+    ...next,
+    ai_orchestration_v4: {
+      ...orchestration,
+      route: 'rewrite_pro_max',
+      next_stage: 'rewrite_pro_max',
+      publishable: false,
+      reasons: ['controlled_harness_defect_rewrite'],
+      failure_evidence: [
+        ...new Set([
+          ...(Array.isArray(orchestration.failure_evidence)
+            ? orchestration.failure_evidence.map(String)
+            : []),
+          'controlled_harness_defect_rewrite',
+        ]),
+      ],
+    },
+    information_research_rechecked_at: checkedAt,
+    information_research_recheck_version: BLOG_INFORMATION_RESEARCH_RECHECK_VERSION,
+    information_research_recheck_intent: intent,
+    information_research_recheck_result: 'controlled_harness_defect_rewrite_requeued',
+    controlled_harness_defect_recovered_at: checkedAt,
+    requeued_by: BLOG_INFORMATION_RESEARCH_RECHECK_VERSION,
+  };
+}
+
 export function buildBlogInformationResearchRecheckDecision(input: {
   row: BlogInformationResearchRecheckRow;
   checkedAt?: string;
@@ -165,6 +239,7 @@ export function buildBlogInformationResearchRecheckDecision(input: {
   const dedupKey = readBlogEditorialBacklogDedupKey(input.row);
   const reviewedPublishedReplacement = isHumanReviewedPublishedReplacement(meta);
   const boundedRewriteFailure = isControlledBoundedRewriteFailure(input.row, meta);
+  const harnessDefectFailure = isControlledHarnessDefectFailure(input.row, meta);
   const blocked = (reason: string): BlogInformationResearchRecheckDecision => ({
     action: 'keep_blocked',
     intent,
@@ -185,7 +260,7 @@ export function buildBlogInformationResearchRecheckDecision(input: {
   }
   if (!input.row.destination || !input.row.topic) return blocked('research_context_missing');
   if (!AUTOMATED_RESEARCH_INTENTS.has(intent)) return blocked('intent_not_live_verified');
-  if (!isResearchFailure(input.row) && !boundedRewriteFailure) {
+  if (!isResearchFailure(input.row) && !boundedRewriteFailure && !harnessDefectFailure) {
     return blocked('not_information_research_failure');
   }
   if (meta.requeued_by === BLOG_INFORMATION_RESEARCH_RECHECK_VERSION) {
@@ -216,11 +291,15 @@ export function buildBlogInformationResearchRecheckDecision(input: {
     action: 'requeue',
     intent,
     dedupKey,
-    reason: boundedRewriteFailure
-      ? 'bounded_orchestrator_rewrite_retry'
-      : 'live_verified_research_retry',
-    meta: boundedRewriteFailure
-      ? clearedBoundedRewriteFailureMeta(meta, checkedAt, intent)
-      : clearedResearchFailureMeta(meta, checkedAt, intent),
+    reason: harnessDefectFailure
+      ? 'controlled_harness_defect_rewrite_retry'
+      : boundedRewriteFailure
+        ? 'bounded_orchestrator_rewrite_retry'
+        : 'live_verified_research_retry',
+    meta: harnessDefectFailure
+      ? clearedHarnessDefectFailureMeta(meta, checkedAt, intent)
+      : boundedRewriteFailure
+        ? clearedBoundedRewriteFailureMeta(meta, checkedAt, intent)
+        : clearedResearchFailureMeta(meta, checkedAt, intent),
   };
 }

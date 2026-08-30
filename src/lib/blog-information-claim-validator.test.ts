@@ -50,6 +50,18 @@ describe('rewrite claim type compatibility', () => {
     });
   });
 
+  it('classifies a no-fee cancellation claim as price before its time window', () => {
+    expect(inspectBlogInformationClaimTypeCompatibility(
+      '괌택시 예약 확정 후 5분 이내 취소 시 취소 수수료가 없습니다.',
+      'price',
+    )).toEqual({
+      passed: true,
+      declaredType: 'price',
+      deterministicType: 'price',
+      candidateKind: 'money_price',
+    });
+  });
+
   it('fails closed when the publish classifier cannot identify the claim', () => {
     expect(inspectBlogInformationClaimTypeCompatibility(
       '이 장소는 일정의 중심으로 삼기 좋습니다.',

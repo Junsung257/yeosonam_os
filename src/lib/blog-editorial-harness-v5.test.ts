@@ -5,6 +5,7 @@ import {
   buildBlogPromptTraceV1,
   inspectBlogEditorialDeterministicallyV1,
   parseBlogEditorialJudgeReportV1,
+  restrictBlogDecisionArtifactFactsV1,
   resolveBlogPublicSourceLabelV1,
   withBlogDecisionArtifactClaimsV1,
 } from './blog-editorial-harness-v5';
@@ -207,5 +208,49 @@ describe('blog editorial harness v5', () => {
       ].map((key) => [key, { passed: key !== 'usefulness', reason: '판정 근거' }])),
       failureReasons: [],
     }))).toThrow('blog_editorial_judge_inconsistent_pass');
+  });
+
+  it('builds and deterministically inserts an answer-first airport route decision', () => {
+    const bundle = foodBundle();
+    bundle.claims = [
+      { ...bundle.claims[0]!, claimText: 'GRTA Route 14의 1회 승차 요금은 1.50 USD입니다.', claimType: 'price' },
+      { ...bundle.claims[1]!, claimText: '카카오 T 괌택시는 24kg 캐리어 3~4개 적재를 안내합니다.', claimType: 'factual' },
+      { ...bundle.claims[2]!, claimText: '카카오 T 괌택시는 비행편명을 입력하면 항공 지연 때 도착 시간을 확인합니다.', claimType: 'factual' },
+    ];
+    const artifact = buildBlogDecisionArtifactV1({
+      title: '괌 공항에서 투몬까지 이동수단',
+      question: '괌 공항 투몬 교통',
+      primaryDecision: '지금 어떤 이동수단을 고르는가?',
+      intentType: 'airport_transport',
+      bundle,
+    });
+    const output = applyBlogDecisionArtifactToWriterOutputV1({
+      artifact,
+      output: {
+        markdown: '# 괌 공항에서 투몬까지 이동수단\n\n무엇을 확인할지 먼저 고르세요.\n\n## 승차 전\n\n공식 안내를 확인합니다.',
+        claimLedger: [],
+        ledgerIssues: [],
+      },
+    });
+
+    expect(artifact.promiseType).toBe('route_decision');
+    expect(artifact.directAnswer).toContain('GRTA Route 14');
+    expect(artifact.directAnswer).toContain('카카오 T 괌택시');
+    expect(output.markdown).not.toContain('무엇을 확인할지 먼저 고르세요.');
+    expect(output.markdown).toContain(artifact.directAnswer);
+    expect(artifact.gaps).toEqual(expect.arrayContaining([
+      expect.stringContaining('택시 기본요금'),
+      expect.stringContaining('실제 소요시간'),
+    ]));
+  });
+
+  it('restricts rewrite decision facts to the approved subset', () => {
+    const artifact = decisionArtifact();
+    const restricted = restrictBlogDecisionArtifactFactsV1(artifact, [{
+      claimText: artifact.publicFacts[0]!.claimText,
+    }]);
+
+    expect(restricted.publicFacts).toEqual([artifact.publicFacts[0]]);
+    expect(restricted.directAnswer).toBe(artifact.directAnswer);
   });
 });
