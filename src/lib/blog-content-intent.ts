@@ -787,10 +787,10 @@ function inspectInfoWriterContract(source: string, plain: string, issues: BlogIn
   const hasReadableKoreanHardCta = /(?:\uC9C0\uAE08|\uBC14\uB85C)\s*\uC608\uC57D|\uC608\uC57D\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC0C1\uB2F4|\uBC14\uB85C|\uB9C8\uAC10)|\uC0C1\uB2F4\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC5F0\uACB0|\uBC14\uB85C)|\uBB38\uC758\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uC0C1\uB2F4|\uBC14\uB85C)|\uC0C1\uD488\s*\uBCF4\uAE30|\uD328\uD0A4\uC9C0\s*\uBCF4\uAE30|\uCE74\uCE74\uC624(?:\uD1A1)?\s*(?:\uC0C1\uB2F4|\uBB38\uC758)|\uC794\uC5EC\s*\uC88C\uC11D|\uB9C8\uAC10\s*\uC784\uBC15/i.test(earlySource);
   const hasEarlyHardCta =
     hasReadableKoreanHardCta ||
-    /(상품\s*보기|패키지\s*보기|지금\s*상품|카카오|group-inquiry|private-tour|\/group(?:[/?#]|$)|\/packages\?)/i.test(earlySource)
+    /(상품\s*보기|패키지\s*보기|지금\s*상품|카카오(?:톡)?\s*(?:상담|문의|채널|연결)|group-inquiry|private-tour|\/group(?:[/?#]|$)|\/packages\?)/i.test(earlySource)
     || /(상담|문의)\s*(?:하기|신청|남기기|바로|가능|예약|마감)/i.test(earlySource)
     || /예약\s*(?:하기|문의|상담|신청|바로|마감|가능)/i.test(earlySource);
-  const hasReadableHardAction = /\/packages\?|group-inquiry|private-tour|\/group(?:[/?#]|$)|카카오|상품\s*보기|패키지\s*보기|상담\s*(?:하기|신청|문의|남기기|바로)|문의\s*(?:하기|신청|바로)|예약\s*(?:하기|신청|문의|상담|바로|마감)/i.test(earlySource);
+  const hasReadableHardAction = /\/packages\?|group-inquiry|private-tour|\/group(?:[/?#]|$)|카카오(?:톡)?\s*(?:상담|문의|채널|연결)|상품\s*보기|패키지\s*보기|상담\s*(?:하기|신청|문의|남기기|바로)|문의\s*(?:하기|신청|바로)|예약\s*(?:하기|신청|문의|상담|바로|마감)/i.test(earlySource);
   if (hasEarlyHardCta && (hasReadableHardAction || hasReadableKoreanHardCta)) {
     addIssue(
       issues,

@@ -89,6 +89,22 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('information_representative_preclaim:');
   });
 
+  it('preserves the information micro angle through generation and quality evaluation', () => {
+    const source = routeSource();
+
+    expect(source).toContain('function getGeneratedQualityMicroAngle');
+    expect(source).toContain('microAngleForInformationIntent(intent)');
+    expect(source).toContain('micro_angle: getGeneratedQualityMicroAngle(generated, item)');
+    expect(source).toContain('micro_angle: getQueueMicroAngle(item) ?? microAngleForInformationIntent(contentBrief.plan.intent)');
+  });
+
+  it('keeps excluded rewrite facts out of the decision-artifact prompt', () => {
+    const source = routeSource();
+
+    expect(source).toContain('restrictBlogDecisionArtifactFactsV1(');
+    expect(source).toContain('buildBlogDecisionArtifactPromptBlockV1(rewriteDecisionArtifact)');
+  });
+
   it('never lets deterministic information fallback become a public article', () => {
     const source = routeSource();
 

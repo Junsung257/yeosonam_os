@@ -282,6 +282,28 @@ A. 4월, 5월, 9월, 10월이 걷기 좋습니다.
     expect(report.issues.some((issue) => issue.code === 'repeated_ai_opening_pattern')).toBe(true);
   });
 
+  it('treats Kakao T Guam Taxi as transport evidence, not a consultation CTA', () => {
+    const report = inspectBlogIntentQuality({
+      title: '괌 공항에서 투몬까지 이동수단',
+      primaryKeyword: '괌 공항 투몬 교통',
+      category: 'transport',
+      contentType: 'guide',
+      blogHtml: `# 괌 공항에서 투몬까지 이동수단
+
+괌 공항 이동수단은 확인된 요금과 수하물 조건을 나눠 비교하면 선택이 분명해집니다. 카카오 T 괌택시는 비행편명 입력 안내를 제공합니다.
+
+## 출발 전 확인
+
+공식 앱에서 최신 승차 위치를 확인하세요.
+
+## 도착 후 확인
+
+하차 위치를 숙소 안내와 대조하세요.`,
+    });
+
+    expect(report.issues.some((issue) => issue.code === 'early_strong_cta')).toBe(false);
+  });
+
   it('flags machine-looking title separators, broken persona copy, and English micro-angle image alts', () => {
     const report = inspectBlogIntentQuality({
       title: '오사카 7월 날씨 여행 가이드 2026|월별 날씨·옷차림 체크리스트',

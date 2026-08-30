@@ -364,6 +364,36 @@ describe('blog engine v2 evaluation', () => {
     expect(evaluation.category_scores.find((category) => category.id === 'sales_pressure_control')?.passed).toBe(true);
   });
 
+  it('does not score Kakao T Guam Taxi evidence as sales pressure', () => {
+    const evaluation = evaluateBlogEngineV2({
+      blogHtml: [
+        '# 괌 공항에서 투몬까지 이동수단',
+        '',
+        '괌 공항 이동수단은 확인된 요금과 수하물 조건을 나눠 비교하면 선택이 분명해집니다.',
+        '카카오 T 괌택시는 비행편명 입력 안내를 제공합니다.',
+        '',
+        '## 출발 전 확인',
+        '공식 앱에서 최신 승차 위치를 확인하세요.',
+        '',
+        '## 도착 후 확인',
+        '하차 위치를 숙소 안내와 대조하세요.',
+      ].join('\n'),
+      primaryKeyword: '괌 공항 투몬 교통',
+      destination: '괌',
+      generationMeta: {
+        writer: 'info_writer',
+        info_guide_brief: {
+          reader_question: '괌 공항에서 투몬까지 무엇을 타야 하나요?',
+          answer_first: '요금과 수하물 조건을 나눠 비교합니다.',
+          official_sources_required: true,
+        },
+        content_brief: { search_intent: 'transport', evidence: ['공식 교통 안내'] },
+      },
+    });
+
+    expect(evaluation.metrics.sales_pressure).toBe(100);
+  });
+
   it('blocks customer-language defects that make otherwise structured posts feel machine-written', () => {
     const evaluation = evaluateBlogEngineV2({
       blogHtml: [

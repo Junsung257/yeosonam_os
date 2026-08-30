@@ -65,7 +65,7 @@ export interface BlogDecisionArtifactV1 {
   version: typeof BLOG_DECISION_ARTIFACT_VERSION;
   question: string;
   directAnswer: string;
-  promiseType: 'daily_budget_scenarios' | 'price_examples' | 'direct_answer';
+  promiseType: 'daily_budget_scenarios' | 'price_examples' | 'route_decision' | 'direct_answer';
   originalTitle: string;
   resolvedTitle: string;
   publicFacts: BlogDecisionPublicFactV1[];
@@ -329,6 +329,37 @@ function destinationFromTitle(title: string): string {
   return title.normalize('NFKC').replace(/\s*(?:여행\s*)?(?:식비|외식|예산).*$/u, '').trim();
 }
 
+function buildRouteDecisionAnswer(
+  publicFacts: BlogDecisionPublicFactV1[],
+): Pick<BlogDecisionArtifactV1, 'directAnswer' | 'gaps'> {
+  const joined = publicFacts.map((fact) => fact.claimText).join(' ');
+  const hasGrta = /GRTA|Route\s*14|14번\s*노선/i.test(joined);
+  const hasKakaoTaxi = /카카오\s*T\s*괌택시|Kakao\s*T.*Guam\s*Taxi/i.test(joined);
+  const hasFare = publicFacts.some((fact) => fact.claimType === 'price'
+    && /GRTA|승차|일일권|1일권|one\s*ride|day\s*pass/i.test(fact.claimText)
+    && !/취소|변경|추가\s*인원/i.test(fact.claimText));
+  const hasLuggage = /수하물|캐리어|luggage|baggage/i.test(joined);
+  const hasFlightDelay = /항공\s*지연|비행편명|flight\s*(?:number|delay)/i.test(joined);
+  const hasTaxiBaseFare = publicFacts.some((fact) => fact.claimType === 'price'
+    && /괌택시|Guam\s*Taxi/i.test(fact.claimText)
+    && /기본|승차\s*요금|base\s*fare/i.test(fact.claimText));
+  const hasDoorToDoorDuration = publicFacts.some((fact) => fact.claimType === 'duration'
+    && /공항|GIAA|airport/i.test(fact.claimText)
+    && /투몬|숙소|호텔|Tumon|hotel/i.test(fact.claimText));
+  const hasExactBoardingLocation = publicFacts.some((fact) =>
+    /승차\s*(?:장소|위치)|타는\s*곳|정류장|승강장|curb|platform|stop/i.test(fact.claimText));
+
+  const directAnswer = hasGrta && hasKakaoTaxi
+    ? `공항 이동수단은 ${hasFare ? '확인된 승차 요금으로 예산을 먼저 고정하려면 ' : ''}GRTA Route 14를, ${hasLuggage && hasFlightDelay ? '수하물 적재와 항공 지연 대응 안내가 필요하면 ' : ''}카카오 T 괌택시를 먼저 비교하는 방식입니다.`
+    : '공항 이동수단은 확인된 요금·운행 정보와 수하물·항공 지연 대응 조건을 나눠 비교하는 방식입니다.';
+  const gaps = [
+    ...(!hasTaxiBaseFare ? ['택시 기본요금은 현재 승인된 근거에서 확인되지 않아 예약 화면에서 재확인 필요'] : []),
+    ...(!hasDoorToDoorDuration ? ['공항에서 숙소까지의 실제 소요시간은 현재 승인된 근거에서 확인되지 않아 출발 전 재확인 필요'] : []),
+    ...(!hasExactBoardingLocation ? ['정확한 승차·하차 위치는 현재 승인된 근거에서 확인되지 않아 공식 채널에서 재확인 필요'] : []),
+  ];
+  return { directAnswer, gaps };
+}
+
 export function buildBlogDecisionArtifactV1(input: {
   title: string;
   question: string;
@@ -372,6 +403,21 @@ export function buildBlogDecisionArtifactV1(input: {
       gaps: ['아침·점심·저녁과 음료를 같은 1인 기준으로 조합할 근거 부족'],
     };
   }
+  if (['airport_transport', 'local_transport'].includes(input.intentType)) {
+    const routeDecision = buildRouteDecisionAnswer(publicFacts);
+    return {
+      version: BLOG_DECISION_ARTIFACT_VERSION,
+      question: input.question,
+      directAnswer: routeDecision.directAnswer,
+      promiseType: 'route_decision',
+      originalTitle: input.title,
+      resolvedTitle: input.title,
+      publicFacts,
+      calculations: [],
+      firstPartyInsights,
+      gaps: routeDecision.gaps,
+    };
+  }
   return {
     version: BLOG_DECISION_ARTIFACT_VERSION,
     question: input.question,
@@ -383,6 +429,18 @@ export function buildBlogDecisionArtifactV1(input: {
     calculations: [],
     firstPartyInsights,
     gaps: [],
+  };
+}
+
+export function restrictBlogDecisionArtifactFactsV1(
+  artifact: BlogDecisionArtifactV1,
+  approvedClaims: Array<Pick<BlogInformationClaimInput, 'claimText'>>,
+): BlogDecisionArtifactV1 {
+  const approvedTexts = new Set(approvedClaims.map((claim) => claim.claimText.normalize('NFKC').trim()));
+  return {
+    ...artifact,
+    publicFacts: artifact.publicFacts.filter((fact) =>
+      approvedTexts.has(fact.claimText.normalize('NFKC').trim())),
   };
 }
 
@@ -476,7 +534,7 @@ export function applyBlogDecisionArtifactToWriterOutputV1(input: {
   output: BlogInformationWriterOutput;
   artifact: BlogDecisionArtifactV1;
 }): BlogInformationWriterOutput {
-  if (input.artifact.promiseType !== 'daily_budget_scenarios') return input.output;
+  if (!['daily_budget_scenarios', 'route_decision'].includes(input.artifact.promiseType)) return input.output;
   const lines = input.output.markdown.trim().split(/\r?\n/);
   const h1Index = lines.findIndex((line) => /^#\s+\S/.test(line.trim()));
   const nextH2 = lines.findIndex((line, index) => index > h1Index && /^##\s+\S/.test(line.trim()));

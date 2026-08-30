@@ -156,24 +156,40 @@ export function restoreApprovedRewriteClaimLabels(
 
   for (const approved of approvedClaims) {
     const exactClaim = cleanClaimText(approved.claimText);
-    if (!exactClaim || markdown.includes(exactClaim)) continue;
+    if (!exactClaim || !isClaimType(approved.claimType) || !isRiskLevel(approved.riskLevel)) continue;
+    const canonicalClaimType: BlogInformationClaimType = approved.claimType;
+    const canonicalRiskLevel: BlogInformationEvidenceRiskLevel = approved.riskLevel;
+    const canonicalizeLedgerEntry = (claimText: string) => {
+      const matches = claimLedger.filter((claim) => cleanClaimText(claim.claimText) === claimText);
+      if (matches.length !== 1) return false;
+      claimLedger = claimLedger.map((claim) => claim === matches[0]
+        ? {
+            claimFingerprint: createBlogInformationClaimFingerprint(exactClaim),
+            claimText: exactClaim,
+            claimType: canonicalClaimType,
+            riskLevel: canonicalRiskLevel,
+          }
+        : claim);
+      return true;
+    };
+    const exactBodyMatches = markdown.split(exactClaim).length - 1;
+    if (exactBodyMatches === 1) {
+      canonicalizeLedgerEntry(exactClaim);
+      continue;
+    }
     const strippedClaim = exactClaim.replace(/^(?:\[[^\]\r\n]{1,80}\]\s*)+/, '').trim();
     if (!strippedClaim || strippedClaim === exactClaim) continue;
     const bodyMatches = markdown.split(strippedClaim).length - 1;
-    const ledgerMatches = claimLedger.filter((claim) =>
-      claim.claimText === strippedClaim
-      && claim.claimType === approved.claimType
-      && claim.riskLevel === approved.riskLevel);
+    const ledgerMatches = claimLedger.filter((claim) => cleanClaimText(claim.claimText) === strippedClaim);
     if (bodyMatches !== 1 || ledgerMatches.length !== 1) continue;
-    if (!isClaimType(approved.claimType) || !isRiskLevel(approved.riskLevel)) continue;
 
     markdown = markdown.replace(strippedClaim, exactClaim);
     claimLedger = claimLedger.map((claim) => claim === ledgerMatches[0]
       ? {
           claimFingerprint: createBlogInformationClaimFingerprint(exactClaim),
           claimText: exactClaim,
-          claimType: ledgerMatches[0]!.claimType,
-          riskLevel: ledgerMatches[0]!.riskLevel,
+          claimType: canonicalClaimType,
+          riskLevel: canonicalRiskLevel,
         }
       : claim);
   }

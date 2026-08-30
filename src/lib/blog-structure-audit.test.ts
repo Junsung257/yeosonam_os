@@ -69,6 +69,13 @@ describe('blog-structure-audit', () => {
     );
   });
 
+  it('does not mistake a valid one-digit dollar fare for a template artifact', () => {
+    const html = '<article><h1>괌 공항 이동</h1><p>공항 추가 인원 요금은 $5 발생합니다.</p></article>';
+    const report = inspectBlogStructure({ rawMarkdown: html, renderedHtml: html });
+
+    expect(report.issues.map((issue) => issue.code)).not.toContain('render_artifact_leak');
+  });
+
   it('blocks collapsed FAQ headings and duplicated core blocks', () => {
     const html = `
       <article>

@@ -173,6 +173,82 @@ describe('blog information research backlog recheck', () => {
     }
   });
 
+  it('requeues exactly one quarantined controlled canary after the known harness defects', () => {
+    const failureMarkers = [
+      'editorial_harness_retry_exhausted',
+      'stale_claim_present',
+      'publish_gate:structure_integrity',
+      'publish_gate:intent_quality',
+      'publish_gate:engine_v2',
+      'editorial_harness_v5:semantic_usefulness',
+      'editorial_harness_v5:semantic_completeness',
+    ];
+    const decision = buildBlogInformationResearchRecheckDecision({
+      row: failedResearchRow({
+        source: 'user_seed',
+        status: 'failed',
+        last_error: `blog_quality_v4_quarantine:${failureMarkers.join(',')}`,
+        meta: {
+          micro_angle: 'airport_arrival',
+          controlled_publish_canary: true,
+          editor_approved_seed: true,
+          information_research_bundle: { version: 'reviewed-source-direct-fetch-v2' },
+          information_research_recheck_version: 'blog-information-research-recheck-20260831-v7',
+          information_research_recheck_result: 'bounded_orchestrator_rewrite_requeued',
+          requeued_by: 'blog-information-research-recheck-20260831-v7',
+          failure_code: 'quality_quarantine',
+          quarantine_reason: 'quality_retry_exhausted',
+          ai_orchestration_v4: {
+            version: 'blog-deepseek-orchestrator-v4',
+            route: 'quarantine',
+            next_stage: null,
+            failure_evidence: failureMarkers,
+          },
+        },
+      }),
+      checkedAt: '2026-08-31T01:00:00.000Z',
+    });
+
+    expect(decision).toMatchObject({
+      action: 'requeue',
+      intent: 'airport_transport',
+      reason: 'controlled_harness_defect_rewrite_retry',
+      meta: {
+        information_research_recheck_result: 'controlled_harness_defect_rewrite_requeued',
+        ai_orchestration_v4: {
+          route: 'rewrite_pro_max',
+          next_stage: 'rewrite_pro_max',
+        },
+      },
+    });
+    expect(decision.meta).not.toHaveProperty('quarantine_reason');
+  });
+
+  it('keeps a harness-defect lookalike blocked when one exact marker is missing', () => {
+    const decision = buildBlogInformationResearchRecheckDecision({
+      row: failedResearchRow({
+        source: 'user_seed',
+        status: 'failed',
+        last_error: 'blog_quality_v4_quarantine:editorial_harness_retry_exhausted,stale_claim_present,publish_gate:structure_integrity,publish_gate:intent_quality,publish_gate:engine_v2,editorial_harness_v5:semantic_usefulness',
+        meta: {
+          micro_angle: 'airport_arrival',
+          controlled_publish_canary: true,
+          editor_approved_seed: true,
+          information_research_bundle: { version: 'reviewed-source-direct-fetch-v2' },
+          information_research_recheck_version: 'blog-information-research-recheck-20260831-v7',
+          information_research_recheck_result: 'bounded_orchestrator_rewrite_requeued',
+          ai_orchestration_v4: {
+            version: 'blog-deepseek-orchestrator-v4',
+            route: 'quarantine',
+            failure_evidence: [],
+          },
+        },
+      }),
+    });
+
+    expect(decision.reason).toBe('not_information_research_failure');
+  });
+
   it('does not retry product rows or unsupported general topics', () => {
     expect(buildBlogInformationResearchRecheckDecision({
       row: failedResearchRow({ product_id: 'product-1' }),
