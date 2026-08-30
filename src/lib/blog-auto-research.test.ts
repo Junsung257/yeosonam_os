@@ -26,6 +26,8 @@ import {
   shouldRetrySanitizedAutoResearchPayload,
 } from '@/lib/blog-auto-research';
 import { evaluateBlogGenerationResearchReadiness } from '@/lib/blog-generation-research';
+import { buildBlogDecisionArtifactV1 } from '@/lib/blog-editorial-harness-v5';
+import { selectDecisionRelevantRewriteClaimsV4 } from '@/lib/blog-deepseek-orchestrator-v4';
 
 describe('normalizeAutoResearchStructuredValue', () => {
   it.each([
@@ -543,6 +545,14 @@ describe('augmentGrtaAirportTransportPayload', () => {
         ].join(' '),
       },
       {
+        url: 'https://www.visitguam.com/planning/transportation/',
+        title: 'Guam Visitors Bureau transportation',
+        text: [
+          'All taxis have regulated meters. The standard flag rate is $2.40, $4.00 for the first mile, and $0.80 every ¼ mile thereafter.',
+          'Transportation on the line includes most major shopping centers as well as the hotels in Tumon and Hagatna.',
+        ].join(' '),
+      },
+      {
         url: 'https://service.kakaomobility.com/api/cs/v1/faqs/categories/44/contents?recordsPerPage=100&currentPageNo=1',
         title: 'Kakao T Guam taxi FAQ',
         text: JSON.stringify({
@@ -569,7 +579,7 @@ describe('augmentGrtaAirportTransportPayload', () => {
       primarySourcesRequired: false,
       exactNumbersRequireSource: true,
       retrievedAtRequired: true,
-      sourceTypes: ['airport', 'transport_operator', 'government', 'reputable_local_source', 'reputable_price_source'],
+      sourceTypes: ['airport', 'transport_operator', 'government', 'official_tourism', 'reputable_local_source', 'reputable_price_source'],
     };
     const now = new Date();
     const built = buildBlogResearchBundleFromGrounding({
@@ -583,6 +593,7 @@ describe('augmentGrtaAirportTransportPayload', () => {
       officialRegistry: [
         { id: 'grta', hostname: 'grta.guam.gov', sourceType: 'transport_operator', authorityLevel: 'official_primary', allowSubdomains: true },
         { id: 'airport', hostname: 'guamairport.com', sourceType: 'airport', authorityLevel: 'official_primary', allowSubdomains: true },
+        { id: 'visit-guam', hostname: 'visitguam.com', sourceType: 'official_tourism', authorityLevel: 'official_primary', allowSubdomains: true },
         { id: 'kakao', hostname: 'kakaomobility.com', sourceType: 'transport_operator', authorityLevel: 'official_primary', allowSubdomains: true },
       ],
       now,
@@ -597,13 +608,42 @@ describe('augmentGrtaAirportTransportPayload', () => {
       now,
     });
 
-    expect(payload.claims?.map((claim) => claim.claimText).join('\n')).toMatch(/대중교통[\s\S]*택시[\s\S]*렌터카/);
+    expect(payload.claims?.map((claim) => claim.claimText).join('\n')).toMatch(/대중교통[\s\S]*택시/);
     expect(payload.claims?.map((claim) => claim.claimText).join('\n')).toMatch(/첫차/);
     expect(payload.claims?.map((claim) => claim.claimText).join('\n')).toMatch(/캐리어/);
     expect(payload.claims?.map((claim) => claim.claimText).join('\n')).toMatch(/항공 지연/);
+    expect(payload.claims?.map((claim) => claim.claimText).join('\n')).toMatch(/기본 호출 2\.40 USD/);
+    expect(payload.claims?.map((claim) => claim.claimText).join('\n')).toMatch(/투몬 호텔/);
+    expect(payload.claims?.map((claim) => claim.claimText).join('\n')).toMatch(/서쪽 도착 터미널/);
     expect(built.issues).toEqual([]);
     expect(readiness.issues).toEqual([]);
     expect(readiness.passed).toBe(true);
+    const artifact = buildBlogDecisionArtifactV1({
+      title: '괌 공항 투몬 교통: 시간·비용·수하물 기준 비교',
+      question: '괌 공항 투몬 교통',
+      primaryDecision: '비용과 수하물 조건에 따라 어떤 이동수단을 고르는가?',
+      intentType: 'airport_transport',
+      bundle: built.bundle!,
+    });
+    const selectedClaims = selectDecisionRelevantRewriteClaimsV4({
+      primaryQuery: '괌 공항에서 투몬까지 교통수단별 이동 방법',
+      primaryDecision: '비용과 수하물 조건에 따라 어떤 이동수단을 고르는가?',
+      approvedClaims: artifact.publicFacts.map((fact) => ({
+        claimText: fact.claimText,
+        claimType: fact.claimType,
+        riskLevel: fact.riskLevel,
+        sourceUrls: fact.sourceUrls,
+      })),
+    }).map((claim) => claim.claimText).join('\n');
+    expect(artifact.resolvedTitle).toBe('괌 공항 투몬 교통: GRTA·택시 요금과 공항 택시 승차·수하물 안내');
+    expect(artifact.gaps).toEqual(expect.arrayContaining([
+      expect.stringContaining('실제 소요시간'),
+      expect.stringContaining('GRTA 승차 위치'),
+    ]));
+    expect(artifact.gaps.join('\n')).not.toMatch(/택시 기본요금|공항 택시 승차 위치/);
+    expect(selectedClaims).toMatch(/서쪽 도착 터미널/);
+    expect(selectedClaims).toMatch(/기본 호출 2\.40 USD/);
+    expect(selectedClaims).toMatch(/투몬 호텔/);
   });
 
   it('keeps multi-mode coverage when the Guam Airport page is unavailable', () => {

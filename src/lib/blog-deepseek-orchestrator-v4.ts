@@ -109,8 +109,11 @@ function rewriteClaimDecisionScore(
   if (itineraryOrRoute) {
     if (claim.claimType === 'duration') score += 10;
     if (claim.claimType === 'price' && !/취소|변경|추가\s*인원|additional\s+person|cancellation|refund/i.test(text)) score += 14;
+    if (claim.claimType === 'price' && /택시|taxi/i.test(text) && /요금|미터|fare|meter/i.test(text)) score += 22;
     if (/수하물|캐리어|trunk|luggage|baggage/i.test(text)) score += 13;
     if (/항공\s*지연|비행편명|flight\s*(?:number|delay)/i.test(text)) score += 13;
+    if (/택시\s*카운터|서쪽\s*도착\s*터미널|west\s*arrival/i.test(text)) score += 22;
+    if (/대중교통\s*노선[\s\S]{0,80}투몬\s*호텔|transit[\s\S]{0,80}tumon\s*hotel/i.test(text)) score += 16;
     if (/취소|변경|cancellation|refund/i.test(text)) score -= 18;
     if (/추가\s*인원|additional\s+person/i.test(text)) score -= 8;
     if (/주말|평일|오전|오후|저녁|밤|시\b|전(?:에|까지)|후(?:에|부터)|weekend|before|after|\d{1,2}:\d{2}/i.test(text)) score += 14;
@@ -734,6 +737,8 @@ export function buildDeepSeekRewritePromptV4(input: {
       '- Use only the approved factual sentences needed to answer the section purpose. Do not organize the article as one source or one claim per section.',
       '- Each approved fact may appear only once in the visible article. Never restate, combine, summarize, or explain its number or entity-property pair in another sentence.',
       '- Never combine two approved numeric claims into one sentence. Keep every numeric claim as its supplied standalone sentence followed by its supplied citation.',
+      '- For route fares, do not add a separate sentence comparing one-ride and day-pass products or calculating a break-even point. The exact approved fare sentences are sufficient.',
+      '- Do not interpret an approved timetable duration as typical, actual, traffic-dependent, fast, or slow. State only the exact approved duration and its citation.',
       '- Apart from those approved sentences, you may write only source-neutral editorial guidance: a direct decision answer, reasoning about the reader\'s choices, reader actions, headings, and reader-choice questions.',
       '- Editorial guidance must not assert a property of any destination, attraction, hotel, route, weather pattern, price, schedule, crowd, safety condition, or policy.',
       '- Outside an approved claim, avoid status-like wording such as 예약 가능, 운영 중, 영업, 이용 가능, or 이동 부담이 적다/크다. Ask the reader to check the latest official notice without predicting its content.',

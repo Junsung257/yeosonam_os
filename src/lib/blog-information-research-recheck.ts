@@ -5,7 +5,7 @@ import {
 import { readBlogEditorialBacklogDedupKey } from './blog-editorial-backlog-recheck';
 
 export const BLOG_INFORMATION_RESEARCH_RECHECK_VERSION =
-  'blog-information-research-recheck-20260831-v9';
+  'blog-information-research-recheck-20260831-v10';
 
 const AUTOMATED_RESEARCH_INTENTS = new Set<BlogInformationIntent>([
   'food_budget',
@@ -143,6 +143,39 @@ function isControlledHarnessDefectFailure(
     && (v7Defect || v8Defect);
 }
 
+function isControlledHarnessResearchGapFailure(
+  row: BlogInformationResearchRecheckRow,
+  meta: Record<string, unknown>,
+): boolean {
+  const orchestration = asRecord(meta.ai_orchestration_v4);
+  const failureEvidence = Array.isArray(orchestration.failure_evidence)
+    ? orchestration.failure_evidence.map(String)
+    : [];
+  const requiredFailureMarkers = [
+    'editorial_harness_retry_exhausted',
+    'unsupported_number',
+    'claim_support_coverage_below_90_percent',
+    'unsupported_number_present',
+    'publish_gate:public_customer_quality',
+    'public_customer:info_answer_mismatch',
+    'editorial_harness_v5:semantic_usefulness',
+    'editorial_harness_v5:semantic_completeness',
+  ];
+  const exactFailureEvidence = failureEvidence.length === requiredFailureMarkers.length
+    && requiredFailureMarkers.every((marker) => failureEvidence.includes(marker));
+  return row.source === 'user_seed'
+    && row.status === 'failed'
+    && meta.controlled_publish_canary === true
+    && meta.editor_approved_seed === true
+    && meta.information_research_recheck_version === 'blog-information-research-recheck-20260831-v9'
+    && meta.information_research_recheck_result === 'controlled_harness_defect_rewrite_requeued'
+    && typeof meta.controlled_harness_defect_recovered_at === 'string'
+    && orchestration.version === 'blog-deepseek-orchestrator-v4'
+    && orchestration.route === 'quarantine'
+    && exactFailureEvidence
+    && /^blog_quality_v4_quarantine:/i.test(String(row.last_error ?? ''));
+}
+
 function clearedResearchFailureMeta(
   meta: Record<string, unknown>,
   checkedAt: string,
@@ -238,6 +271,56 @@ function clearedHarnessDefectFailureMeta(
   };
 }
 
+function clearedHarnessResearchGapMeta(
+  meta: Record<string, unknown>,
+  checkedAt: string,
+  intent: BlogInformationIntent,
+): Record<string, unknown> {
+  const next = { ...meta };
+  for (const key of [
+    'failure_code',
+    'failure_retryable',
+    'quarantine_reason',
+    'self_heal_blocked',
+    'skipped_duplicate',
+    'information_research_bundle',
+    'decision_artifact_v1',
+    'auto_research',
+    'auto_research_failure',
+    'research_issues',
+    'research_failed_at',
+    'evidence_insufficient',
+  ]) {
+    delete next[key];
+  }
+  const orchestration = asRecord(meta.ai_orchestration_v4);
+  return {
+    ...next,
+    ai_orchestration_v4: {
+      ...orchestration,
+      route: 'reresearch',
+      next_stage: 'rewrite_pro_max',
+      publishable: false,
+      reasons: ['controlled_harness_research_gap'],
+      failure_evidence: [
+        ...new Set([
+          ...(Array.isArray(orchestration.failure_evidence)
+            ? orchestration.failure_evidence.map(String)
+            : []),
+          'controlled_harness_research_gap',
+        ]),
+      ],
+      research_attempts: Number(orchestration.research_attempts || 0) + 1,
+    },
+    information_research_rechecked_at: checkedAt,
+    information_research_recheck_version: BLOG_INFORMATION_RESEARCH_RECHECK_VERSION,
+    information_research_recheck_intent: intent,
+    information_research_recheck_result: 'controlled_harness_reresearch_requeued',
+    controlled_harness_reresearch_recovered_at: checkedAt,
+    requeued_by: BLOG_INFORMATION_RESEARCH_RECHECK_VERSION,
+  };
+}
+
 export function buildBlogInformationResearchRecheckDecision(input: {
   row: BlogInformationResearchRecheckRow;
   checkedAt?: string;
@@ -257,6 +340,7 @@ export function buildBlogInformationResearchRecheckDecision(input: {
   const reviewedPublishedReplacement = isHumanReviewedPublishedReplacement(meta);
   const boundedRewriteFailure = isControlledBoundedRewriteFailure(input.row, meta);
   const harnessDefectFailure = isControlledHarnessDefectFailure(input.row, meta);
+  const harnessResearchGapFailure = isControlledHarnessResearchGapFailure(input.row, meta);
   const blocked = (reason: string): BlogInformationResearchRecheckDecision => ({
     action: 'keep_blocked',
     intent,
@@ -277,7 +361,7 @@ export function buildBlogInformationResearchRecheckDecision(input: {
   }
   if (!input.row.destination || !input.row.topic) return blocked('research_context_missing');
   if (!AUTOMATED_RESEARCH_INTENTS.has(intent)) return blocked('intent_not_live_verified');
-  if (!isResearchFailure(input.row) && !boundedRewriteFailure && !harnessDefectFailure) {
+  if (!isResearchFailure(input.row) && !boundedRewriteFailure && !harnessDefectFailure && !harnessResearchGapFailure) {
     return blocked('not_information_research_failure');
   }
   if (meta.requeued_by === BLOG_INFORMATION_RESEARCH_RECHECK_VERSION) {
@@ -308,12 +392,16 @@ export function buildBlogInformationResearchRecheckDecision(input: {
     action: 'requeue',
     intent,
     dedupKey,
-    reason: harnessDefectFailure
+    reason: harnessResearchGapFailure
+      ? 'controlled_harness_reresearch_retry'
+      : harnessDefectFailure
       ? 'controlled_harness_defect_rewrite_retry'
       : boundedRewriteFailure
         ? 'bounded_orchestrator_rewrite_retry'
         : 'live_verified_research_retry',
-    meta: harnessDefectFailure
+    meta: harnessResearchGapFailure
+      ? clearedHarnessResearchGapMeta(meta, checkedAt, intent)
+      : harnessDefectFailure
       ? clearedHarnessDefectFailureMeta(meta, checkedAt, intent)
       : boundedRewriteFailure
         ? clearedBoundedRewriteFailureMeta(meta, checkedAt, intent)

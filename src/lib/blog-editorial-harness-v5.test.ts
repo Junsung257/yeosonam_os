@@ -237,7 +237,7 @@ describe('blog editorial harness v5', () => {
     expect(artifact.directAnswer).toContain('GRTA');
     expect(artifact.directAnswer).toContain('카카오 T 괌택시');
     expect(artifact.directAnswer).not.toContain('Route 14');
-    expect(artifact.resolvedTitle).toBe('괌 공항 투몬 교통: GRTA 요금·운행 근거와 괌택시 수하물·지연 대응');
+    expect(artifact.resolvedTitle).toBe('괌 공항 투몬 교통: GRTA 요금과 괌택시 수하물·지연 대응');
     expect(output.markdown).not.toContain('무엇을 확인할지 먼저 고르세요.');
     expect(output.markdown).toContain(artifact.directAnswer);
     expect(artifact.gaps).toEqual(expect.arrayContaining([

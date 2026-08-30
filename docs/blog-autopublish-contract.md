@@ -663,6 +663,7 @@ Priority 2:
 
 Priority 3:
 
+- Airport-transport research may use reviewed official-tourism sources in addition to airports and transport operators. For the Guam controlled canary, the source registry includes the Guam Visitors Bureau transportation page for regulated meter rates and Tumon transit coverage. Guam Airport remains the authority for the West Arrivals taxi-counter location; GRTA remains the authority for its own fares and timetable. Missing door-to-door duration or exact GRTA boarding location must remain an explicit evidence gap.
 - URL Inspection sampling with quota-aware backoff was added on 2026-07-04:
   - Helper: `src/lib/gsc-url-inspection-quota.ts`.
   - Cron integration: `src/app/api/cron/gsc-index-rank/route.ts`.

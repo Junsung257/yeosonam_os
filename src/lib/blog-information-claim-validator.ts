@@ -277,7 +277,9 @@ const ASSERTIVE_STATEMENT_RE = /(?:입니다|합니다|됩니다|있습니다|�
 // facts. Keep the allowlist deliberately narrow: the sentence must start from
 // the reader's decision/action, contain no measured value or operational
 // status, and must not start by assigning a property to a named operator.
-const V3_ROUTE_DECISION_GUIDANCE_RE = /^(?!.*(?:\d|[₩￦¥￥$€₫]|\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\b|현재|실제로|항상|통상|평균|저렴|비싸|빠르|느리|안전|적합|가능|불가|마감|매진|운영\s*중|영업\s*중))(?:(?:이동|교통)수단을|예산을|수하물을|승차\s*전|하차\s*후|중간\s*구간에서는|이동\s*구간에서는|먼저\s|자신의\s)(?=.*(?:이동수단|교통수단|예산|요금|수하물|항공\s*지연|승차|하차|중간\s*구간|이동\s*구간|예약\s*화면|공식\s*(?:채널|안내)))(?=.*(?:고르|선택|비교|확인|정하|결정|분리|대조|따로)).+$/i;
+const V3_ROUTE_DECISION_GUIDANCE_RE = /^(?!.*(?:\d|[₩￦¥￥$€₫]|\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\b|현재|실제로|항상|통상|평균|저렴|비싸|빠르|느리|안전|적합|가능|불가|마감|매진|운영\s*중|영업\s*중))(?:(?:이동|교통)수단을|대중교통\s*요금을|예산을|수하물을|승차\s*전|하차\s*후|중간\s*구간에서는|이동\s*구간에서는|먼저\s|자신의\s)(?=.*(?:이동수단|교통수단|대중교통|택시|예산|요금|수하물|항공\s*지연|승차|하차|중간\s*구간|이동\s*구간|예약\s*화면|공식\s*(?:채널|안내)))(?=.*(?:보면|고르|선택|비교|확인|정하|결정|분리|대조|따로)).+$/i;
+const V3_ROUTE_FARE_PRODUCT_GUIDANCE_RE = /^(?=.*1회\s*탑승)(?=.*1일권)(?=.*예상\s*탑승\s*횟수)(?=.*(?:비교|고르|선택)).+$/i;
+const V3_ROUTE_SCOPE_HEADING_RE = /^(?!.*\d)(?=.*공항)(?=.*교통)(?=.*:)(?=.*(?:GRTA|택시))(?=.*(?:요금|승차|수하물|지연|공식\s*근거)).{8,100}$/i;
 const SOURCE_NEUTRAL_PLANNING_CANDIDATE_KINDS = new Set<BlogInformationFactualCandidateKind>([
   'availability_status',
   'time_schedule',
@@ -349,6 +351,8 @@ export function classifyBlogInformationStatement(segment: string): {
       || V3_FOOD_BUDGET_EDITORIAL_GUIDANCE_RE.test(segment)
       || V3_FOOD_BUDGET_SCOPE_LIMITATION_RE.test(segment)
       || V3_ROUTE_DECISION_GUIDANCE_RE.test(segment)
+      || V3_ROUTE_FARE_PRODUCT_GUIDANCE_RE.test(segment)
+      || V3_ROUTE_SCOPE_HEADING_RE.test(segment)
   );
   const itineraryContingencyGuidance = !unsupportedLocalEvaluation
     && V3_ITINERARY_CONTINGENCY_GUIDANCE_RE.test(planningText);
@@ -367,6 +371,8 @@ export function classifyBlogInformationStatement(segment: string): {
     factualClassification
     && !(factualClassification.candidateKind === 'requirement_prohibition' && directDecisionGuidance)
     && !(factualClassification.candidateKind === 'time_schedule' && itineraryContingencyGuidance)
+    && !V3_ROUTE_FARE_PRODUCT_GUIDANCE_RE.test(segment)
+    && !V3_ROUTE_SCOPE_HEADING_RE.test(segment)
     && !itineraryProposal
     && !sourceNeutralPlanningAdvice
     && !availabilityRecheck

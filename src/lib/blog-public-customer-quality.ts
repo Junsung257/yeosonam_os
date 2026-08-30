@@ -248,9 +248,11 @@ function visibleMatches(text: string, pattern: RegExp, limit = 5): string[] {
 }
 
 function infoFirstParagraphFits(topic: string, firstParagraph: string): boolean {
+  // Transport titles can legitimately mention luggage or flight-delay handling.
+  // Resolve the concrete route intent before the broader insurance vocabulary.
+  if (TRANSPORT_TOPIC_RE.test(topic)) return TRANSPORT_ANSWER_RE.test(firstParagraph);
   if (INSURANCE_TOPIC_RE.test(topic)) return INSURANCE_ANSWER_RE.test(firstParagraph);
   if (VISA_TOPIC_RE.test(topic)) return VISA_ANSWER_RE.test(firstParagraph);
-  if (TRANSPORT_TOPIC_RE.test(topic)) return TRANSPORT_ANSWER_RE.test(firstParagraph);
   if (COST_TOPIC_RE.test(topic)) return COST_ANSWER_RE.test(firstParagraph);
   if (WEATHER_TOPIC_RE.test(topic)) {
     return WEATHER_ANSWER_RE.test(firstParagraph) && !RESERVATION_FIRST_RE.test(firstParagraph.slice(0, 180));
