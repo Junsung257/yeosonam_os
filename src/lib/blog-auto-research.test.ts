@@ -606,6 +606,78 @@ describe('augmentGrtaAirportTransportPayload', () => {
     expect(readiness.passed).toBe(true);
   });
 
+  it('keeps multi-mode coverage when the Guam Airport page is unavailable', () => {
+    const pages = [
+      schedulePage,
+      {
+        url: 'https://grta.guam.gov/sites/default/files/grta_bus_pass_sales_information_sheet.pdf',
+        title: 'GRTA fare sheet',
+        text: 'REGULAR FARE PASSES One Ride = $ 1.50 One Day Pass = $ 4.00',
+      },
+      {
+        url: 'https://service.kakaomobility.com/api/cs/v1/faqs/categories/44/contents?recordsPerPage=100&currentPageNo=1',
+        title: 'Kakao T Guam taxi FAQ',
+        text: JSON.stringify({
+          contents: [
+            {
+              title: '차량에 수화물(짐)을 얼마나 실을 수 있나요?',
+              content: '<p>배차되는 차량마다 트렁크 공간이 다를 수 있지만, 보통 24kg 캐리어 기준으로 3~4개까지 실을 수 있어요. 과도한 수화물을 싣고자 하는 경우 현장에서 탑승이 제한되거나 추가 요금이 발생할 수 있어요.</p>',
+            },
+            {
+              title: '항공이 지연 되었습니다.',
+              content: '<p>예약 시 비행편명을 기재한 경우 현지 업체에서 도착 시간 확인 후 탑승을 도와드릴 예정입니다.</p>',
+            },
+          ],
+        }),
+      },
+    ];
+    const payload = augmentGrtaAirportTransportPayload(pages, '괌', {
+      sources: [],
+      evidence: [],
+      claims: [],
+    });
+    const sourcePolicy = {
+      minimumClaimSourceCoverage: 0.9,
+      primarySourcesRequired: false,
+      exactNumbersRequireSource: true,
+      retrievedAtRequired: true,
+      sourceTypes: ['airport', 'transport_operator', 'government', 'reputable_local_source', 'reputable_price_source'],
+    };
+    const now = new Date();
+    const built = buildBlogResearchBundleFromGrounding({
+      contentKey: 'guam-airport-tumon-transport-fallback',
+      destination: '괌',
+      locale: 'ko-KR',
+      brief: { intentType: 'airport_transport', sourcePolicy },
+      payload,
+      groundingChunks: pages.map((page) => ({ web: { uri: page.url, title: page.title } })),
+      directSourceUrls: pages.map((page) => page.url),
+      officialRegistry: [
+        { id: 'grta', hostname: 'grta.guam.gov', sourceType: 'transport_operator', authorityLevel: 'official_primary', allowSubdomains: true },
+        { id: 'kakao', hostname: 'kakaomobility.com', sourceType: 'transport_operator', authorityLevel: 'official_primary', allowSubdomains: true },
+      ],
+      now,
+    });
+    const readiness = evaluateBlogGenerationResearchReadiness({
+      meta: { information_research_bundle: built.bundle },
+      expectedContentKey: 'guam-airport-tumon-transport-fallback',
+      destination: '괌',
+      intent: 'airport_transport',
+      locale: 'ko-KR',
+      sourcePolicy,
+      now,
+    });
+    const claimText = payload.claims?.map((claim) => claim.claimText).join('\n') ?? '';
+
+    expect(claimText).toMatch(/대중교통/);
+    expect(claimText).toMatch(/택시/);
+    expect(readiness.issues).not.toContain(
+      'claim_semantic_coverage_missing:airport_transport:multiple_modes',
+    );
+    expect(readiness.issues).toEqual([]);
+    expect(readiness.passed).toBe(true);
+  });
+
   it('does not infer durations when a published timetable value changes', () => {
     const payload = augmentGrtaAirportTransportPayload([{
       ...schedulePage,
