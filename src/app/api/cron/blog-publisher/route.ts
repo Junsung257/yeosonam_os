@@ -5231,7 +5231,7 @@ async function generateFromTopic(
       item.meta = {
         ...(item.meta || {}),
         auto_research_failure: {
-          version: 'reviewed-source-direct-fetch-v3',
+          version: 'reviewed-source-direct-fetch-v4',
           attempt_count: researchFailureAttempt,
           failed_at: new Date().toISOString(),
           model: autoResearch.model,
@@ -5239,8 +5239,11 @@ async function generateFromTopic(
           grounding_source_count: autoResearch.groundingSourceCount,
           direct_source_count: autoResearch.directSourceCount,
           direct_source_failure_count: autoResearch.directSourceFailures.length,
+          direct_source_failure_samples: autoResearch.directSourceFailures.slice(0, 5),
           critical_source_retry_count: autoResearch.criticalSourceRetryCount,
           critical_source_recovered_count: autoResearch.criticalSourceRecoveredCount,
+          critical_source_snapshot_fallback_count:
+            autoResearch.criticalSourceSnapshotFallbackCount,
           finish_reason: autoResearch.finishReason,
           response_text_length: autoResearch.responseTextLength,
           retryable_extraction_empty: retryableExtractionFailure,
@@ -5259,14 +5262,17 @@ async function generateFromTopic(
       ...(item.meta || {}),
       [BLOG_INFORMATION_RESEARCH_META_KEY]: autoResearch.bundle,
       auto_research: {
-        version: 'reviewed-source-direct-fetch-v3',
+        version: 'reviewed-source-direct-fetch-v4',
         model: autoResearch.model,
         completed_at: new Date().toISOString(),
         grounding_source_count: autoResearch.groundingSourceCount,
         direct_source_count: autoResearch.directSourceCount,
         direct_source_failure_count: autoResearch.directSourceFailures.length,
+        direct_source_failure_samples: autoResearch.directSourceFailures.slice(0, 5),
         critical_source_retry_count: autoResearch.criticalSourceRetryCount,
         critical_source_recovered_count: autoResearch.criticalSourceRecoveredCount,
+        critical_source_snapshot_fallback_count:
+          autoResearch.criticalSourceSnapshotFallbackCount,
         search_query_count: autoResearch.searchQueries.length,
       },
     };

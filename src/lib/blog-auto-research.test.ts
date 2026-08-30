@@ -24,6 +24,7 @@ import {
   sanitizeGroundedResearchPayload,
   selectMissingCriticalGuamAirportTransportRegistry,
   selectReputableResearchRegistryForIntent,
+  selectUsableReviewedRegistrySnapshots,
   shouldRetrySanitizedAutoResearchPayload,
 } from '@/lib/blog-auto-research';
 import { evaluateBlogGenerationResearchReadiness } from '@/lib/blog-generation-research';
@@ -277,6 +278,7 @@ describe('fetchReviewedDirectPages', () => {
 describe('selectMissingCriticalGuamAirportTransportRegistry', () => {
   const registry = [
     {
+      id: 'grta',
       hostname: 'grta.guam.gov',
       allowSubdomains: true,
       researchUrls: [
@@ -285,16 +287,19 @@ describe('selectMissingCriticalGuamAirportTransportRegistry', () => {
       ],
     },
     {
+      id: 'airport',
       hostname: 'guamairport.com',
       allowSubdomains: true,
       researchUrls: ['https://www.guamairport.com/passenger/ground-transportation'],
     },
     {
+      id: 'visit-guam',
       hostname: 'visitguam.com',
       allowSubdomains: true,
       researchUrls: ['https://www.visitguam.com/planning/transportation/'],
     },
     {
+      id: 'kakao',
       hostname: 'kakaomobility.com',
       allowSubdomains: true,
       researchUrls: ['https://service.kakaomobility.com/api/cs/v1/faqs/categories/44/contents?recordsPerPage=100&currentPageNo=1'],
@@ -333,6 +338,50 @@ describe('selectMissingCriticalGuamAirportTransportRegistry', () => {
       [],
       { destination: '괌', intent: 'food_budget' },
     )).toEqual([]);
+  });
+});
+
+describe('selectUsableReviewedRegistrySnapshots', () => {
+  const now = new Date('2026-08-31T00:00:00Z');
+  const registry = [{
+    id: 'visit-guam',
+    hostname: 'visitguam.com',
+    allowSubdomains: true,
+    researchUrls: ['https://www.visitguam.com/planning/transportation/'],
+  }];
+  const row = {
+    source_url: registry[0]!.researchUrls[0],
+    publisher: 'Guam Visitors Bureau',
+    snapshot_content: 'All taxis have regulated meters. The standard flag rate is $2.40, $4.00 for the first mile, and $0.80 every ¼ mile thereafter. Transportation on the line includes most major shopping centers as well as the hotels in Tumon and Hagatna.',
+    retrieved_at: '2026-08-30T00:00:00Z',
+    valid_until: '2026-09-29T00:00:00Z',
+    status: 'active',
+    official_source_registry_id: 'visit-guam',
+    metadata: { acquisition: 'reviewed_registry_snapshot' },
+  };
+
+  it('accepts only a fresh immutable snapshot bound to the exact reviewed URL and registry', () => {
+    const selected = selectUsableReviewedRegistrySnapshots({ rows: [row], registry, now });
+
+    expect(selected).toEqual([expect.objectContaining({
+      url: registry[0]!.researchUrls[0],
+      acquisition: 'reviewed_registry_snapshot',
+    })]);
+    expect(selected[0]!.text).toContain('standard flag rate is $2.40');
+  });
+
+  it('rejects expired, wrong-registry, and non-snapshot rows', () => {
+    const selected = selectUsableReviewedRegistrySnapshots({
+      rows: [
+        { ...row, valid_until: '2026-08-30T23:59:59Z' },
+        { ...row, official_source_registry_id: 'wrong-registry' },
+        { ...row, metadata: { acquisition: 'reviewed_direct_fetch' } },
+      ],
+      registry,
+      now,
+    });
+
+    expect(selected).toEqual([]);
   });
 });
 
@@ -657,6 +706,10 @@ describe('augmentGrtaAirportTransportPayload', () => {
       payload,
       groundingChunks: pages.map((page) => ({ web: { uri: page.url, title: page.title } })),
       directSourceUrls: pages.map((page) => page.url),
+      sourceAcquisitionByUrl: {
+        'https://www.guamairport.com/passenger/ground-transportation':
+          'reviewed_registry_snapshot',
+      },
       officialRegistry: [
         { id: 'grta', hostname: 'grta.guam.gov', sourceType: 'transport_operator', authorityLevel: 'official_primary', allowSubdomains: true },
         { id: 'airport', hostname: 'guamairport.com', sourceType: 'airport', authorityLevel: 'official_primary', allowSubdomains: true },
@@ -685,6 +738,12 @@ describe('augmentGrtaAirportTransportPayload', () => {
     expect(built.issues).toEqual([]);
     expect(readiness.issues).toEqual([]);
     expect(readiness.passed).toBe(true);
+    const snapshotSource = built.bundle!.sources.find((source) =>
+      source.sourceUrl === 'https://www.guamairport.com/passenger/ground-transportation');
+    expect(snapshotSource?.metadata?.acquisition).toBe('reviewed_registry_snapshot');
+    expect(built.bundle!.evidence
+      .filter((evidence) => evidence.sourceKey === snapshotSource?.sourceKey)
+      .every((evidence) => evidence.capturedBy === 'reviewed_registry_snapshot')).toBe(true);
     const artifact = buildBlogDecisionArtifactV1({
       title: '괌 공항 투몬 교통: 시간·비용·수하물 기준 비교',
       question: '괌 공항 투몬 교통',
@@ -723,6 +782,10 @@ describe('augmentGrtaAirportTransportPayload', () => {
     expect(writerOutput.markdown.trimStart()).toMatch(/^<!-- blog_decision_artifact:route_decision:v1 -->/);
     expect(writerOutput.markdown).not.toMatch(/24시간|15~30분/);
     expect(writerOutput.markdown).toContain('실제 숙소까지의 소요시간은 승인된 근거에서 확인되지 않음');
+    const firstBody = writerOutput.markdown.slice(writerOutput.markdown.indexOf('\n\n') + 2, 500);
+    expect(firstBody).toMatch(/1\.50 USD/);
+    expect(firstBody).toMatch(/2\.40 USD/);
+    expect(writerOutput.markdown).toContain('[여소남 여행지 가이드](/destinations)');
     expect(writerOutput.claimLedger).toHaveLength(10);
     expect(validateBlogInformationStructure({
       intent: 'airport_transport',

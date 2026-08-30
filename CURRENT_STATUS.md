@@ -6,6 +6,7 @@
 - 연구 실패 큐는 검증된 수요가 남고 허용된 정보성 의도이며 중복이 아닌 경우에만 1회 자동 재시도한다. 수요 없음, 상품 공개계약 미완성, 반복 실패, 위험 의도는 계속 차단한다.
 - 동결 해제는 `recover_blog_publication_rollout_v1` 하나로 제한했다. 문제 글의 공개면 제거와 `URL_DELETED` 성공, 동결 이후 V5 비공개 카나리의 승인 attempt·완전한 prompt trace·결정 artifact·독립 편집 심사 통과를 DB가 확인하고, 성공 시에만 `pilot_3`로 복귀하며 불변 감사행을 남긴다.
 - 운영 적용 순서는 코드/DB 배포 → 괌 공항-투몬 controlled canary 연구 재시도 → V5 비공개 생성 → 복구 dry-run → 감사형 동결 해제 → 정확한 단일 run 발행 → public/indexing read-back이다. 증거가 하나라도 없으면 동결을 유지한다.
+- 운영 런타임이 승인된 괌 공항·관광청 원문을 반복해서 읽지 못하는 경우를 위해, exact URL·공식 registry id·active 상태·30일 이내 수집·미래 `valid_until`을 모두 만족하는 불변 `blog_information_source_versions`만 `reviewed_registry_snapshot`으로 대체 사용할 수 있다. 실시간 수집으로 위장하지 않으며, 전제 하나라도 어긋나면 글쓰기를 계속 차단한다. 괌 공항 교통 10개 승인 사실이 모두 모이면 연구 구조화와 최종 비교 본문은 모델 prose 대신 결정론 코드가 만든다.
 
 ## 2026-08-30 블로그 People-First 편집 하네스 V5
 
