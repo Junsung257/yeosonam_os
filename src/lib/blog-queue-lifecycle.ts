@@ -21,6 +21,10 @@ import {
   buildBlogEditorialBacklogRecheckDecision,
   readBlogEditorialBacklogDedupKey,
 } from '@/lib/blog-editorial-backlog-recheck';
+import { buildBlogInformationResearchRecheckDecision } from '@/lib/blog-information-research-recheck';
+import { hasVerifiedBlogDemandSignal } from '@/lib/blog-autopublish-policy-v3';
+import { readEmbeddedBlogQueueDemandSignalV3 } from '@/lib/blog-demand-repository-v3';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 import { evaluateQueuedInformationResearch } from '@/lib/blog-queue-research';
 
 /**
@@ -329,6 +333,8 @@ type RecoverableQueueRow = {
   target_publish_at: string | null;
   created_at: string | null;
   updated_at: string | null;
+  monthly_search_volume?: number | null;
+  trend_score?: number | null;
   meta: unknown;
 };
 
@@ -401,10 +407,8 @@ async function loadActiveEditorialDedupKeys(): Promise<Map<string, string>> {
   }
 
   const { data: publishedRows } = await supabaseAdmin
-    .from('content_creatives')
+    .from(PUBLIC_BLOG_READ_SOURCE)
     .select('id,product_id,slug,destination,status,angle_type,generation_meta')
-    .eq('channel', 'naver_blog')
-    .eq('status', 'published')
     .order('published_at', { ascending: false })
     .limit(1000);
   for (const row of (publishedRows ?? []) as ActiveDedupRow[]) {
@@ -428,17 +432,33 @@ export async function recoverRequeueableFailedBlogQueueItems(opts?: {
   if (!isSupabaseConfigured) return { scanned: 0, requeued: 0, skipped: 0, deferred: 0, kept_blocked: 0, errors: [] };
 
   const now = new Date().toISOString();
-  const { data, error } = await supabaseAdmin
-    .from('blog_topic_queue')
-    .select('id,product_id,topic,destination,source,status,attempts,priority,angle_type,last_error,target_publish_at,created_at,updated_at,meta')
-    .in('status', ['failed', 'deferred'])
-    .order('updated_at', { ascending: false })
-    .limit(opts?.limit ?? 80);
-  if (error || !data) {
-    return { scanned: 0, requeued: 0, skipped: 0, deferred: 0, kept_blocked: 0, errors: [error?.message ?? 'recoverable_queue_scan_failed'] };
+  const columns = 'id,product_id,topic,destination,source,status,attempts,priority,angle_type,last_error,target_publish_at,created_at,updated_at,monthly_search_volume,trend_score,meta';
+  const limit = opts?.limit ?? 80;
+  const [activeFailureResult, skippedResearchResult] = await Promise.all([
+    supabaseAdmin
+      .from('blog_topic_queue')
+      .select(columns)
+      .in('status', ['failed', 'deferred'])
+      .order('updated_at', { ascending: false })
+      .limit(limit),
+    supabaseAdmin
+      .from('blog_topic_queue')
+      .select(columns)
+      .eq('status', 'skipped')
+      .is('product_id', null)
+      .eq('last_error', 'evidence_insufficient')
+      .order('updated_at', { ascending: false })
+      .limit(limit),
+  ]);
+  const scanError = activeFailureResult.error ?? skippedResearchResult.error;
+  if (scanError) {
+    return { scanned: 0, requeued: 0, skipped: 0, deferred: 0, kept_blocked: 0, errors: [scanError.message] };
   }
 
-  const rows = data as RecoverableQueueRow[];
+  const rows = [...new Map(
+    [...(activeFailureResult.data ?? []), ...(skippedResearchResult.data ?? [])]
+      .map((row) => [String(row.id), row]),
+  ).values()] as RecoverableQueueRow[];
   const productDedupKeys = await loadActiveProductDedupKeys();
   const editorialDedupKeys = await loadActiveEditorialDedupKeys();
   const requeuedProductKeys = new Map<string, string>();
@@ -452,6 +472,79 @@ export async function recoverRequeueableFailedBlogQueueItems(opts?: {
 
   for (const row of rows) {
     try {
+      if (!row.product_id) {
+        const researchDecision = buildBlogInformationResearchRecheckDecision({
+          row,
+          checkedAt: now,
+          activeDuplicateId: (() => {
+            const key = readBlogEditorialBacklogDedupKey(row);
+            return key ? editorialDedupKeys.get(key) : null;
+          })(),
+          alreadyRequeuedId: (() => {
+            const key = readBlogEditorialBacklogDedupKey(row);
+            return key ? requeuedEditorialKeys.get(key) : null;
+          })(),
+        });
+        const demandVerified = hasVerifiedBlogDemandSignal(
+          readEmbeddedBlogQueueDemandSignalV3({
+            product_id: row.product_id,
+            monthly_search_volume: row.monthly_search_volume,
+            trend_score: row.trend_score,
+            meta: asRecord(row.meta),
+          }),
+        );
+        if (researchDecision.action === 'requeue' && demandVerified) {
+          const { error: updateError } = await supabaseAdmin
+            .from('blog_topic_queue')
+            .update({
+              status: 'queued',
+              attempts: 0,
+              last_error: null,
+              target_publish_at: null,
+              updated_at: now,
+              priority: Math.max(Number(row.priority ?? 0), 90),
+              meta: {
+                ...researchDecision.meta,
+                recovered_by: opts?.recoveredBy ?? 'blog-publisher-research-recovery',
+                verified_demand_recovery: true,
+              },
+            } as never)
+            .eq('id', row.id)
+            .eq('status', row.status);
+          if (updateError) errors.push(updateError.message);
+          else {
+            requeued += 1;
+            if (researchDecision.dedupKey) {
+              requeuedEditorialKeys.set(researchDecision.dedupKey, row.id);
+            }
+          }
+          continue;
+        }
+        if (researchDecision.action === 'skip_duplicate') {
+          if (row.status !== 'skipped') {
+            const { error: updateError } = await supabaseAdmin
+              .from('blog_topic_queue')
+              .update({
+                status: 'skipped',
+                last_error: 'information_research_recheck_duplicate',
+                updated_at: now,
+                meta: researchDecision.meta,
+              } as never)
+              .eq('id', row.id)
+              .eq('status', row.status);
+            if (updateError) errors.push(updateError.message);
+            else skipped += 1;
+          } else {
+            keptBlocked += 1;
+          }
+          continue;
+        }
+        if (row.status === 'skipped') {
+          keptBlocked += 1;
+          continue;
+        }
+      }
+
       if (isProductEvidenceRecoveryRow(row) && row.product_id) {
         if (!productStatusCache.has(row.product_id)) {
           const { data: product } = await supabaseAdmin

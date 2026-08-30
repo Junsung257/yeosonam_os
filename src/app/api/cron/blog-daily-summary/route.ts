@@ -342,8 +342,7 @@ async function runDailySummary(request: NextRequest) {
     { data: [], count: 0 },
   ] as any;
   const summaryResults = await withTimeout(Promise.all([
-    supabaseAdmin.from('content_creatives').select('id, slug, title, seo_title, category, content_type, product_id, destination, review_status, published_at, content_modified_at, blog_html, readability_score, seo_score, quality_gate, generation_meta', { count: 'exact' })
-      .eq('channel', 'naver_blog').eq('status', 'published')
+    supabaseAdmin.from(PUBLIC_BLOG_READ_SOURCE).select('id, slug, title, seo_title, category, content_type, product_id, destination, review_status, published_at, content_modified_at, blog_html, readability_score, seo_score, quality_gate, generation_meta', { count: 'exact' })
       .gte('published_at', reportDay.start.toISOString()).lt('published_at', reportDay.end.toISOString()),
     supabaseAdmin.from('blog_topic_queue').select('id, status, product_id, content_creative_id, destination, angle_type, topic, source, priority, primary_keyword, category, attempts, last_error, created_at, updated_at, target_publish_at, monthly_search_volume, trend_score, meta', { count: 'exact' })
       .in('status', ['queued', 'generating', 'failed']),
@@ -360,9 +359,7 @@ async function runDailySummary(request: NextRequest) {
     supabaseAdmin.from('cron_health').select('cron_name, last_status, last_run_at, last_error_count, last_summary')
       .eq('cron_name', 'blog-publication-controller')
       .limit(1),
-    supabaseAdmin.from('content_creatives').select('id, destination, angle_type, slug, seo_title, blog_html, product_id, generation_meta')
-      .eq('channel', 'naver_blog')
-      .eq('status', 'published')
+    supabaseAdmin.from(PUBLIC_BLOG_READ_SOURCE).select('id, destination, angle_type, slug, seo_title, blog_html, product_id, generation_meta')
       .gte('published_at', new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString())
       .order('published_at', { ascending: false })
       .limit(300),
@@ -669,9 +666,7 @@ async function runDailySummary(request: NextRequest) {
       { data: null, error: { message: 'timeout' } },
     ] as any;
     const rolloutObservations = await withTimeout(Promise.all([
-      supabaseAdmin.from('content_creatives').select('id', { count: 'exact', head: true })
-        .eq('channel', 'naver_blog')
-        .eq('status', 'published')
+      supabaseAdmin.from(PUBLIC_BLOG_READ_SOURCE).select('id', { count: 'exact', head: true })
         .gte('published_at', reportDay.start.toISOString())
         .lt('published_at', reportDay.end.toISOString())
         .in('review_status', ['pending_review', 'in_review', 'rejected', 'changes_requested']),
@@ -700,10 +695,8 @@ async function runDailySummary(request: NextRequest) {
       supabaseAdmin.from(PUBLIC_BLOG_READ_SOURCE)
         .select('id,product_id,review_status,title,category,content_type,generation_meta')
         .limit(1000),
-      supabaseAdmin.from('content_creatives')
+      supabaseAdmin.from(PUBLIC_BLOG_READ_SOURCE)
         .select('id,seo_title,destination')
-        .eq('channel', 'naver_blog')
-        .eq('status', 'published')
         .limit(1000),
     ]), 8_000, rolloutFallback);
     const [unsafePublishedToday, badPublishedRuns, budgetRows, latestSnapshot, recentSearch, recentAnalytics, publicSurfaceRows, allPublishedTitles] = rolloutObservations;

@@ -97,6 +97,10 @@ describe('blog autopublish diagnosis bucket classification', () => {
     expect(source).toContain('Current day:');
     expect(source).toContain('selected_because');
     expect(source).toContain('quota_met');
+    expect(source).toContain('.from(PUBLIC_BLOG_READ_SOURCE)');
+    expect(source).toContain("source: 'public_eligibility_view'");
+    expect(source).toContain('published: input.rawPublished');
+    expect(source).not.toContain("{ source: 'blog_daily_summary', value: input.dailySummaryPublished }");
   });
 
   it('surfaces fleet-level phrase drift in the operator diagnosis', () => {

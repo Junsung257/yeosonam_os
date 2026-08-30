@@ -389,6 +389,15 @@ Before the daily close window, reports may intentionally evaluate the previous K
 - The admin health summary must mark this as an active operating issue even when the closed-day SLA was already met.
 - A quota-reached no-op with `remaining=0` remains healthy.
 
+## Public Quota Truth and Frozen-Rollout Recovery
+
+- Daily publication quota, daily summary totals, recent-public duplicate checks, and rollout publication observations must read `public_blog_content_creatives`. A raw `content_creatives.status='published'` row that is blocked by review, `noindex`, redirect, quality, claim, or representative policy is not a public publication and must not consume a slot.
+- Incident detection still records the original unsafe event, but remediation is evaluated against the current public surface. Hiding or deleting an unsafe row does not itself unfreeze publication.
+- A frozen rollout may return only to `pilot_3` through `recover_blog_publication_rollout_v1`. Direct state updates and the daily evaluator are not recovery paths.
+- Recovery requires database-verifiable evidence: the incident creative is absent from `public_blog_content_creatives`, its `URL_DELETED` indexing job succeeded, and a post-freeze informational canary remains a private draft with an `approved_for_slot` V5 attempt, complete prompt trace hashes, a decision artifact, and a passing independent `blog-editorial-harness-v5.0.0` evaluation.
+- Every successful recovery writes one immutable `blog_publication_rollout_recoveries` row with operator, reason, incident creative, canary run/attempt, hashes, and before/after state versions. State-version conflict, missing evidence, or a public incident row must fail closed.
+- Research-failure recovery is allowed once only when `buildBlogInformationResearchRecheckDecision()` permits the intent and the queue still has a verified GSC, Naver, customer-question, active-product, verified operator, editor seed, search-volume, or trend signal. Missing demand, product-open-contract, duplicate, unsupported intent, or repeat recovery remains blocked.
+
 ## Canary Candidate Contract
 
 Before widening automatic publishing after engine changes, `diagnose:blog-autopublish` and admin health must be able to identify at least three low-risk queued candidates without claiming or publishing them.

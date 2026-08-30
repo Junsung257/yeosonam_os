@@ -14,7 +14,10 @@ import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { processDueBlogIndexingJobs } from '@/lib/blog-indexing-worker';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
-import { getBlogPublicSurfacePolicyBlockReason } from '@/lib/blog-public-eligibility';
+import {
+  PUBLIC_BLOG_READ_SOURCE,
+  getBlogPublicSurfacePolicyBlockReason,
+} from '@/lib/blog-public-eligibility';
 import { readAutomatedPublishedBlogReplacement } from '@/lib/blog-private-regeneration';
 import {
   resolveEffectiveBlogPublicationRollout,
@@ -59,10 +62,8 @@ async function runBlogPublicationController(request: NextRequest) {
     && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(targetedRunId);
   const range = kstDayRange(now);
   const { count: publishedToday, error: countError } = await supabaseAdmin
-    .from('content_creatives')
+    .from(PUBLIC_BLOG_READ_SOURCE)
     .select('id', { count: 'exact', head: true })
-    .eq('channel', 'naver_blog')
-    .eq('status', 'published')
     .gte('published_at', range.start)
     .lt('published_at', range.end);
   if (countError) return { skipped: true, reason: `publish_count_failed:${countError.message}` };

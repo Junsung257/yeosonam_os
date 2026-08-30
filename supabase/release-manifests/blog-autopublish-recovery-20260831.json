@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "release": "blog-autopublish-recovery-20260831",
+  "apply_mode": "supabase-db-push-include-all-after-exact-dry-run",
+  "migrations": [
+    {
+      "version": "20260830154002",
+      "file": "supabase/migrations/20260830154002_blog_publication_rollout_manual_recovery_v1.sql",
+      "sha256": "d7ea20574913f2991d08a4a30cf17c1038b104bbbbee4b22d996ad54b5bb63c7"
+    }
+  ],
+  "rollback": {
+    "file": "supabase/rollbacks/blog-autopublish-recovery-compatibility-rollback.sql",
+    "sha256": "e9578f255e11c40d630047c42c0e90b5b1ec53498df242a1af700feb530e876e"
+  }
+}

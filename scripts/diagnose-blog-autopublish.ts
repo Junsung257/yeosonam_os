@@ -22,6 +22,7 @@ import {
   hasVerifiedBlogDemandSignal,
   readBlogAutopublishPolicyV3,
 } from '../src/lib/blog-autopublish-policy-v3';
+import { PUBLIC_BLOG_READ_SOURCE } from '../src/lib/blog-public-eligibility';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -189,15 +190,9 @@ function reconcileSelectedDayPublished(input: {
   dailySummaryPublished: number | null;
   publisherQuotaPublished: number | null;
 }): { published: number; source: string; evidence: Record<string, number | null> } {
-  const candidates = [
-    { source: 'content_creatives_raw', value: input.rawPublished },
-    { source: 'blog_daily_summary', value: input.dailySummaryPublished },
-    { source: 'publisher_daily_quota', value: input.publisherQuotaPublished },
-  ].filter((item): item is { source: string; value: number } => typeof item.value === 'number');
-  const winner = candidates.reduce((best, item) => item.value > best.value ? item : best, candidates[0]);
   return {
-    published: winner?.value ?? input.rawPublished,
-    source: winner?.source ?? 'content_creatives_raw',
+    published: input.rawPublished,
+    source: 'public_eligibility_view',
     evidence: {
       raw: input.rawPublished,
       daily_summary: input.dailySummaryPublished,
@@ -240,31 +235,23 @@ async function main() {
     policyRes,
   ] = await Promise.all([
     supabase
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select('id', { count: 'exact', head: true })
-      .eq('channel', 'naver_blog')
-      .eq('status', 'published')
       .gte('published_at', day.start.toISOString())
       .lt('published_at', day.end.toISOString()),
     supabase
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select('id', { count: 'exact', head: true })
-      .eq('channel', 'naver_blog')
-      .eq('status', 'published')
       .gte('published_at', yesterday.start.toISOString())
       .lt('published_at', yesterday.end.toISOString()),
     supabase
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select('id', { count: 'exact', head: true })
-      .eq('channel', 'naver_blog')
-      .eq('status', 'published')
       .gte('published_at', currentDay.start.toISOString())
       .lt('published_at', currentDay.end.toISOString()),
     supabase
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select('id, slug, seo_title, category, content_type, product_id, destination, blog_html, published_at, generation_meta, quality_gate, seo_score, readability_score')
-      .eq('channel', 'naver_blog')
-      .eq('status', 'published')
       .order('published_at', { ascending: false })
       .limit(recentPublishedLimit),
     countByStatus('blog_topic_queue', ['queued', 'generating', 'failed', 'skipped', 'deferred']),

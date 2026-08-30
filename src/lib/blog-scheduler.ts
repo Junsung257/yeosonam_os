@@ -16,6 +16,7 @@ import {
   readEmbeddedBlogQueueDemandSignalV3,
   type PersistedBlogDemandSignalV3,
 } from './blog-demand-repository-v3';
+import { PUBLIC_BLOG_READ_SOURCE } from './blog-public-eligibility';
 
 type MicroAngleId =
   | 'budget_family'
@@ -543,10 +544,8 @@ export async function ensureDailyPublishableQueue(opts?: {
 
   const [recentPublishedRes, activeQueueRes, activeRepresentativesRes] = await Promise.all([
     supabaseAdmin
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select('destination, angle_type, slug, product_id, generation_meta')
-      .eq('channel', 'naver_blog')
-      .eq('status', 'published')
       .gte('published_at', since.toISOString())
       .limit(300),
     supabaseAdmin
