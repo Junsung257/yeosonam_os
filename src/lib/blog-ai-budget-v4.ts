@@ -103,3 +103,16 @@ export function estimateBlogAiCallReservationUsdV4(input: {
     outputTokens: maxOutputTokens,
   }, input.now ?? new Date()).estimatedCostUsd;
 }
+
+/** Conservative reservation for the independent DeepSeek Pro editorial judge. */
+export function estimateBlogEditorialJudgeReservationUsdV5(input: {
+  maxOutputTokens: number;
+  now?: Date;
+  maxInputTokens?: number;
+}): number {
+  return calculateDeepSeekCostV4(BLOG_DEEPSEEK_MODELS.rewrite, {
+    inputTokens: Math.max(1, Math.trunc(input.maxInputTokens ?? 24_000)),
+    cacheHitInputTokens: 0,
+    outputTokens: Math.max(1, Math.trunc(input.maxOutputTokens)),
+  }, input.now ?? new Date()).estimatedCostUsd;
+}

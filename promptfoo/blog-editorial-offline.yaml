@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+description: Yeosonam people-first blog editorial harness (33 frozen offline fixtures)
+
+prompts:
+  - id: recorded-blog-candidate
+    raw: '{{candidate_answer}}'
+
+providers:
+  - id: echo
+    label: committed-blog-candidate
+
+defaultTest:
+  options:
+    disableVarExpansion: true
+  assert:
+    - type: javascript
+      value: file://assertions/blog-editorial-contract.cjs
+      metric: people-first-editorial-contract
+
+tests: file://load-blog-editorial-tests.cjs
+
+commandLineOptions:
+  share: false
+  cache: false
+  write: false
+  maxConcurrency: 1

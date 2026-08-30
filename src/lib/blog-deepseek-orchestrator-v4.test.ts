@@ -14,7 +14,6 @@ import {
   isDeepSeekPeakAt,
   nextBlogPublicationSlotKstV4,
   normalizeBlogWriterHeadingV4,
-  repairFoodBudgetRewriteOpeningV4,
   resolveBlogGenerationModelV4,
   resolveBlogPublicationRampCapV4,
   resolveDeepSeekPriceV4,
@@ -22,32 +21,7 @@ import {
 } from './blog-deepseek-orchestrator-v4';
 
 describe('blog DeepSeek orchestrator V4', () => {
-  it('repairs a generic food-budget rewrite opening with reviewed source domains', () => {
-    const repaired = repairFoodBudgetRewriteOpeningV4({
-      markdown: [
-        '# 괌 여행 식비 예산',
-        '',
-        '이 예산은 여행 방식별 포함 범위에 따라 달라집니다.',
-        '',
-        '## 근거 확인',
-        '승인 문장',
-      ].join('\n'),
-      primaryQuery: '괌 여행 식비 예산',
-      intentType: 'food_budget',
-      approvedClaims: [{
-        claimText: '승인 문장',
-        claimType: 'price',
-        riskLevel: 'MEDIUM',
-        sourceUrls: ['https://chinfe.menuguam.com/', 'https://www.numbeo.com/example'],
-      }],
-    });
-
-    expect(repaired).toContain('chinfe.menuguam.com·numbeo.com 근거 링크부터 확인');
-    expect(repaired).not.toContain('이 예산은 여행 방식별 포함 범위에 따라 달라집니다.');
-    expect(repaired).toContain('## 근거 확인');
-  });
-
-  it('repairs the opening after a plain fixed title is normalized to H1', () => {
+  it('normalizes a plain fixed title without exposing source domains in prose', () => {
     const normalized = normalizeBlogWriterHeadingV4([
       '괌 여행 식비 예산',
       '',
@@ -56,36 +30,9 @@ describe('blog DeepSeek orchestrator V4', () => {
       '## 근거 확인',
       '승인 문장',
     ].join('\n'), '괌 여행 식비 예산');
-    const repaired = repairFoodBudgetRewriteOpeningV4({
-      markdown: normalized,
-      primaryQuery: '괌 여행 식비 예산',
-      intentType: 'food_budget',
-      approvedClaims: [{
-        claimText: '승인 문장',
-        claimType: 'price',
-        riskLevel: 'MEDIUM',
-        sourceUrls: ['https://chinfe.menuguam.com/'],
-      }],
-    });
 
     expect(normalized).toMatch(/^# 괌 여행 식비 예산/);
-    expect(repaired).toContain('chinfe.menuguam.com 근거 링크부터 확인');
-    expect(repaired).not.toContain('이 예산은 확인일 기준으로 수집된 항목만 포함합니다.');
-  });
-
-  it('does not replace a food-budget opening containing a number', () => {
-    const markdown = '# 괌 식비\n\n승인된 가격은 25 USD이다.\n\n## 근거\n본문';
-    expect(repairFoodBudgetRewriteOpeningV4({
-      markdown,
-      primaryQuery: '괌 식비',
-      intentType: 'food_budget',
-      approvedClaims: [{
-        claimText: '승인된 가격은 25 USD이다.',
-        claimType: 'price',
-        riskLevel: 'MEDIUM',
-        sourceUrls: ['https://example.com'],
-      }],
-    })).toBe(markdown);
+    expect(normalized).not.toContain('chinfe.menuguam.com');
   });
 
   it('publishes only a blocker-free score of 90 or more', () => {
@@ -98,6 +45,19 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(decideBlogQualityRouteV4({
       score: 100, completedAttempts: 1, failureReasons: ['publish_gate:public_customer_quality'],
     })).toMatchObject({ route: 'rewrite_pro_high', publishable: false });
+  });
+
+  it('allows one editorial-harness rewrite and then quarantines the candidate', () => {
+    expect(decideBlogQualityRouteV4({
+      score: 0,
+      completedAttempts: 1,
+      failureReasons: ['editorial_harness_v5:deterministic_reader_task_unanswered'],
+    })).toMatchObject({ route: 'rewrite_pro_high', nextStage: 'rewrite_pro_high' });
+    expect(decideBlogQualityRouteV4({
+      score: 0,
+      completedAttempts: 2,
+      failureReasons: ['editorial_harness_v5:semantic_usefulness'],
+    })).toMatchObject({ route: 'quarantine', nextStage: null });
   });
 
   it('re-researches missing or unsupported facts instead of asking a model to invent a repair', () => {
@@ -269,7 +229,7 @@ describe('blog DeepSeek orchestrator V4', () => {
     });
 
     expect(prompt).toContain('Answer that decision directly in the first paragraph.');
-    expect(prompt).toContain('Delete every numeric expression that does not appear verbatim in an approved claim.');
+    expect(prompt).toContain('Delete every numeric expression that does not appear verbatim in an approved claim or the supplied deterministic decision artifact.');
     expect(prompt).toContain('INFORMATION_CLAIM_LEDGER_START');
     expect(prompt).toContain('INFORMATION_CLAIM_LEDGER_END -->');
     expect(prompt).toContain('- unsupported_number');
@@ -277,9 +237,9 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(prompt).toContain('previous draft is intentionally omitted');
     expect(prompt).toContain('Selected approved claims (the complete factual universe');
     expect(prompt).toContain('오행산은 도시에서 15분 거리입니다.');
-    expect(prompt).toContain('Do not use a table in this rewrite.');
+    expect(prompt).toContain('Do not create a new numeric table.');
     expect(prompt).toContain('The ledger must contain only the approved claim sentences');
-    expect(prompt).toContain('exact citation markdown: [공식 근거](https://vietnam.travel/example)');
+    expect(prompt).toContain('exact citation markdown: [확인한 원문](https://vietnam.travel/example)');
     expect(prompt).toContain('source-neutral editorial guidance');
     expect(prompt).toContain('[ARCHETYPE CONTRACT — decision_comparison]');
     expect(prompt).toContain('End with a concise choice summary, not generic questions.');

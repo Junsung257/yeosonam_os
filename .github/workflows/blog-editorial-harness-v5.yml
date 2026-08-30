@@ -1,0 +1,48 @@
+name: Blog Editorial Harness V5
+
+on:
+  pull_request:
+    paths:
+      - 'src/lib/blog-editorial-harness-v5.ts'
+      - 'src/lib/blog-information-claim-validator.ts'
+      - 'src/lib/blog-deepseek-orchestrator-v4.ts'
+      - 'src/app/api/cron/blog-publisher/route.ts'
+      - 'promptfoo/blog-editorial-offline.yaml'
+      - 'promptfoo/load-blog-editorial-tests.cjs'
+      - 'promptfoo/assertions/blog-editorial-contract.cjs'
+      - 'supabase/migrations/*blog_editorial_harness_v5.sql'
+      - 'package.json'
+      - '.github/workflows/blog-editorial-harness-v5.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/lib/blog-editorial-harness-v5.ts'
+      - 'src/app/api/cron/blog-publisher/route.ts'
+      - 'promptfoo/**'
+
+permissions:
+  contents: read
+
+jobs:
+  editorial-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Verify immutable Supabase release bundle
+        run: npm run verify:blog-editorial-release-v5
+      - name: V5 unit and regression contracts
+        run: >-
+          npx vitest run
+          src/lib/blog-editorial-harness-v5.test.ts
+          src/lib/blog-information-derived-claim.test.ts
+          src/lib/blog-editorial-harness-v5-migration.test.ts
+          src/lib/blog-deepseek-orchestrator-v4.test.ts
+          src/app/api/cron/blog-publisher/route.test.ts
+      - name: Frozen 33-case Promptfoo challenger
+        run: npm run eval:blog-editorial:promptfoo

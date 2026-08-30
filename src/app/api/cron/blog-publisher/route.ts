@@ -204,7 +204,6 @@ import {
   decideBlogQualityRouteV4,
   nextBlogPublicationSlotKstV4,
   normalizeBlogWriterHeadingV4,
-  repairFoodBudgetRewriteOpeningV4,
   resolveBlogGenerationModelV4,
   selectDecisionRelevantRewriteClaimsV4,
   type BlogDeepSeekStage,
@@ -219,9 +218,27 @@ import {
   recordBlogGenerationAttemptV4,
   revalidateBlogGenerationAttemptV4,
   reserveBlogAiBudgetBeforeCallV4,
+  reserveBlogEditorialJudgeBudgetBeforeCallV5,
   settleBlogAiBudgetReservationV4,
 } from '@/lib/blog-generation-run-v4';
-import { estimateBlogAiCallReservationUsdV4 } from '@/lib/blog-ai-budget-v4';
+import {
+  estimateBlogAiCallReservationUsdV4,
+  estimateBlogEditorialJudgeReservationUsdV5,
+} from '@/lib/blog-ai-budget-v4';
+import {
+  applyBlogDecisionArtifactToWriterOutputV1,
+  buildBlogDecisionArtifactPromptBlockV1,
+  buildBlogDecisionArtifactV1,
+  buildBlogEditorialJudgePromptV1,
+  buildBlogPromptTraceV1,
+  combineBlogEditorialHarnessV1,
+  inspectBlogEditorialDeterministicallyV1,
+  parseBlogEditorialJudgeReportV1,
+  withBlogDecisionArtifactClaimsV1,
+  type BlogDecisionArtifactV1,
+  type BlogEditorialHarnessReportV1,
+  type BlogPromptTraceV1,
+} from '@/lib/blog-editorial-harness-v5';
 import {
   BLOG_RUNTIME_RESOURCES_V3,
   probeBlogRuntimeSchemaWithSupabaseV3,
@@ -721,6 +738,94 @@ async function generatePublisherBlogText(
       });
     }
     throw error;
+  }
+}
+
+const BLOG_EDITORIAL_JUDGE_MAX_OUTPUT_TOKENS = 1_200;
+
+async function evaluatePublisherEditorialHarnessV5(input: {
+  queueId: string;
+  attemptNumber: number;
+  title: string;
+  primaryQuery: string;
+  primaryDecision: string;
+  intentType: string;
+  markdown: string;
+  artifact: BlogDecisionArtifactV1;
+}): Promise<{
+  report: BlogEditorialHarnessReportV1;
+  receipt: BlogAiTextResult['receipt'] | null;
+}> {
+  const deterministic = inspectBlogEditorialDeterministicallyV1({
+    title: input.title,
+    markdown: input.markdown,
+    intentType: input.intentType,
+    artifact: input.artifact,
+  });
+  if (!deterministic.passed) {
+    return {
+      report: combineBlogEditorialHarnessV1({ deterministic, semantic: null }),
+      receipt: null,
+    };
+  }
+
+  const requestedUsd = estimateBlogEditorialJudgeReservationUsdV5({
+    maxOutputTokens: BLOG_EDITORIAL_JUDGE_MAX_OUTPUT_TOKENS,
+  });
+  const reservation = await reserveBlogEditorialJudgeBudgetBeforeCallV5({
+    queueId: input.queueId,
+    attemptNumber: input.attemptNumber,
+    model: BLOG_DEEPSEEK_MODELS.rewrite,
+    requestedUsd,
+  });
+  if (!reservation.allowed || !reservation.reservationId) {
+    return {
+      report: combineBlogEditorialHarnessV1({ deterministic, semantic: null }),
+      receipt: null,
+    };
+  }
+
+  let receipt: BlogAiTextResult['receipt'] | null = null;
+  try {
+    const judge = await withPublisherTimeout(
+      generateBlogTextWithReceipt(buildBlogEditorialJudgePromptV1({
+        title: input.title,
+        primaryQuery: input.primaryQuery,
+        primaryDecision: input.primaryDecision,
+        markdown: input.markdown,
+        artifact: input.artifact,
+      }), {
+        model: BLOG_DEEPSEEK_MODELS.rewrite,
+        cascade: false,
+        deepseekThinking: 'disabled',
+        temperature: 0,
+        maxTokens: BLOG_EDITORIAL_JUDGE_MAX_OUTPUT_TOKENS,
+        requestTimeoutMs: 60_000,
+      }),
+      75_000,
+      'blog_editorial_judge',
+    );
+    receipt = judge.receipt;
+    const semantic = parseBlogEditorialJudgeReportV1(judge.text);
+    await settleBlogAiBudgetReservationV4({
+      reservationId: reservation.reservationId,
+      receipt,
+      status: 'completed',
+    });
+    return {
+      report: combineBlogEditorialHarnessV1({ deterministic, semantic }),
+      receipt,
+    };
+  } catch (error) {
+    await settleBlogAiBudgetReservationV4({
+      reservationId: reservation.reservationId,
+      receipt: error instanceof BlogAiResponseError ? error.receipt : receipt,
+      status: 'failed',
+    });
+    return {
+      report: combineBlogEditorialHarnessV1({ deterministic, semantic: null }),
+      receipt,
+    };
   }
 }
 
@@ -3264,6 +3369,70 @@ async function processQueueItem(
     const internalLinkRelevant = Number(linksGateEvidence.internal ?? 0) > 0
       && ctaDestinationGatePassed;
     const diversityReport = corpusDiversity.report;
+    const storedDecisionArtifact = generationMeta.decision_artifact_v1
+      && typeof generationMeta.decision_artifact_v1 === 'object'
+      && !Array.isArray(generationMeta.decision_artifact_v1)
+      ? generationMeta.decision_artifact_v1 as BlogDecisionArtifactV1
+      : null;
+    const storedLegacyBrief = generationMeta.content_brief
+      && typeof generationMeta.content_brief === 'object'
+      && !Array.isArray(generationMeta.content_brief)
+      ? generationMeta.content_brief as Record<string, unknown>
+      : null;
+    const editorialIntentType = String(
+      storedLegacyBrief?.intent_type || generatedPlanBriefRecord?.intent || '',
+    );
+    let editorialHarnessV5: BlogEditorialHarnessReportV1 | null = null;
+    let editorialJudgeReceipt: BlogAiTextResult['receipt'] | null = null;
+    if (blogType === 'info' && storedDecisionArtifact) {
+      const editorialResult = await evaluatePublisherEditorialHarnessV5({
+        queueId: item.id,
+        attemptNumber: Math.max(1, Number(
+          (generationMeta.ai_orchestration_v4 as Record<string, unknown> | undefined)?.attempt || 1,
+        )),
+        title: generated.seo_title,
+        primaryQuery: contentBriefV3.primaryQuery,
+        primaryDecision: contentBriefV3.primaryDecision,
+        intentType: editorialIntentType,
+        markdown: generated.blog_html,
+        artifact: storedDecisionArtifact,
+      });
+      editorialHarnessV5 = editorialResult.report;
+      editorialJudgeReceipt = editorialResult.receipt;
+      const { error: editorialEvaluationError } = await supabaseAdmin
+        .from('blog_quality_evaluations')
+        .insert({
+          queue_id: item.id,
+          evaluator_version: editorialHarnessV5.version,
+          passed: editorialHarnessV5.passed,
+          score: editorialHarnessV5.passed ? 100 : 0,
+          dimensions: {
+            deterministic: editorialHarnessV5.deterministic,
+            semantic: editorialHarnessV5.semantic,
+            decision_artifact_version: storedDecisionArtifact.version,
+            judge_receipt: editorialJudgeReceipt ? {
+              provider: editorialJudgeReceipt.provider,
+              model: editorialJudgeReceipt.model,
+              latency_ms: editorialJudgeReceipt.latencyMs,
+              finish_reason: editorialJudgeReceipt.finishReason,
+              estimated_cost_usd: editorialJudgeReceipt.estimatedCostUsd,
+            } : null,
+          },
+          failure_reasons: editorialHarnessV5.failureReasons,
+          hard_blockers: editorialHarnessV5.failureReasons,
+        });
+      if (editorialEvaluationError) {
+        editorialHarnessV5 = {
+          ...editorialHarnessV5,
+          passed: false,
+          failureReasons: [...new Set([
+            ...editorialHarnessV5.failureReasons,
+            'evaluation_persistence_failed',
+          ])],
+        };
+      }
+    }
+    generationMeta.editorial_harness_v5 = editorialHarnessV5;
     const demandScoreV3 = scoreBlogDemandCandidateV3({
       demand: demandPreflight.signal,
       impressions: demandPreflight.performance.impressions,
@@ -3338,10 +3507,16 @@ async function processQueueItem(
     const orchestrationQualityScore = Math.min(
       qualityEvaluationV3.score,
       publishQuality.publicCustomerQuality.score,
+      blogType === 'info' && editorialHarnessV5?.passed !== true ? 0 : 100,
     );
     const orchestrationFailureReasons = [
       ...qualityEvaluationV3.failureReasons.map((failure) => failure.code),
       ...publishQualityFailureReasons,
+      ...(blogType === 'info'
+        ? editorialHarnessV5
+          ? editorialHarnessV5.failureReasons.map((reason) => `editorial_harness_v5:${reason}`)
+          : ['editorial_harness_v5:decision_artifact_or_harness_missing']
+        : []),
     ].filter((value, index, values) => value && values.indexOf(value) === index);
     const previousOrchestration = item.meta?.ai_orchestration_v4 as Record<string, unknown> | undefined;
     const aiOrchestrationMeta = generationMeta.ai_orchestration_v4 as Record<string, unknown> | undefined;
@@ -3368,10 +3543,18 @@ async function processQueueItem(
             : null,
         })
       : {
-          route: qualityEvaluationV3.passed && publishQuality.passed ? 'approved_for_slot' : 'human_review',
+          route: qualityEvaluationV3.passed
+            && publishQuality.passed
+            && (blogType !== 'info' || editorialHarnessV5?.passed === true)
+            ? 'approved_for_slot'
+            : 'human_review',
           nextStage: null,
-          publishable: qualityEvaluationV3.passed && publishQuality.passed,
-          reasons: qualityEvaluationV3.passed && publishQuality.passed
+          publishable: qualityEvaluationV3.passed
+            && publishQuality.passed
+            && (blogType !== 'info' || editorialHarnessV5?.passed === true),
+          reasons: qualityEvaluationV3.passed
+            && publishQuality.passed
+            && (blogType !== 'info' || editorialHarnessV5?.passed === true)
             ? ['non_model_candidate_quality_passed']
             : ['non_model_candidate_review_required', ...orchestrationFailureReasons],
           maxAttempts: BLOG_QUALITY_MAX_ATTEMPTS_V4,
@@ -3420,6 +3603,8 @@ async function processQueueItem(
             },
             links_gate: linksGate ?? null,
             rewrite_claim_packet_v4: generationMeta.rewrite_claim_packet_v4 ?? null,
+            editorial_harness_v5: editorialHarnessV5,
+            decision_artifact_v1: storedDecisionArtifact,
           },
         },
         qualityScore: orchestrationQualityScore,
@@ -3431,6 +3616,7 @@ async function processQueueItem(
         claimFingerprint: typeof item.meta?.claim_fingerprint === 'string'
           ? item.meta.claim_fingerprint
           : null,
+        promptTrace: generationMeta.prompt_trace_v1 as BlogPromptTraceV1 | undefined,
         receipt: generationReceipt,
       });
       if (attemptPersistence.error) {
@@ -3496,6 +3682,7 @@ async function processQueueItem(
         && corpusDiversity.error === null
         && qualityEvaluationV3.passed
         && qualityRouteV4.publishable
+        && (blogType !== 'info' || editorialHarnessV5?.passed === true)
         && demandScoreV3.eligible,
       deterministicFallback: generated.generation_meta?.private_diagnostic_fallback === true
         || generated.generation_meta?.deterministic_info_fallback === true,
@@ -3855,6 +4042,7 @@ async function processQueueItem(
       ...qualityEvaluationV3.hardBlockers,
       ...qualityEvaluationV3.failureReasons.map((failure) => failure.code),
       ...publishQualityFailureReasons,
+      ...(editorialHarnessV5?.failureReasons ?? []).map((reason) => `editorial_harness_v5:${reason}`),
     ].filter((value, index, values) => value && values.indexOf(value) === index);
     const [qualityAuditResult, publicationAuditResult] = await Promise.all([
       supabaseAdmin.from('blog_quality_evaluations').insert({
@@ -3876,6 +4064,8 @@ async function processQueueItem(
         gate_evidence: {
           autopublish: autopublishDecision,
           quality: qualityEvaluationV3,
+          editorial_harness_v5: editorialHarnessV5,
+          decision_artifact_v1: storedDecisionArtifact,
           diversity: corpusDiversity.error ? { error: corpusDiversity.error } : diversityReport,
           claims: claimValidationSummary,
           content_brief: contentBriefV3,
@@ -4853,12 +5043,26 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
         researchFingerprint: priorAttempt?.researchFingerprint || `product:${product.id}`,
         claimFingerprint: priorAttempt?.claimFingerprint || productBrief.dedup_key,
       })}`;
-  const generation = await generatePublisherBlogText(finalPrompt, generationStage === 'draft_flash'
+  const productGenerationOptions: {
+    model: string;
+    temperature: number;
+    deepseekThinking?: 'disabled';
+  } = generationStage === 'draft_flash'
     ? { model: BLOG_DEEPSEEK_MODELS.draft, deepseekThinking: 'disabled', temperature: 0.35 }
     : {
         model: BLOG_DEEPSEEK_MODELS.rewrite,
         temperature: 0.2,
-      }, {
+      };
+  const productPromptTrace = buildBlogPromptTraceV1({
+    prompt: finalPrompt,
+    templateVersion: `${productBrief.prompt_version}:${generationStage}`,
+    brief: productConsultBrief,
+    claimPacket: productBrief,
+    model: productGenerationOptions.model,
+    temperature: productGenerationOptions.temperature,
+    stage: generationStage,
+  });
+  const generation = await generatePublisherBlogText(finalPrompt, productGenerationOptions, {
         queueId: item.id,
         attemptNumber: generationAttemptNumber,
         stage: generationStage,
@@ -4878,6 +5082,7 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
     og_image_url,
     generation_meta: {
       prompt_version: productBrief.prompt_version,
+      prompt_trace_v1: productPromptTrace,
       writer: 'product_consultant_writer',
       editorial_voice: BLOG_EDITORIAL_VOICE,
       product_consult_brief: productConsultBrief,
@@ -5047,16 +5252,6 @@ async function generateFromTopic(
       `evidence_insufficient:research_preflight:${researchReadiness.issues.slice(0, 8).join(',')}`,
     );
   }
-  await persistBlogInformationResearch({
-    ...researchReadiness.bundle,
-    tenantId: item.tenant_id ?? researchReadiness.bundle.tenantId ?? null,
-  });
-  await markBlogInformationResearchClaimsSupported({
-    contentKey: researchReadiness.bundle.contentKey,
-    claimFingerprints: researchReadiness.bundle.claims.map(
-      (claim) => claim.claimFingerprint,
-    ),
-  });
   let serpResearchV3: SerpResearchPacketV3 | null = null;
   const shouldAnalyzeSerp = !privateRegeneration && Boolean(
     item.primary_keyword || contentBrief.primaryKeyword,
@@ -5087,6 +5282,48 @@ async function generateFromTopic(
   if (contentBriefV3.publicationStrategy === 'refresh_representative' && !privateRegeneration) {
     throw new Error('information_representative_refresh_required:broad_query_new_url_blocked');
   }
+  const decisionArtifact = buildBlogDecisionArtifactV1({
+    title: contentBriefV3.metadata.title,
+    question: contentBriefV3.primaryQuery,
+    primaryDecision: contentBriefV3.primaryDecision,
+    intentType: contentBrief.intentType,
+    bundle: researchReadiness.bundle,
+  });
+  if (decisionArtifact.resolvedTitle !== contentBriefV3.metadata.title) {
+    contentBriefV3.title = decisionArtifact.resolvedTitle;
+    contentBriefV3.metadata.title = decisionArtifact.resolvedTitle;
+    contentBriefV3.metadata.ogTitle = decisionArtifact.resolvedTitle;
+    contentBriefV3.titleCandidates = [{
+      title: decisionArtifact.resolvedTitle,
+      rationale: '근거가 뒷받침하는 범위로 제목 약속을 축소함',
+      primary: true,
+    }];
+  }
+  const artifactResearchBundle = withBlogDecisionArtifactClaimsV1(
+    researchReadiness.bundle,
+    decisionArtifact,
+  );
+  researchReadiness = { ...researchReadiness, bundle: artifactResearchBundle };
+  item.meta = {
+    ...(item.meta || {}),
+    [BLOG_INFORMATION_RESEARCH_META_KEY]: artifactResearchBundle,
+    decision_artifact_v1: decisionArtifact,
+  };
+  const { error: artifactQueuePersistError } = await supabaseAdmin
+    .from('blog_topic_queue')
+    .update({ meta: item.meta })
+    .eq('id', item.id);
+  if (artifactQueuePersistError) {
+    throw new Error(`decision_artifact_queue_persist_failed:${artifactQueuePersistError.message}`);
+  }
+  await persistBlogInformationResearch({
+    ...artifactResearchBundle,
+    tenantId: item.tenant_id ?? artifactResearchBundle.tenantId ?? null,
+  });
+  await markBlogInformationResearchClaimsSupported({
+    contentKey: artifactResearchBundle.contentKey,
+    claimFingerprints: artifactResearchBundle.claims.map((claim) => claim.claimFingerprint),
+  });
   const researchPromptBlock = buildBlogGenerationResearchPromptBlock(researchReadiness);
   const infoGuideBrief = buildInfoGuideBrief(contentBriefV3);
   const effectiveTopic = contentBriefV3.title;
@@ -5128,6 +5365,7 @@ async function generateFromTopic(
       freshnessPromptBlock,
       intentPromptBlock,
       buildBlogContentBriefV3PromptBlock(contentBriefV3),
+      buildBlogDecisionArtifactPromptBlockV1(decisionArtifact),
       editorialVariationBlock,
       buildInfoWriterPromptBlock(infoGuideBrief),
       researchPromptBlock,
@@ -5162,12 +5400,15 @@ async function generateFromTopic(
     ? item.meta.ai_orchestration_v4.failure_evidence.filter((value: unknown): value is string => typeof value === 'string')
     : [];
   const researchEvidenceByKey = new Map(
-    researchReadiness.bundle.evidence.map((evidence) => [evidence.evidenceKey, evidence]),
+    artifactResearchBundle.evidence.map((evidence) => [evidence.evidenceKey, evidence]),
   );
   const researchSourceByKey = new Map(
-    researchReadiness.bundle.sources.map((source) => [source.sourceKey, source]),
+    artifactResearchBundle.sources.map((source) => [source.sourceKey, source]),
   );
-  const rewriteClaimPacketAudit = researchReadiness.bundle.claims.map((claim) => {
+  const decisionPublicFactByFingerprint = new Map(
+    decisionArtifact.publicFacts.map((fact) => [fact.claimFingerprint, fact]),
+  );
+  const rewriteClaimPacketAudit = artifactResearchBundle.claims.map((claim) => {
     const linkedEvidence = claim.evidenceKeys
       .map((key) => researchEvidenceByKey.get(key))
       .filter((evidence): evidence is BlogInformationResearchBundle['evidence'][number] => Boolean(evidence));
@@ -5183,14 +5424,22 @@ async function generateFromTopic(
       claim.claimText,
       claim.claimType,
     );
-    return { claim, literalSupport, sourceUrls, typeCompatibility };
+    return {
+      claim,
+      literalSupport,
+      sourceUrls,
+      typeCompatibility,
+      publicFact: decisionPublicFactByFingerprint.get(claim.claimFingerprint) ?? null,
+      derived: claim.extractedValue?.derivation?.version === 'blog-claim-derivation-v1',
+    };
   });
   const rewriteApprovedClaims = selectDecisionRelevantRewriteClaimsV4({
     primaryQuery: contentBriefV3.primaryQuery,
     primaryDecision: contentBriefV3.primaryDecision,
     approvedClaims: rewriteClaimPacketAudit
     .filter((entry) =>
-      entry.literalSupport.passed
+      !entry.derived
+      && entry.literalSupport.passed
       && entry.typeCompatibility.passed
       && entry.sourceUrls.length > 0)
     .map((entry) => ({
@@ -5198,6 +5447,8 @@ async function generateFromTopic(
       claimType: entry.claim.claimType,
       riskLevel: entry.claim.riskLevel,
       sourceUrls: entry.sourceUrls,
+      citationLabel: entry.publicFact?.citationLabel ?? '확인한 원문',
+      sourceLabels: entry.publicFact?.sourceLabels ?? ['확인한 원문'],
     })),
   });
   if (generationStage !== 'draft_flash' && rewriteApprovedClaims.length === 0) {
@@ -5205,7 +5456,7 @@ async function generateFromTopic(
   }
   const generationPrompt = generationStage === 'draft_flash'
     ? prompt
-    : buildDeepSeekRewritePromptV4({
+    : `${buildDeepSeekRewritePromptV4({
         originalDraft: priorAttempt?.output.markdown || '(이전 초안 원문을 불러오지 못했습니다. 동일 연구·claim 범위에서만 새로 작성하세요.)',
         failureEvidence: rewriteEvidence,
         researchFingerprint: priorAttempt?.researchFingerprint || 'persisted-research-packet',
@@ -5220,15 +5471,19 @@ async function generateFromTopic(
           // cannot support a purpose.
           sectionPurposes: contentBriefV3.sectionPurposes.map((purpose) => purpose.purpose),
           approvedClaims: rewriteApprovedClaims,
-          officialSourceUrls: [...new Set(researchReadiness.bundle.sources
+          officialSourceUrls: [...new Set(artifactResearchBundle.sources
             .map((source) => source.sourceUrl)
             .filter((url): url is string => Boolean(url)))].slice(0, 6),
           internalLink: `${resolveBlogCanonicalOrigin()}/blog/destination/${encodeURIComponent(item.destination || '')}`,
           includeFaq: contentBriefV3.includeFaq,
           includeChecklist: contentBriefV3.includeChecklist,
         },
-      });
-  const generation = await generatePublisherBlogText(generationPrompt, generationStage === 'draft_flash'
+      })}\n\n${buildBlogDecisionArtifactPromptBlockV1(decisionArtifact)}`;
+  const generationOptions: {
+    model: string;
+    temperature: number;
+    deepseekThinking?: 'disabled';
+  } = generationStage === 'draft_flash'
     ? {
         model: BLOG_DEEPSEEK_MODELS.draft,
         deepseekThinking: 'disabled',
@@ -5237,7 +5492,21 @@ async function generateFromTopic(
     : {
         model: BLOG_DEEPSEEK_MODELS.rewrite,
         temperature: 0.2,
-      }, {
+      };
+  const promptTrace = buildBlogPromptTraceV1({
+    prompt: generationPrompt,
+    templateVersion: `${promptVersion}:${generationStage}:decision-artifact-v1`,
+    brief: contentBriefV3,
+    claimPacket: rewriteClaimPacketAudit.map((entry) => ({
+      fingerprint: entry.claim.claimFingerprint,
+      sourceUrls: entry.sourceUrls,
+      derived: entry.derived,
+    })),
+    model: generationOptions.model,
+    temperature: generationOptions.temperature,
+    stage: generationStage,
+  });
+  const generation = await generatePublisherBlogText(generationPrompt, generationOptions, {
         queueId: item.id,
         attemptNumber: generationAttemptNumber,
         stage: generationStage,
@@ -5255,17 +5524,10 @@ async function generateFromTopic(
       contentBriefV3.metadata.title,
     ),
   };
-  const writerOutput = generationStage === 'draft_flash'
-    ? headingNormalizedWriterOutput
-    : {
-        ...headingNormalizedWriterOutput,
-        markdown: repairFoodBudgetRewriteOpeningV4({
-          markdown: headingNormalizedWriterOutput.markdown,
-          primaryQuery: contentBriefV3.primaryQuery,
-          intentType: contentBrief.intentType,
-          approvedClaims: rewriteApprovedClaims,
-        }),
-      };
+  const writerOutput = applyBlogDecisionArtifactToWriterOutputV1({
+    output: headingNormalizedWriterOutput,
+    artifact: decisionArtifact,
+  });
   let blog_html = writerOutput.markdown
     .replace(/^```markdown\s*/i, '')
     .replace(/^```\s*/i, '')
@@ -5283,8 +5545,8 @@ async function generateFromTopic(
     `[blog-publisher] writer output boundary: ${writerOutputBoundary.originalCharacters}`
     + ` -> ${writerOutputBoundary.finalCharacters}, truncated=${writerOutputBoundary.truncated}`,
   );
-  // V3 does not rewrite model output into a deterministic evidence template.
-  // Missing or conflicting claims are handled by the claim gate below.
+  // V5 owns arithmetic and the direct-answer surface; the claim gate below
+  // independently verifies every persisted source-backed and derived claim.
 
   // slug 자동 — 오래된 큐에 잘못 들어간 expected_slug는 자동 무시
   const slug = queueSlug;
@@ -5311,6 +5573,8 @@ async function generateFromTopic(
     prompt_version: promptVersion,
     prompt_source: promptSource,
     prompt_manifest: promptManifest,
+    prompt_trace_v1: promptTrace,
+    decision_artifact_v1: decisionArtifact,
     writer: 'info_writer',
     ai_orchestration_v4: {
       stage: generationStage,

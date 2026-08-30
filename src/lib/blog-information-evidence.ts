@@ -54,6 +54,15 @@ export interface BlogInformationExtractedValue {
   normalizedValue: string;
   unit: string | null;
   currency: string | null;
+  /** Deterministic arithmetic provenance. Model-written formulas are never trusted. */
+  derivation?: {
+    version: 'blog-claim-derivation-v1';
+    operation: 'sum';
+    operandClaimFingerprints: string[];
+    operandValues: string[];
+    formula: string;
+    assumptions: string[];
+  };
 }
 
 export interface BlogInformationEvidenceScope {
@@ -613,6 +622,9 @@ export function validateBlogInformationResearchBundle(
   }
 
   const claimFingerprints = new Set<string>();
+  const claimByFingerprint = new Map(
+    bundle.claims.map((claim) => [clean(claim.claimFingerprint), claim]),
+  );
   for (const claim of bundle.claims) {
     const fingerprint = clean(claim.claimFingerprint);
     if (!/^[0-9a-f]{64}$/.test(fingerprint)) issues.push('claim:invalid_fingerprint');
@@ -628,6 +640,40 @@ export function validateBlogInformationResearchBundle(
     const linkedEvidence = claim.evidenceKeys
       .map((evidenceKey) => evidenceByKey.get(clean(evidenceKey)))
       .filter((evidence): evidence is BlogInformationEvidenceInput => Boolean(evidence));
+    const derivation = claim.extractedValue?.derivation;
+    if (derivation) {
+      const operands = derivation.operandClaimFingerprints.map((operandFingerprint) =>
+        claimByFingerprint.get(clean(operandFingerprint)));
+      const operandValues = derivation.operandValues.map((value) => Number(value));
+      const result = Number(claim.extractedValue?.normalizedValue);
+      const expectedEvidenceKeys = new Set(operands.flatMap((operand) => operand?.evidenceKeys ?? []));
+      const structurallyValid = derivation.version === 'blog-claim-derivation-v1'
+        && derivation.operation === 'sum'
+        && operands.length >= 2
+        && operands.length <= 12
+        && operands.length === operandValues.length
+        && operands.every((operand, index) => {
+          if (!operand || operand.extractedValue?.derivation) return false;
+          const operandValue = Number(operand.extractedValue?.normalizedValue);
+          return Number.isFinite(operandValue)
+            && Math.abs(operandValue - operandValues[index]!) < 0.005
+            && (operand.extractedValue?.currency ?? '') === (claim.extractedValue?.currency ?? '');
+        })
+        && Number.isFinite(result)
+        && Math.abs(operandValues.reduce((sum, value) => sum + value, 0) - result) < 0.005
+        && claim.evidenceKeys.length > 0
+        && claim.evidenceKeys.every((evidenceKey) => expectedEvidenceKeys.has(evidenceKey))
+        && [...expectedEvidenceKeys].every((evidenceKey) => claim.evidenceKeys.includes(evidenceKey));
+      if (!structurallyValid) {
+        issues.push(`claim:invalid_derivation:${fingerprint || 'unknown'}`);
+      }
+      for (const evidenceKey of claim.evidenceKeys) {
+        if (!evidenceKeys.has(clean(evidenceKey))) {
+          issues.push(`claim:unknown_evidence:${fingerprint || 'unknown'}:${clean(evidenceKey) || 'blank'}`);
+        }
+      }
+      continue;
+    }
     const literalSupport = inspectBlogInformationClaimLiteralSupport({
       claimText: claim.claimText,
       evidence: linkedEvidence,
