@@ -92,6 +92,87 @@ describe('blog information research backlog recheck', () => {
     }).reason).toBe('not_information_research_failure');
   });
 
+  it('requeues only a controlled canary whose bounded rewrite was cancelled by the legacy queue policy', () => {
+    const researchBundle = { version: 'reviewed-source-direct-fetch-v2', claims: [{ id: 'claim-1' }] };
+    const decision = buildBlogInformationResearchRecheckDecision({
+      row: failedResearchRow({
+        source: 'user_seed',
+        status: 'skipped',
+        last_error: 'blog_quality_v4_rewrite_pro_high:editorial_harness_single_rewrite,publish_gate:duplicate,publish_gate:links',
+        meta: {
+          micro_angle: 'airport_arrival',
+          controlled_publish_canary: true,
+          editor_approved_seed: true,
+          information_research_bundle: researchBundle,
+          failure_code: 'duplicate_content',
+          failure_retryable: false,
+          quarantine_reason: 'non_retryable_failure',
+          self_heal_blocked: true,
+          skipped_duplicate: true,
+          ai_orchestration_v4: {
+            version: 'blog-deepseek-orchestrator-v4',
+            route: 'rewrite_pro_high',
+            next_stage: 'rewrite_pro_high',
+            failure_evidence: ['editorial_harness_single_rewrite', 'publish_gate:duplicate'],
+          },
+        },
+      }),
+      checkedAt: '2026-08-30T19:30:00.000Z',
+    });
+
+    expect(decision).toMatchObject({
+      action: 'requeue',
+      intent: 'airport_transport',
+      reason: 'bounded_orchestrator_rewrite_retry',
+    });
+    expect(decision.meta.information_research_bundle).toEqual(researchBundle);
+    expect(decision.meta.ai_orchestration_v4).toMatchObject({
+      route: 'rewrite_pro_high',
+      next_stage: 'rewrite_pro_high',
+    });
+    expect(decision.meta).not.toHaveProperty('failure_code');
+    expect(decision.meta).not.toHaveProperty('quarantine_reason');
+    expect(decision.meta).not.toHaveProperty('skipped_duplicate');
+  });
+
+  it('keeps lookalike quality rows blocked unless every controlled rewrite marker is present', () => {
+    const baseMeta = {
+      micro_angle: 'airport_arrival',
+      controlled_publish_canary: true,
+      editor_approved_seed: true,
+      information_research_bundle: { version: 'reviewed-source-direct-fetch-v2' },
+      ai_orchestration_v4: {
+        version: 'blog-deepseek-orchestrator-v4',
+        route: 'rewrite_pro_high',
+        next_stage: 'rewrite_pro_high',
+        failure_evidence: ['editorial_harness_single_rewrite'],
+      },
+    };
+    for (const row of [
+      failedResearchRow({
+        source: 'information',
+        status: 'skipped',
+        last_error: 'blog_quality_v4_rewrite_pro_high:editorial_harness_single_rewrite',
+        meta: baseMeta,
+      }),
+      failedResearchRow({
+        source: 'user_seed',
+        status: 'skipped',
+        last_error: 'blog_quality_v4_rewrite_pro_high:editorial_harness_single_rewrite',
+        meta: { ...baseMeta, controlled_publish_canary: false },
+      }),
+      failedResearchRow({
+        source: 'user_seed',
+        status: 'skipped',
+        last_error: 'blog_quality_v4_rewrite_pro_high:editorial_harness_single_rewrite',
+        meta: { ...baseMeta, information_research_bundle: null },
+      }),
+    ]) {
+      expect(buildBlogInformationResearchRecheckDecision({ row }).reason)
+        .toBe('not_information_research_failure');
+    }
+  });
+
   it('does not retry product rows or unsupported general topics', () => {
     expect(buildBlogInformationResearchRecheckDecision({
       row: failedResearchRow({ product_id: 'product-1' }),

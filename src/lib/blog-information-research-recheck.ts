@@ -5,7 +5,7 @@ import {
 import { readBlogEditorialBacklogDedupKey } from './blog-editorial-backlog-recheck';
 
 export const BLOG_INFORMATION_RESEARCH_RECHECK_VERSION =
-  'blog-information-research-recheck-20260831-v6';
+  'blog-information-research-recheck-20260831-v7';
 
 const AUTOMATED_RESEARCH_INTENTS = new Set<BlogInformationIntent>([
   'food_budget',
@@ -74,6 +74,26 @@ function isResearchFailure(row: BlogInformationResearchRecheckRow): boolean {
   );
 }
 
+function isControlledBoundedRewriteFailure(
+  row: BlogInformationResearchRecheckRow,
+  meta: Record<string, unknown>,
+): boolean {
+  const orchestration = asRecord(meta.ai_orchestration_v4);
+  const failureEvidence = Array.isArray(orchestration.failure_evidence)
+    ? orchestration.failure_evidence.map(String)
+    : [];
+  return row.source === 'user_seed'
+    && meta.controlled_publish_canary === true
+    && meta.editor_approved_seed === true
+    && meta.information_research_bundle !== null
+    && typeof meta.information_research_bundle === 'object'
+    && orchestration.version === 'blog-deepseek-orchestrator-v4'
+    && orchestration.route === 'rewrite_pro_high'
+    && orchestration.next_stage === 'rewrite_pro_high'
+    && failureEvidence.includes('editorial_harness_single_rewrite')
+    && /^blog_quality_v4_rewrite_pro_high:/i.test(String(row.last_error ?? ''));
+}
+
 function clearedResearchFailureMeta(
   meta: Record<string, unknown>,
   checkedAt: string,
@@ -101,6 +121,32 @@ function clearedResearchFailureMeta(
   };
 }
 
+function clearedBoundedRewriteFailureMeta(
+  meta: Record<string, unknown>,
+  checkedAt: string,
+  intent: BlogInformationIntent,
+): Record<string, unknown> {
+  const next = { ...meta };
+  for (const key of [
+    'failure_code',
+    'failure_retryable',
+    'quarantine_reason',
+    'self_heal_blocked',
+    'skipped_duplicate',
+  ]) {
+    delete next[key];
+  }
+  return {
+    ...next,
+    information_research_rechecked_at: checkedAt,
+    information_research_recheck_version: BLOG_INFORMATION_RESEARCH_RECHECK_VERSION,
+    information_research_recheck_intent: intent,
+    information_research_recheck_result: 'bounded_orchestrator_rewrite_requeued',
+    bounded_orchestrator_rewrite_recovered_at: checkedAt,
+    requeued_by: BLOG_INFORMATION_RESEARCH_RECHECK_VERSION,
+  };
+}
+
 export function buildBlogInformationResearchRecheckDecision(input: {
   row: BlogInformationResearchRecheckRow;
   checkedAt?: string;
@@ -118,6 +164,7 @@ export function buildBlogInformationResearchRecheckDecision(input: {
   });
   const dedupKey = readBlogEditorialBacklogDedupKey(input.row);
   const reviewedPublishedReplacement = isHumanReviewedPublishedReplacement(meta);
+  const boundedRewriteFailure = isControlledBoundedRewriteFailure(input.row, meta);
   const blocked = (reason: string): BlogInformationResearchRecheckDecision => ({
     action: 'keep_blocked',
     intent,
@@ -138,7 +185,9 @@ export function buildBlogInformationResearchRecheckDecision(input: {
   }
   if (!input.row.destination || !input.row.topic) return blocked('research_context_missing');
   if (!AUTOMATED_RESEARCH_INTENTS.has(intent)) return blocked('intent_not_live_verified');
-  if (!isResearchFailure(input.row)) return blocked('not_information_research_failure');
+  if (!isResearchFailure(input.row) && !boundedRewriteFailure) {
+    return blocked('not_information_research_failure');
+  }
   if (meta.requeued_by === BLOG_INFORMATION_RESEARCH_RECHECK_VERSION) {
     return blocked('repeat_suppressed');
   }
@@ -167,7 +216,11 @@ export function buildBlogInformationResearchRecheckDecision(input: {
     action: 'requeue',
     intent,
     dedupKey,
-    reason: 'live_verified_research_retry',
-    meta: clearedResearchFailureMeta(meta, checkedAt, intent),
+    reason: boundedRewriteFailure
+      ? 'bounded_orchestrator_rewrite_retry'
+      : 'live_verified_research_retry',
+    meta: boundedRewriteFailure
+      ? clearedBoundedRewriteFailureMeta(meta, checkedAt, intent)
+      : clearedResearchFailureMeta(meta, checkedAt, intent),
   };
 }
