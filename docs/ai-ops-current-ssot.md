@@ -1,6 +1,6 @@
 # AI Ops Current SSOT
 
-Last updated: 2026-08-27
+Last updated: 2026-08-30
 
 This is the current operating contract for AI provider policy, Jarvis, RAG, QA, prompt routing, evals, model fallback, and learning-loop evidence.
 
@@ -22,7 +22,7 @@ Detailed provider policy operations remain in `docs/ai-policy-operations.md`. Ja
 | Area | Current source |
 |---|---|
 | AI provider routing | `src/lib/ai-provider-policy.ts`, `scripts/ai-provider-switch.mjs` |
-| Blog generation V4 exception | `src/lib/blog-deepseek-orchestrator-v4.ts`, `src/lib/blog-ai-caller.ts`, `docs/runbooks/blog-deepseek-orchestrator-v4.md` |
+| Blog generation V4/V5 exception | `src/lib/blog-deepseek-orchestrator-v4.ts`, `src/lib/blog-editorial-harness-v5.ts`, `src/lib/blog-ai-caller.ts`, `docs/runbooks/blog-deepseek-orchestrator-v4.md` |
 | Jarvis APIs | `/api/jarvis`, `/api/jarvis/stream`, `/api/admin/jarvis/**` |
 | Jarvis orchestration | `src/lib/jarvis/orchestration/**`, `src/lib/jarvis/v2-dispatch.ts` |
 | Jarvis RAG/evals | `src/lib/jarvis/rag/**`, `src/lib/jarvis/eval/**` |
@@ -49,7 +49,7 @@ Detailed provider policy operations remain in `docs/ai-policy-operations.md`. Ja
 
 ### Blog Orchestrator V4 exception
 
-Scheduled blog publication is a DeepSeek-only, evidence-bounded lane. DeepSeek V4 Pro structures directly fetched, pre-reviewed source pages; DeepSeek V4 Flash creates the grounded draft; and DeepSeek V4 Pro performs high/max rewrites. Gemini, GPT, Claude, generic provider cascades, and search-snippet grounding are not permitted anywhere in this publication lane. Missing reviewed source coverage fails closed. Every article-generation provider call requires a durable pre-call cost reservation, and a candidate has at most three writer calls. A provider error stays queued or quarantined according to the bounded retry contract. Daytime publication reads a durable selected `approved_for_slot` attempt and makes zero model calls. Other non-blog AI tasks continue to follow `system_ai_policies` and the general provider policy.
+Scheduled blog publication is a DeepSeek-only, evidence-bounded lane. DeepSeek V4 Pro structures directly fetched, pre-reviewed source pages; DeepSeek V4 Flash creates the grounded draft; and DeepSeek V4 Pro performs bounded rewrites plus the independent V5 editorial judgment at temperature 0. Gemini, GPT, Claude, generic provider cascades, and search-snippet grounding are not permitted anywhere in this publication lane. Missing reviewed source coverage, decision artifact, prompt trace, editorial-judge result, budget reservation, or evaluation persistence fails closed. General factual/output repair retains the five-call V4 ceiling, while a V5 usefulness/naturalness/completeness/originality/source-honesty failure receives only one writer rewrite before quarantine. Generation and editorial judgment reserve separate rows under the same KST-day cap. Daytime publication reads a durable selected `approved_for_slot` attempt and makes zero model calls. Other non-blog AI tasks continue to follow `system_ai_policies` and the general provider policy.
 
 Correct sequence for AI behavior changes:
 
