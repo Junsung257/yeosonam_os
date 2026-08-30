@@ -62,6 +62,18 @@ describe('rewrite claim type compatibility', () => {
     });
   });
 
+  it('accepts an operator-reported nonnumeric service fact as factual', () => {
+    expect(inspectBlogInformationClaimTypeCompatibility(
+      '카카오 T 괌택시는 예약에 비행편명을 입력하면 항공 지연 때 현지 업체가 도착 시간을 확인해 탑승을 돕는다고 안내한다.',
+      'factual',
+    )).toEqual({
+      passed: true,
+      declaredType: 'factual',
+      deterministicType: 'factual',
+      candidateKind: 'unknown_statement',
+    });
+  });
+
   it('fails closed when the publish classifier cannot identify the claim', () => {
     expect(inspectBlogInformationClaimTypeCompatibility(
       '이 장소는 일정의 중심으로 삼기 좋습니다.',
@@ -75,6 +87,15 @@ describe('rewrite claim type compatibility', () => {
 });
 
 describe('unsupported numeric claim accounting', () => {
+  it('treats a reader-owned route comparison instruction as editorial guidance', () => {
+    expect(classifyBlogInformationStatement(
+      '이동수단을 고를 때는 GRTA와 카카오 T 괌택시에서 확인된 항목과 비어 있는 항목을 분리해 비교하면 됩니다.',
+    )).toEqual({
+      category: 'navigation_boilerplate',
+      factualClassification: null,
+    });
+  });
+
   it('does not relabel a nonnumeric unclassified sentence as an unsupported number', () => {
     const report = {
       passed: false,

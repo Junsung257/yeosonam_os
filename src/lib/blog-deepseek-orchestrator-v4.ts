@@ -630,12 +630,15 @@ function buildRewriteArchetypeContractV4(
   if (archetype === 'route_walkthrough') {
     return [
       '[ARCHETYPE CONTRACT — route_walkthrough]',
-      '- The first paragraph must be a declarative answer, name the options supported by approved claims, state which evidence-backed condition selects each option, and contain "동선" or "이동수단". Do not open with 하세요, 확인하세요, or a question.',
+      '- The first paragraph must be a declarative answer, name the options supported by approved claims, and say that verified and missing fields are compared separately. It must contain "동선" or "이동수단". Do not paraphrase an operator property in the opening and do not open with 하세요, 확인하세요, or a question.',
       '- Organize the article as three distinct stages: departure/boarding, connection or middle segment, and arrival/alighting. Use only route/entity names already present in approved claims.',
+      '- A route number is also a numeric expression. Outside an exact approved claim, write the operator name without its route number (for example, GRTA rather than GRTA Route 14).',
+      '- Keep schedule words such as 첫차, 막차, 출발 시각, and 운행 시간 out of headings and editorial prose. They may appear only inside an exact approved claim.',
       '- In the visible body, not only headings, include one source-neutral sentence with "승차", one with "중간 구간" or "이동 구간", and one with "하차". These sentences must tell the reader what to verify; they must not invent a stop, platform, hotel, or travel time.',
       '- If the approved packet lacks an exact boarding or alighting location, say to confirm the latest location in the official channel or booking screen. Never guess a terminal, curb, stop, or hotel entrance.',
       '- Put an exact approved time, distance, fare, or operating claim beside the segment it supports; never infer an unverified stop or duration.',
       '- State any missing base fare, door-to-door duration, or exact boarding location as an evidence gap instead of filling it with generic advice.',
+      '- Do not pretend the evidence is symmetric. Group the exact GRTA fare/time claims separately from the exact taxi luggage/delay claims, then state the missing taxi fare/time and boarding fields.',
       '- Include a source-neutral official recheck and a delay, sell-out, or last-service fallback without asserting that the disruption will occur.',
       '- End with distinct reader actions, not a generic three-question block.',
     ];

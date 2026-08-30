@@ -5,7 +5,7 @@ import {
 import { readBlogEditorialBacklogDedupKey } from './blog-editorial-backlog-recheck';
 
 export const BLOG_INFORMATION_RESEARCH_RECHECK_VERSION =
-  'blog-information-research-recheck-20260831-v8';
+  'blog-information-research-recheck-20260831-v9';
 
 const AUTOMATED_RESEARCH_INTENTS = new Set<BlogInformationIntent>([
   'food_budget',
@@ -103,7 +103,7 @@ function isControlledHarnessDefectFailure(
     ? orchestration.failure_evidence.map(String)
     : [];
   const joinedFailure = [row.last_error, ...failureEvidence].join(' ');
-  const requiredFailureMarkers = [
+  const v7RequiredFailureMarkers = [
     'editorial_harness_retry_exhausted',
     'stale_claim_present',
     'publish_gate:structure_integrity',
@@ -112,18 +112,35 @@ function isControlledHarnessDefectFailure(
     'editorial_harness_v5:semantic_usefulness',
     'editorial_harness_v5:semantic_completeness',
   ];
+  const v8RequiredFailureMarkers = [
+    'editorial_harness_retry_exhausted',
+    'unsupported_number',
+    'claim_support_coverage_below_90_percent',
+    'unsupported_number_present',
+    'publish_gate:duplicate',
+    'editorial_harness_v5:semantic_usefulness',
+    'editorial_harness_v5:semantic_completeness',
+  ];
+  const exactFailureEvidence = (required: string[]) =>
+    failureEvidence.length === required.length
+    && required.every((marker) => failureEvidence.includes(marker));
+  const v7Defect = meta.information_research_recheck_version === 'blog-information-research-recheck-20260831-v7'
+    && meta.information_research_recheck_result === 'bounded_orchestrator_rewrite_requeued'
+    && v7RequiredFailureMarkers.every((marker) => joinedFailure.includes(marker));
+  const v8Defect = meta.information_research_recheck_version === 'blog-information-research-recheck-20260831-v8'
+    && meta.information_research_recheck_result === 'controlled_harness_defect_rewrite_requeued'
+    && exactFailureEvidence(v8RequiredFailureMarkers)
+    && v8RequiredFailureMarkers.every((marker) => joinedFailure.includes(marker));
   return row.source === 'user_seed'
     && row.status === 'failed'
     && meta.controlled_publish_canary === true
     && meta.editor_approved_seed === true
     && meta.information_research_bundle !== null
     && typeof meta.information_research_bundle === 'object'
-    && meta.information_research_recheck_version === 'blog-information-research-recheck-20260831-v7'
-    && meta.information_research_recheck_result === 'bounded_orchestrator_rewrite_requeued'
     && orchestration.version === 'blog-deepseek-orchestrator-v4'
     && orchestration.route === 'quarantine'
     && /^blog_quality_v4_quarantine:/i.test(String(row.last_error ?? ''))
-    && requiredFailureMarkers.every((marker) => joinedFailure.includes(marker));
+    && (v7Defect || v8Defect);
 }
 
 function clearedResearchFailureMeta(

@@ -607,6 +607,13 @@ npm run run:blog-indexing-worker -- --json --limit=15
 - Publisher summaries include a `time_budget` object so operators can distinguish a graceful time-budget stop from a hard wrapper timeout.
 ### Information writer v2.2 private canary check
 
+#### 2026-08-31 controlled airport-route recovery
+
+- `blog-information-research-recheck-20260831-v9` is a one-candidate recovery for the controlled Guam airport-to-Tumon canary after V8. It accepts only the exact V8 quarantine signature covering the route-number numeric false positive, missing nonnumeric flight-delay claim, broad duplicate scope, and semantic usefulness/completeness failures.
+- V9 does not thaw publication, lower a score, or waive a gate. It requeues the same persisted research bundle at `rewrite_pro_max`; the next model-call attempt must pass the normal claim, editorial, duplicate, public-customer, and publication gates.
+- Before applying V9, run `npx tsx scripts/recheck-blog-information-research.ts --queue-id=<queue-id>` and confirm `scanned=1`, `counts.requeue=1`, and `updated=0`. Apply only with that exact queue ID and `--write`.
+- A successful canary first becomes an approved private slot while the global rollout is frozen. Run `scripts/recover-blog-publication-rollout.ts` only after the approved attempt, prompt trace, V5 editorial report, incident URL removal, and draft evidence all pass. Then run the publication controller and indexing worker, and verify the canonical public URL plus Google/Naver outbox reports.
+
 The Sapporo food-budget canary reports queue failure evidence, stored prompt manifest, H2/question/FAQ counts, and image count in dry-run mode. A private regeneration may proceed only when the target remains a draft, the research preflight passes, and the route is called once. The AI-readable repair keeps the final article within nine H2 headings, preserves a natural question H2, and builds the food-budget FAQ only from approved claims. Missing `CRON_SECRET` must fail before `--apply --run` changes the queue; operators without that secret use `--apply` and invoke the protected production route separately.
 
 Count both image occurrences and unique image URLs. Three Markdown image tags backed by only two unique URLs are a one-image shortfall. In that exact case the private route may fetch at most one relevance-filtered Pexels asset, with one disclosed AI reference-image attempt only as its fallback; all other optional image expansion remains disabled.

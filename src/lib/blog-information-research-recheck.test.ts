@@ -249,6 +249,54 @@ describe('blog information research backlog recheck', () => {
     expect(decision.reason).toBe('not_information_research_failure');
   });
 
+  it('requeues the exact V8 canary once after route-number, packet, and duplicate-scope defects', () => {
+    const failureMarkers = [
+      'editorial_harness_retry_exhausted',
+      'unsupported_number',
+      'claim_support_coverage_below_90_percent',
+      'unsupported_number_present',
+      'publish_gate:duplicate',
+      'editorial_harness_v5:semantic_usefulness',
+      'editorial_harness_v5:semantic_completeness',
+    ];
+    const decision = buildBlogInformationResearchRecheckDecision({
+      row: failedResearchRow({
+        source: 'user_seed',
+        status: 'failed',
+        last_error: `blog_quality_v4_quarantine:${failureMarkers.join(',')}`,
+        meta: {
+          micro_angle: 'airport_arrival',
+          controlled_publish_canary: true,
+          editor_approved_seed: true,
+          information_research_bundle: { version: 'reviewed-source-direct-fetch-v2' },
+          information_research_recheck_version: 'blog-information-research-recheck-20260831-v8',
+          information_research_recheck_result: 'controlled_harness_defect_rewrite_requeued',
+          requeued_by: 'blog-information-research-recheck-20260831-v8',
+          ai_orchestration_v4: {
+            version: 'blog-deepseek-orchestrator-v4',
+            route: 'quarantine',
+            next_stage: null,
+            failure_evidence: failureMarkers,
+          },
+        },
+      }),
+      checkedAt: '2026-08-31T03:00:00.000Z',
+    });
+
+    expect(decision).toMatchObject({
+      action: 'requeue',
+      reason: 'controlled_harness_defect_rewrite_retry',
+      meta: {
+        information_research_recheck_version: 'blog-information-research-recheck-20260831-v9',
+        information_research_recheck_result: 'controlled_harness_defect_rewrite_requeued',
+        ai_orchestration_v4: {
+          route: 'rewrite_pro_max',
+          next_stage: 'rewrite_pro_max',
+        },
+      },
+    });
+  });
+
   it('does not retry product rows or unsupported general topics', () => {
     expect(buildBlogInformationResearchRecheckDecision({
       row: failedResearchRow({ product_id: 'product-1' }),
