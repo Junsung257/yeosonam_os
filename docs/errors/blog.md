@@ -2,7 +2,13 @@
 
 > 2026-08-13 V3 note: legacy `audit:blog-quality ... --write` and `backfill:blog-quality:write` commands in historical incident entries are no longer executable. The underlying script is permanently dry-run-only because it can create or rewrite article content.
 
-Last updated: 2026-07-30
+Last updated: 2026-08-31
+
+## ERR-BLOG-guam-airport-research-semantic-gaps@2026-08-31
+
+- [x] **ERR-BLOG-guam-airport-research-semantic-gaps@2026-08-31**: The controlled Guam airport-to-Tumon publication canary directly fetched five reviewed pages and extracted valid GRTA fares/durations, but stopped at `5/6` supported claims because the packet did not reliably preserve multiple-mode, operating-hours, luggage, and late-arrival semantics. The failure was correct; publication remained frozen.
+- **Fix**: GRTA now deterministically adds the first airport departure as a separate schedule fact, Guam Airport supplies the reviewed public-transport/taxi/rental-car mode claim, and Kakao Mobility's public FAQ JSON supplies baggage-capacity and flight-delay claims. Each adapter requires exact reviewed fields and fails closed after source drift. The client-rendered Kakao FAQ shell is not accepted as evidence.
+- **Verification**: The combined official packet passes the airport-transport minimums, source-domain diversity, exact-number, and all four semantic gates in a focused end-to-end research test.
 
 ## ERR-BLOG-local-transit-misclassified-as-airport@2026-07-28
 

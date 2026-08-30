@@ -75,7 +75,7 @@ const REQUIRED_CLAIM_SEMANTICS_BY_INTENT: Partial<Record<BlogInformationIntent, 
   airport_transport: [
     {
       key: 'multiple_modes',
-      pattern: /(?=[\s\S]*(?:버스|셔틀|bus|shuttle))(?=[\s\S]*(?:택시|렌터카|승차\s*호출|taxi|rental|ride))/i,
+      pattern: /(?=[\s\S]*(?:대중교통|버스|셔틀|public\s*transportation|bus|shuttle))(?=[\s\S]*(?:택시|렌터카|승차\s*호출|taxi|rental|ride))/i,
     },
     {
       key: 'operating_hours',
