@@ -14,7 +14,9 @@
 
 > 2026-08-17 itinerary-research addendum: 출처 다양성은 정규화한 기관 호스트 기준으로 계산한다. `www.example.com`과 `example.com`은 한 기관이며 두 출처로 계산하지 않는다. 일정 연구 패킷은 명소와 실제 구간 이동시간 외에 운영시간·예약·입장·출입통제·계단/엘리베이터 같은 일정 결정 제약을 최소 1개 포함해야 한다. 높이·길이·면적 같은 물리 치수는 이 제약을 대신할 수 없으며, 조건을 충족하지 못한 후보는 모델 작성 전에 보류한다.
 
-Last updated: 2026-08-29
+> 2026-08-30 People-First V5 addendum: 정보성 글은 prose보다 먼저 `blog-decision-artifact-v1`을 만든다. 제목 약속, 직접 답변, 공개 fact, 출처 등급, 계산식·피연산 claim fingerprint·가정, PII 없는 1차 집계, 근거 공백이 이 아티팩트에 없으면 writer가 보충할 수 없다. 식비 시나리오는 코드가 같은 통화·1인 조건의 승인 가격을 합산하고 표와 ledger를 직접 삽입한다. 근거가 부족하면 제목을 메뉴 가격 예시 범위로 축소한다. crowd/가격 조사 자료는 `공식 근거`로 부르지 않는다. 자동발행은 기존 규칙 게이트와 별도로 결정론적 편집 검사와 독립 DeepSeek Pro(temperature 0) 편집 심사의 모든 차원이 통과해야 한다. 편집 실패는 초안 뒤 재작성 1회만 허용하고 재실패·심사 키/예산/응답/저장 실패는 격리한다. 승인 attempt는 실제 렌더 prompt/brief/claim packet SHA-256과 template/git/model/stage trace가 없으면 DB에서도 차단한다. 운영 회귀 기준은 실제 괌 실패 글을 포함한 11 intent × 3 = 33개 고정 Promptfoo 사례다.
+
+Last updated: 2026-08-30
 
 This document defines the required contract for automatic blog generation, publishing, and indexing. Publishing and indexing must be treated as separate responsibilities. It exists because one-off repairs to already published rows do not prevent the same defect from recurring in live autopublishing.
 

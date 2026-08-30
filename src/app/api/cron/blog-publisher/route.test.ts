@@ -495,14 +495,29 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).not.toContain("fallback: 'gemini'");
   });
 
-  it('normalizes the writer H1 before deterministic food-budget opening repair', () => {
+  it('normalizes the writer H1 before deterministic decision-artifact composition', () => {
     const source = routeSource();
     const normalizeIndex = source.indexOf('const headingNormalizedWriterOutput =');
-    const repairIndex = source.indexOf('markdown: repairFoodBudgetRewriteOpeningV4({');
+    const composeIndex = source.indexOf('const writerOutput = applyBlogDecisionArtifactToWriterOutputV1({');
 
     expect(normalizeIndex).toBeGreaterThan(-1);
-    expect(repairIndex).toBeGreaterThan(normalizeIndex);
-    expect(source).toContain('markdown: headingNormalizedWriterOutput.markdown');
+    expect(composeIndex).toBeGreaterThan(normalizeIndex);
+    expect(source).toContain('output: headingNormalizedWriterOutput');
+    expect(source).not.toContain('repairFoodBudgetRewriteOpeningV4({');
+  });
+
+  it('runs the independent editorial judge for high-risk drafts as well as the human gate', () => {
+    const source = routeSource();
+    const harnessBoundary = source.indexOf("if (blogType === 'info' && storedDecisionArtifact)");
+    const judgeCall = source.indexOf('await evaluatePublisherEditorialHarnessV5({', harnessBoundary);
+    const evaluationWrite = source.indexOf(".from('blog_quality_evaluations')", judgeCall);
+
+    expect(harnessBoundary).toBeGreaterThan(-1);
+    expect(judgeCall).toBeGreaterThan(harnessBoundary);
+    expect(evaluationWrite).toBeGreaterThan(judgeCall);
+    expect(source).not.toContain("if (contentBriefV3.riskLevel === 'HIGH') {");
+    expect(source).toContain('const contentRequiresHumanReview = blogType === \'info\'');
+    expect(source).toContain('|| plannedHumanReview || isHighRiskInformationalTopic({');
   });
 
   it('persists incomplete provider calls as failed attempts and never evaluates partial text', () => {
@@ -526,7 +541,7 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('evidencePacket: {');
     expect(source).toContain('approvedClaims: rewriteApprovedClaims');
     expect(source).toContain('inspectBlogInformationClaimLiteralSupport');
-    expect(source).toContain('officialSourceUrls: [...new Set(researchReadiness.bundle.sources');
+    expect(source).toContain('officialSourceUrls: [...new Set(artifactResearchBundle.sources');
     expect(source).toContain('const seo_title = contentBriefV3.metadata.title.trim().slice(0, 80)');
     expect(source).toContain('const publishQualityFailureReasons = [');
     expect(source).toContain('`publish_gate:${gate.gate}`');

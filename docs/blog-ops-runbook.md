@@ -1,16 +1,40 @@
 # Blog Ops Runbook
 
+> 2026-08-30 V5 override: 신규 정보성 후보는 `decision_artifact_v1`과 `editorial_harness_v5`가 모두 있어야 자동발행할 수 있다. 일일 운영자는 `npm run eval:blog-editorial:promptfoo`의 33/33, 새 승인 attempt의 prompt trace 완전성, queue-only 편집 평가 저장, generation/editorial_judge 비용 원장을 함께 확인한다. 심사 실패를 평균 품질 점수로 상쇄하거나 수동으로 `approved_for_slot`으로 바꾸지 않는다.
+
 > 2026-08-16 release override: DeepSeek-only 연구 구조화·초안·재작성, 비용 예약, `pilot_3→ramp_10→max_30` 자동 승격/강등, immutable snapshot, 90일 GSC 보강, 분석 canary, 배포·롤백 순서는 `docs/runbooks/blog-orchestrator-v4-production-rollout.md`와 `docs/runbooks/blog-deepseek-orchestrator-v4.md`가 우선한다.
 
 > 2026-08-15 V4 override: 신규 운영은 `docs/runbooks/blog-deepseek-orchestrator-v4.md`의 생성/공개 분리 계약을 따른다. `blog-generate`는 KST 01:05~06:05 계산 전용이고 `blog-publication-controller`는 KST 09:05/12:05/15:05/18:05/21:05 공개 전용이다. 아래 `blog-publisher` 직접 공개·22:05 catch-up 설명은 V4 이전 사고 기록이며 신규 스케줄 근거로 사용하지 않는다.
 
 > 2026-08-13 V3 override: `backfill:blog-quality:write` was removed. The legacy backfill creates article text, so `--write` and `--apply` now fail before any database mutation. Commands below that include the old write flag are historical verification records only.
 
-Last updated: 2026-08-29
+Last updated: 2026-08-30
 
 This runbook defines how operators decide whether the Yeosonam blog automation is healthy. The durable publish contract remains `docs/blog-autopublish-contract.md`; this file explains the daily operating workflow shown in `/admin/blog`.
 
 Information Engine V2 CTA setup, high-risk approval, fixture evaluation, existing-post dry-run, staging order, and rollback are handed off in `docs/blog-informational-engine-v2-owner-runbook.md`.
+
+## People-First V5 daily checks
+
+1. `npm run eval:blog-editorial:promptfoo`가 33/33인지 확인한다.
+2. `blog_generation_attempts`의 새 `approved_for_slot` 행에서 `prompt_hash`, `brief_hash`, `claim_packet_hash`, `prompt_template_version`, `git_commit_sha`가 모두 존재하는지 확인한다.
+3. `blog_quality_evaluations.evaluator_version='blog-editorial-harness-v5.0.0'`의 최신 행이 `passed=true`이고 다섯 semantic dimension이 모두 true인지 확인한다.
+4. `blog_ai_budget_reservations`를 `call_kind`로 나눠 generation과 editorial_judge 모두 사전 예약·정산됐는지 확인한다.
+5. `source_label_misleading`, `reader_task_unanswered`, `commodity_source_stitching`, `semantic_judge_missing`, `evaluation_persistence_failed`는 재작성 1회 뒤에도 남으면 quarantine이 정상이다.
+6. HIGH risk는 편집 심사 통과 여부와 무관하게 사람 승인을 유지한다.
+
+기존 공개 글 격리는 `docs/runbooks/blog-stale-content-and-removal.md`를 따른다. CSV의 정확한 creative ID·canonical·reason을 두 사람이 검토하고 PITR를 확인하기 전에는 `--apply`를 실행하지 않는다. 교정본이 공개 가능해진 뒤에만 색인 outbox를 enqueue한다.
+
+V5 DB 릴리스는 저장소 루트의 migration history drift 때문에 직접 `supabase db push`하지 않는다. 다음 고정 경로만 사용한다.
+
+```powershell
+npm run verify:blog-editorial-release-v5
+npm run prepare:blog-editorial-supabase-release-v5 -- --output=.tmp/blog-editorial-v5-supabase-release
+npx supabase db push --workdir .tmp/blog-editorial-v5-supabase-release --linked --include-all --skip-vault --dry-run
+npm run verify:blog-editorial-supabase-dry-run-v5 -- --input=<captured-dry-run.txt>
+```
+
+exact-set 결과가 `20260830011340` 한 개가 아니면 중단한다. 원격 migration history `repair`는 하지 않는다. 실제 apply는 리뷰된 main SHA와 change window를 확정한 뒤 동일한 격리 workdir에서만 실행한다.
 
 ## Future Blog Generation Duplicate Gate
 

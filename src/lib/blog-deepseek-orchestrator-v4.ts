@@ -64,6 +64,9 @@ export interface BlogRewriteApprovedClaimV4 {
   claimType: string;
   riskLevel: string;
   sourceUrls?: string[];
+  citationLabel?: string;
+  sourceLabels?: string[];
+  derived?: boolean;
 }
 
 const DEFAULT_DECISION_REWRITE_CLAIMS = 6;
@@ -327,6 +330,26 @@ export function decideBlogQualityRouteV4(
     return {
       route: 'human_review', nextStage: null, publishable: false,
       reasons: unique(['high_risk_human_approval_required', ...allReasons]), maxAttempts: BLOG_QUALITY_MAX_ATTEMPTS_V4,
+    };
+  }
+
+  // People-first editorial failures receive one bounded rewrite only. A
+  // second writer attempt that still cannot answer the reader or pass the
+  // independent judge is quarantined instead of consuming the five-call
+  // factual repair budget and converging on template prose.
+  const editorialHarnessFailed = allReasons.some((reason) =>
+    reason.trim().toLowerCase().startsWith('editorial_harness_v5:'));
+  if (editorialHarnessFailed) {
+    const retry = completedAttempts < 2;
+    return {
+      route: retry ? 'rewrite_pro_high' : 'quarantine',
+      nextStage: retry ? 'rewrite_pro_high' : null,
+      publishable: false,
+      reasons: unique([
+        retry ? 'editorial_harness_single_rewrite' : 'editorial_harness_retry_exhausted',
+        ...allReasons,
+      ]),
+      maxAttempts: BLOG_QUALITY_MAX_ATTEMPTS_V4,
     };
   }
 
@@ -650,7 +673,7 @@ export function buildDeepSeekRewritePromptV4(input: {
     '[REWRITE CONTRACT — these rules override the draft]',
     '- Keep the original topic and primary decision. Answer that decision directly in the first paragraph.',
     '- The approved claims in the research packet above are the only factual source of truth.',
-    '- Delete every numeric expression that does not appear verbatim in an approved claim. The fixed title/query duration and itinerary day-ordinal headings explicitly required below are the only exceptions. Do not estimate or calculate.',
+    '- Delete every numeric expression that does not appear verbatim in an approved claim or the supplied deterministic decision artifact. The fixed title/query duration and itinerary day-ordinal headings explicitly required below are the only other exceptions.',
     '- The visible article and hidden ledger may contain only exact approved factual claim sentences. Do not add derived factual prose.',
     '- Never infer visit duration, crowd level, waiting time, safety, opening status, or transport time.',
     '- Do not assert destination-specific rain, season, closure, fee, operating-hour, crowd, or queue facts unless an exact approved claim says so. Source-neutral planning advice to recheck an official channel or prepare a fallback is allowed.',
@@ -673,18 +696,20 @@ export function buildDeepSeekRewritePromptV4(input: {
       ...packet.sectionPurposes.map((purpose) => `  - ${purpose}`),
       `- FAQ: ${packet.includeFaq ? 'allowed only for evidence-backed registered questions' : 'do not include'}`,
       `- Checklist: ${packet.includeChecklist ? 'allowed only for evidence-backed actions' : 'do not include'}`,
-      '- Do not use a table in this rewrite. Tables encourage unsupported values and implied comparisons.',
+      '- Do not create a new numeric table. A deterministic publisher may insert a decision-artifact table after this rewrite.',
       '- Selected approved claims (the complete factual universe for this rewrite; copy each whole sentence exactly):',
       ...packet.approvedClaims.flatMap((claim, index) => [
-        `  ${index + 1}. [${claim.claimType}/${claim.riskLevel}] ${claim.claimText}`,
-        `     exact citation markdown: [공식 근거](${claim.sourceUrls?.[0] || ''})`,
+        `  ${index + 1}. ${claim.claimText}`,
+        `     public source class: ${(claim.sourceLabels ?? []).join(', ') || '확인한 원문'}`,
+        `     exact citation markdown: [${claim.citationLabel || '확인한 원문'}](${claim.sourceUrls?.[0] || ''})`,
+        ...(claim.derived ? ['     deterministic derived claim: do not cite it as an official source and do not recalculate it.'] : []),
       ]),
       '- When an approved claim is used, copy it as its own complete sentence and put one linked citation on the next line.',
       '- The ledger must contain only the approved claim sentences actually copied into the visible article.',
       '- In the ledger, copy each selected claim label exactly: use its supplied claim_type and risk_level. Never replace duration or climate with a generic factual label.',
       `- Required internal link markdown: [${packet.primaryQuery} 글 모아보기](${packet.internalLink})`,
       '- Never emit a bare URL. Copy the exact Markdown link forms supplied above.',
-      `- Use exactly ${packet.approvedClaims.length} factual sentences: each selected approved claim once. Do not omit or paraphrase them.`,
+      '- Use only the approved factual sentences needed to answer the section purpose. Do not organize the article as one source or one claim per section.',
       '- Each approved fact may appear only once in the visible article. Never restate, combine, summarize, or explain its number or entity-property pair in another sentence.',
       '- Never combine two approved numeric claims into one sentence. Keep every numeric claim as its supplied standalone sentence followed by its supplied citation.',
       '- Apart from those approved sentences, you may write only source-neutral editorial guidance: a direct decision answer, reasoning about the reader\'s choices, reader actions, headings, and reader-choice questions.',
@@ -704,7 +729,7 @@ export function buildDeepSeekRewritePromptV4(input: {
       '- Prefer direct reader actions ending in 확인하세요, 비교하세요, or 결정하세요. Do not turn those actions into a new assertion about the place.',
       '- Give every evidence-section H2 a distinct decision purpose. Do not use numbered month/entity + "공식 정보" as a repeated heading template.',
       ...buildRewriteArchetypeContractV4(packet.archetype, packet.primaryQuery),
-      '- Do not write a table, route arrow, generic warning, generic FAQ, or generic checklist.',
+      '- Do not write a new numeric table, route arrow, generic warning, generic FAQ, or generic checklist.',
       '- Use concise Korean paragraphs of 2-4 sentences. The visible article must be complete enough to make the primary decision; do not pad with generic travel prose.',
       '- Output order: H1, direct decision-answer paragraph, archetype-specific decision section, grouped evidence with citations, concise next action, internal link, hidden ledger.',
       '- Allowed official links (links are citations, not permission to invent claims):',
@@ -734,36 +759,12 @@ export function repairFoodBudgetRewriteOpeningV4(input: {
   intentType: string;
   approvedClaims: BlogRewriteApprovedClaimV4[];
 }): string {
-  if (input.intentType !== 'food_budget') return input.markdown;
-  const lines = input.markdown.trim().split(/\r?\n/);
-  const h1Index = lines.findIndex((line) => /^#\s+\S/.test(line.trim()));
-  const h2Index = lines.findIndex((line, index) => index > h1Index && /^##\s+\S/.test(line.trim()));
-  if (h1Index < 0 || h2Index <= h1Index + 1) return input.markdown;
-  const opening = lines.slice(h1Index + 1, h2Index).join('\n').trim();
-  if (!opening || /\d|[₩￦¥￥$€₫]|\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\b/i.test(opening)) {
-    return input.markdown;
-  }
-  if (input.approvedClaims.some((claim) => opening.includes(claim.claimText))) return input.markdown;
-  const domains = [...new Set(input.approvedClaims.flatMap((claim) =>
-    (claim.sourceUrls ?? []).flatMap((url) => {
-      try {
-        return [new URL(url).hostname.toLowerCase().replace(/^www\./, '')];
-      } catch {
-        return [];
-      }
-    })))].slice(0, 3);
-  if (domains.length === 0) return input.markdown;
-  const repairedOpening = [
-    `${input.primaryQuery} 기준을 세우려면 ${domains.join('·')} 근거 링크부터 확인하고, 실제로 먹을 항목만 고르세요.`,
-    '고른 항목을 절약형·일반형·여유형 중 자신의 식사 계획에 맞는 기준으로 비교하세요.',
-  ].join(' ');
-  return [
-    ...lines.slice(0, h1Index + 1),
-    '',
-    repairedOpening,
-    '',
-    ...lines.slice(h2Index),
-  ].join('\n').trim();
+  // Compatibility no-op. V5 inserts a deterministic decision artifact and
+  // must never expose source domains in customer-facing prose.
+  void input.primaryQuery;
+  void input.intentType;
+  void input.approvedClaims;
+  return input.markdown;
 }
 
 /** Safe Markdown normalization: the writer sometimes returns the fixed H1 as plain text. */

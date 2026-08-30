@@ -1,0 +1,628 @@
+import { createHash } from 'node:crypto';
+import {
+  createBlogInformationClaimFingerprint,
+  type BlogInformationClaimInput,
+  type BlogInformationExtractedValue,
+  type BlogInformationResearchBundle,
+  type BlogInformationSourceInput,
+} from './blog-information-evidence';
+import type {
+  BlogInformationClaimLedgerEntry,
+  BlogInformationWriterOutput,
+} from './blog-information-claim-ledger';
+
+export const BLOG_EDITORIAL_HARNESS_VERSION = 'blog-editorial-harness-v5.0.0' as const;
+export const BLOG_DECISION_ARTIFACT_VERSION = 'blog-decision-artifact-v1' as const;
+export const BLOG_EDITORIAL_JUDGE_VERSION = 'blog-editorial-judge-v1' as const;
+
+export type BlogPublicSourceLabel =
+  | '정부·공공기관 원문'
+  | '운영사 공식 안내'
+  | '공식 관광 안내'
+  | '가격 조사 자료'
+  | '검토한 현지 자료'
+  | '여소남 집계'
+  | '확인한 원문';
+
+export interface BlogDecisionPublicFactV1 {
+  claimFingerprint: string;
+  claimText: string;
+  claimType: string;
+  riskLevel: string;
+  sourceUrls: string[];
+  sourceLabels: BlogPublicSourceLabel[];
+  citationLabel: string;
+}
+
+export interface BlogDecisionCalculationOperandV1 {
+  claimFingerprint: string;
+  label: string;
+  amount: number;
+  currency: string;
+}
+
+export interface BlogDecisionCalculationV1 {
+  id: string;
+  label: '절약형' | '일반형' | '여유형';
+  formula: string;
+  result: number;
+  currency: string;
+  assumptions: string[];
+  operands: BlogDecisionCalculationOperandV1[];
+  publicClaimText: string;
+  publicClaimFingerprint: string;
+}
+
+export interface BlogFirstPartyInsightV1 {
+  text: string;
+  sampleSize: number;
+  periodStart: string;
+  periodEnd: string;
+  sourceKey: string;
+}
+
+export interface BlogDecisionArtifactV1 {
+  version: typeof BLOG_DECISION_ARTIFACT_VERSION;
+  question: string;
+  directAnswer: string;
+  promiseType: 'daily_budget_scenarios' | 'price_examples' | 'direct_answer';
+  originalTitle: string;
+  resolvedTitle: string;
+  publicFacts: BlogDecisionPublicFactV1[];
+  calculations: BlogDecisionCalculationV1[];
+  firstPartyInsights: BlogFirstPartyInsightV1[];
+  gaps: string[];
+}
+
+export interface BlogEditorialDimensionV1 {
+  passed: boolean;
+  reason: string;
+}
+
+export interface BlogEditorialJudgeReportV1 {
+  version: typeof BLOG_EDITORIAL_JUDGE_VERSION;
+  passed: boolean;
+  dimensions: {
+    usefulness: BlogEditorialDimensionV1;
+    naturalKorean: BlogEditorialDimensionV1;
+    completeness: BlogEditorialDimensionV1;
+    originality: BlogEditorialDimensionV1;
+    sourceHonesty: BlogEditorialDimensionV1;
+  };
+  failureReasons: string[];
+}
+
+export interface BlogDeterministicEditorialReportV1 {
+  version: typeof BLOG_EDITORIAL_HARNESS_VERSION;
+  passed: boolean;
+  failureReasons: string[];
+  evidence: Record<string, unknown>;
+}
+
+export interface BlogEditorialHarnessReportV1 {
+  version: typeof BLOG_EDITORIAL_HARNESS_VERSION;
+  passed: boolean;
+  deterministic: BlogDeterministicEditorialReportV1;
+  semantic: BlogEditorialJudgeReportV1 | null;
+  failureReasons: string[];
+}
+
+export interface BlogPromptTraceV1 {
+  version: 'blog-prompt-trace-v1';
+  templateVersion: string;
+  gitCommitSha: string;
+  renderedPromptHash: string;
+  briefHash: string;
+  claimPacketHash: string;
+  model: string;
+  temperature: number;
+  stage: string;
+}
+
+type PriceFact = BlogDecisionPublicFactV1 & {
+  amount: number;
+  currency: string;
+  shortLabel: string;
+};
+
+function stableJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(',')}}`;
+}
+
+export function hashBlogPromptTraceValueV1(value: unknown): string {
+  return createHash('sha256').update(
+    typeof value === 'string' ? value : stableJson(value),
+  ).digest('hex');
+}
+
+export function buildBlogPromptTraceV1(input: {
+  prompt: string;
+  templateVersion: string;
+  brief: unknown;
+  claimPacket: unknown;
+  model: string;
+  temperature: number;
+  stage: string;
+  gitCommitSha?: string | null;
+}): BlogPromptTraceV1 {
+  return {
+    version: 'blog-prompt-trace-v1',
+    templateVersion: input.templateVersion,
+    gitCommitSha: String(
+      input.gitCommitSha
+      || process.env.VERCEL_GIT_COMMIT_SHA
+      || process.env.GIT_COMMIT_SHA
+      || 'local-unknown',
+    ).slice(0, 64),
+    renderedPromptHash: hashBlogPromptTraceValueV1(input.prompt),
+    briefHash: hashBlogPromptTraceValueV1(input.brief),
+    claimPacketHash: hashBlogPromptTraceValueV1(input.claimPacket),
+    model: input.model,
+    temperature: input.temperature,
+    stage: input.stage,
+  };
+}
+
+export function resolveBlogPublicSourceLabelV1(
+  source: Pick<BlogInformationSourceInput, 'sourceType' | 'authorityLevel'>,
+): BlogPublicSourceLabel {
+  if (source.authorityLevel === 'internal_reference' || source.sourceType === 'internal_reference') {
+    return '여소남 집계';
+  }
+  if ([
+    'government', 'embassy', 'immigration', 'customs', 'meteorological_agency',
+    'regulator', 'central_bank', 'bank',
+  ].includes(source.sourceType)) return '정부·공공기관 원문';
+  if (source.sourceType === 'official_tourism') return '공식 관광 안내';
+  if ([
+    'airport', 'transport_operator', 'official_operator', 'insurer_policy',
+  ].includes(source.sourceType)) return '운영사 공식 안내';
+  if (source.sourceType === 'reputable_price_source') return '가격 조사 자료';
+  if (['reputable_local_source', 'reputable_source'].includes(source.sourceType)) {
+    return '검토한 현지 자료';
+  }
+  if (source.authorityLevel === 'official_primary' || source.authorityLevel === 'official_secondary') {
+    return '확인한 원문';
+  }
+  return '확인한 원문';
+}
+
+function citationLabelForSources(sources: BlogInformationSourceInput[]): string {
+  const labels = [...new Set(sources.map(resolveBlogPublicSourceLabelV1))];
+  const publishers = [...new Set(sources.map((source) => source.publisher.trim()).filter(Boolean))];
+  const label = labels[0] ?? '확인한 원문';
+  return publishers[0] ? `${label} · ${publishers[0]}` : label;
+}
+
+function factsFromBundle(bundle: BlogInformationResearchBundle): BlogDecisionPublicFactV1[] {
+  const evidenceByKey = new Map(bundle.evidence.map((evidence) => [evidence.evidenceKey, evidence]));
+  const sourceByKey = new Map(bundle.sources.map((source) => [source.sourceKey, source]));
+  return bundle.claims.map((claim) => {
+    const sources = [...new Map(claim.evidenceKeys.flatMap((evidenceKey) => {
+      const evidence = evidenceByKey.get(evidenceKey);
+      const source = evidence ? sourceByKey.get(evidence.sourceKey) : null;
+      return source ? [[source.sourceKey, source] as const] : [];
+    })).values()];
+    return {
+      claimFingerprint: claim.claimFingerprint,
+      claimText: claim.claimText,
+      claimType: claim.claimType,
+      riskLevel: claim.riskLevel,
+      sourceUrls: [...new Set(sources.map((source) => source.sourceUrl).filter((url): url is string => Boolean(url)))],
+      sourceLabels: [...new Set(sources.map(resolveBlogPublicSourceLabelV1))],
+      citationLabel: citationLabelForSources(sources),
+    };
+  });
+}
+
+function validAggregateInsight(source: BlogInformationSourceInput): BlogFirstPartyInsightV1 | null {
+  if (source.sourceType !== 'internal_reference' || source.authorityLevel !== 'internal_reference') return null;
+  const metadata = source.metadata ?? {};
+  const sampleSize = Number(metadata.sample_size ?? metadata.sampleSize ?? 0);
+  const periodStart = String(metadata.period_start ?? metadata.periodStart ?? '');
+  const periodEnd = String(metadata.period_end ?? metadata.periodEnd ?? '');
+  const publicText = String(metadata.public_text ?? metadata.publicText ?? '').replace(/\s+/g, ' ').trim();
+  if (sampleSize < 5 || !publicText || Number.isNaN(Date.parse(periodStart)) || Number.isNaN(Date.parse(periodEnd))) {
+    return null;
+  }
+  return { text: publicText, sampleSize, periodStart, periodEnd, sourceKey: source.sourceKey };
+}
+
+function priceValue(claim: BlogInformationClaimInput): { amount: number; currency: string } | null {
+  if (claim.claimType !== 'price') return null;
+  const amount = Number(String(claim.extractedValue?.normalizedValue ?? '').replace(/,/g, ''));
+  const currency = String(claim.extractedValue?.currency ?? '').toUpperCase();
+  if (!Number.isFinite(amount) || amount <= 0 || !/^[A-Z]{3}$/.test(currency)) return null;
+  return { amount, currency };
+}
+
+function shortFoodLabel(text: string): string {
+  const clean = text
+    .replace(/\[[^\]]{1,80}\]\s*/g, '')
+    .replace(/(?:확인일\s*기준|가격|금액|비용)(?:은|는|이|가)?/g, '')
+    .replace(/(?:USD|KRW|JPY|VND|SGD|EUR|THB|달러|원|엔)\s*\$?\d[\d,.]*/gi, '')
+    .replace(/\$\s*\d[\d,.]*/g, '')
+    .replace(/\d[\d,.]*\s*(?:USD|KRW|JPY|VND|SGD|EUR|THB|달러|원|엔)/gi, '')
+    .replace(/[.。]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return clean.slice(0, 36) || '확인된 식사 항목';
+}
+
+function findPriceFact(
+  priceFacts: PriceFact[],
+  pattern: RegExp,
+  used: Set<string> = new Set(),
+): PriceFact | null {
+  return priceFacts
+    .filter((fact) => !used.has(fact.claimFingerprint) && pattern.test(fact.claimText))
+    .sort((left, right) => left.amount - right.amount)[0] ?? null;
+}
+
+function money(amount: number): string {
+  return Number.isInteger(amount) ? amount.toFixed(0) : amount.toFixed(2);
+}
+
+function calculation(
+  label: BlogDecisionCalculationV1['label'],
+  operands: BlogDecisionCalculationOperandV1[],
+): BlogDecisionCalculationV1 {
+  const currency = operands[0]!.currency;
+  const result = Number(operands.reduce((sum, operand) => sum + operand.amount, 0).toFixed(2));
+  const formula = `${operands.map((operand) => money(operand.amount)).join(' + ')} = ${money(result)} ${currency}`;
+  // Fingerprint the normalized table row text. The validator deliberately
+  // strips the outer Markdown pipes before classifying table claims.
+  const publicClaimText = `${label} | ${operands.map((operand) => operand.label).join(' + ')} | ${formula}`;
+  return {
+    id: `food-budget-${label === '절약형' ? 'save' : label === '일반형' ? 'standard' : 'comfort'}`,
+    label,
+    formula,
+    result,
+    currency,
+    assumptions: ['1인 기준', '하루 세 끼와 커피 1잔', '세금·팁·주류 제외', '통계 평균이 아닌 확인 가격 조합'],
+    operands,
+    publicClaimText,
+    publicClaimFingerprint: createBlogInformationClaimFingerprint(publicClaimText),
+  };
+}
+
+function foodBudgetCalculations(
+  bundle: BlogInformationResearchBundle,
+  publicFacts: BlogDecisionPublicFactV1[],
+): BlogDecisionCalculationV1[] {
+  const factByFingerprint = new Map(publicFacts.map((fact) => [fact.claimFingerprint, fact]));
+  const priceFacts: PriceFact[] = bundle.claims.flatMap((claim) => {
+    const value = priceValue(claim);
+    const fact = factByFingerprint.get(claim.claimFingerprint);
+    return value && fact ? [{ ...fact, ...value, shortLabel: shortFoodLabel(claim.claimText) }] : [];
+  });
+  const currencies = new Set(priceFacts.map((fact) => fact.currency));
+  if (currencies.size !== 1) return [];
+
+  const coffee = findPriceFact(priceFacts, /커피|coffee|차\b|tea\b|음료|drink/i);
+  const breakfast = findPriceFact(priceFacts, /아침|조식|breakfast|브런치|brunch/i);
+  const fastFood = findPriceFact(priceFacts, /패스트푸드|맥도날드|버거|콤보|fast\s*food|mcdonald|burger|combo/i);
+  const ordinary = findPriceFact(priceFacts, /저렴한\s*레스토랑|일반\s*레스토랑|inexpensive\s*restaurant|casual/i);
+  const premium = priceFacts
+    .filter((fact) => /뷔페|buffet|파인다이닝|fine\s*dining|스테이크|steak/i.test(fact.claimText))
+    .filter((fact) => !/\b2\s*인|2\s*명|for\s*two|2\s*people/i.test(fact.claimText))
+    .sort((left, right) => right.amount - left.amount)[0] ?? null;
+  if (!coffee || !breakfast || !fastFood || !ordinary || !premium) return [];
+
+  const operand = (fact: PriceFact): BlogDecisionCalculationOperandV1 => ({
+    claimFingerprint: fact.claimFingerprint,
+    label: fact.shortLabel,
+    amount: fact.amount,
+    currency: fact.currency,
+  });
+  return [
+    calculation('절약형', [operand(breakfast), operand(fastFood), operand(ordinary), operand(coffee)]),
+    calculation('일반형', [operand(breakfast), operand(ordinary), operand(ordinary), operand(coffee)]),
+    calculation('여유형', [operand(breakfast), operand(ordinary), operand(premium), operand(coffee)]),
+  ];
+}
+
+function destinationFromTitle(title: string): string {
+  return title.normalize('NFKC').replace(/\s*(?:여행\s*)?(?:식비|외식|예산).*$/u, '').trim();
+}
+
+export function buildBlogDecisionArtifactV1(input: {
+  title: string;
+  question: string;
+  primaryDecision: string;
+  intentType: string;
+  bundle: BlogInformationResearchBundle;
+}): BlogDecisionArtifactV1 {
+  const publicFacts = factsFromBundle(input.bundle);
+  const firstPartyInsights = input.bundle.sources.flatMap((source) => {
+    const insight = validAggregateInsight(source);
+    return insight ? [insight] : [];
+  });
+  const isFoodBudget = input.intentType === 'food_budget';
+  const calculations = isFoodBudget ? foodBudgetCalculations(input.bundle, publicFacts) : [];
+  if (isFoodBudget && calculations.length === 3) {
+    return {
+      version: BLOG_DECISION_ARTIFACT_VERSION,
+      question: input.question,
+      directAnswer: '확인된 메뉴 가격을 1인·하루 세 끼·커피 1잔 기준으로 조합해 절약형, 일반형, 여유형의 합계를 비교합니다.',
+      promiseType: 'daily_budget_scenarios',
+      originalTitle: input.title,
+      resolvedTitle: input.title,
+      publicFacts,
+      calculations,
+      firstPartyInsights,
+      gaps: ['세금·팁·주류·실시간 메뉴 변경은 합계에서 제외'],
+    };
+  }
+  if (isFoodBudget) {
+    const destination = destinationFromTitle(input.title);
+    return {
+      version: BLOG_DECISION_ARTIFACT_VERSION,
+      question: input.question,
+      directAnswer: '현재 근거만으로는 하루 총식비를 책임 있게 계산할 수 없어, 확인된 메뉴 가격과 빠진 항목을 공개합니다.',
+      promiseType: 'price_examples',
+      originalTitle: input.title,
+      resolvedTitle: `${destination ? `${destination} ` : ''}외식 메뉴 가격 예시: 하루 식비 계산 전 확인할 항목`,
+      publicFacts,
+      calculations: [],
+      firstPartyInsights,
+      gaps: ['아침·점심·저녁과 음료를 같은 1인 기준으로 조합할 근거 부족'],
+    };
+  }
+  return {
+    version: BLOG_DECISION_ARTIFACT_VERSION,
+    question: input.question,
+    directAnswer: input.primaryDecision,
+    promiseType: 'direct_answer',
+    originalTitle: input.title,
+    resolvedTitle: input.title,
+    publicFacts,
+    calculations: [],
+    firstPartyInsights,
+    gaps: [],
+  };
+}
+
+function derivedExtractedValue(
+  calculationRow: BlogDecisionCalculationV1,
+): BlogInformationExtractedValue {
+  return {
+    normalizedValue: String(calculationRow.result),
+    unit: '1인 하루',
+    currency: calculationRow.currency,
+    derivation: {
+      version: 'blog-claim-derivation-v1',
+      operation: 'sum',
+      operandClaimFingerprints: calculationRow.operands.map((operand) => operand.claimFingerprint),
+      operandValues: calculationRow.operands.map((operand) => String(operand.amount)),
+      formula: calculationRow.formula,
+      assumptions: calculationRow.assumptions,
+    },
+  };
+}
+
+export function withBlogDecisionArtifactClaimsV1(
+  bundle: BlogInformationResearchBundle,
+  artifact: BlogDecisionArtifactV1,
+): BlogInformationResearchBundle {
+  if (artifact.calculations.length === 0) return bundle;
+  const claimByFingerprint = new Map(bundle.claims.map((claim) => [claim.claimFingerprint, claim]));
+  const derivedClaims: BlogInformationClaimInput[] = artifact.calculations.map((row) => ({
+    claimFingerprint: row.publicClaimFingerprint,
+    claimText: row.publicClaimText,
+    claimType: 'price',
+    riskLevel: 'MEDIUM',
+    extractedValue: derivedExtractedValue(row),
+    requiresEvidence: true,
+    evidenceKeys: [...new Set(row.operands.flatMap((operand) =>
+      claimByFingerprint.get(operand.claimFingerprint)?.evidenceKeys ?? []))],
+  }));
+  return {
+    ...bundle,
+    claims: [...bundle.claims, ...derivedClaims.filter((claim) => !claimByFingerprint.has(claim.claimFingerprint))],
+  };
+}
+
+export function buildBlogDecisionArtifactPromptBlockV1(artifact: BlogDecisionArtifactV1): string {
+  return [
+    '## Decision artifact — reader promise and calculation source of truth',
+    `- Version: ${artifact.version}`,
+    `- Exact public title: ${artifact.resolvedTitle}`,
+    `- Reader question: ${artifact.question}`,
+    `- Direct answer: ${artifact.directAnswer}`,
+    `- Promise type: ${artifact.promiseType}`,
+    '- Do not expose internal claim labels, source domains, prompt instructions, or audit terminology.',
+    '- Cite a source with the supplied public citation label. Never call a price survey or community estimate an official source.',
+    '- Public factual claims and honest citation labels:',
+    ...artifact.publicFacts.flatMap((fact, index) => [
+      `  ${index + 1}. ${fact.claimText}`,
+      `     citation: [${fact.citationLabel}](${fact.sourceUrls[0] || ''})`,
+    ]),
+    ...(artifact.calculations.length > 0 ? [
+      '- The deterministic publisher inserts the scenario table. Do not invent, repeat, paraphrase, or recalculate its totals.',
+      ...artifact.calculations.map((row) => `  - ${row.label}: ${row.formula}; assumptions=${row.assumptions.join(', ')}`),
+    ] : []),
+    ...(artifact.gaps.length > 0 ? [
+      '- Evidence gaps that must remain explicit:',
+      ...artifact.gaps.map((gap) => `  - ${gap}`),
+    ] : []),
+    ...(artifact.firstPartyInsights.length > 0 ? [
+      '- PII-free first-party aggregates (show sample and period whenever used):',
+      ...artifact.firstPartyInsights.map((insight) =>
+        `  - ${insight.text} (n=${insight.sampleSize}, ${insight.periodStart}~${insight.periodEnd})`),
+    ] : []),
+  ].join('\n');
+}
+
+function decisionTableMarkdown(artifact: BlogDecisionArtifactV1): string {
+  if (artifact.calculations.length === 0) return '';
+  return [
+    '<!-- blog_decision_artifact:food_budget:v1 -->',
+    '## 1인 하루 식비 시나리오',
+    '',
+    '공통 가정은 하루 세 끼와 커피 1잔이며, 세금·팁·주류는 제외했습니다. 통계적 평균이 아니라 아래에 인용한 확인 가격을 조합한 계산입니다.',
+    '',
+    '| 시나리오 | 포함 항목 | 계산식과 1인 하루 합계 |',
+    '|---|---|---:|',
+    ...artifact.calculations.map((row) => `| ${row.publicClaimText} |`),
+    '<!-- /blog_decision_artifact:food_budget:v1 -->',
+  ].join('\n');
+}
+
+export function applyBlogDecisionArtifactToWriterOutputV1(input: {
+  output: BlogInformationWriterOutput;
+  artifact: BlogDecisionArtifactV1;
+}): BlogInformationWriterOutput {
+  if (input.artifact.promiseType !== 'daily_budget_scenarios') return input.output;
+  const lines = input.output.markdown.trim().split(/\r?\n/);
+  const h1Index = lines.findIndex((line) => /^#\s+\S/.test(line.trim()));
+  const nextH2 = lines.findIndex((line, index) => index > h1Index && /^##\s+\S/.test(line.trim()));
+  if (h1Index < 0) return {
+    ...input.output,
+    ledgerIssues: [...new Set([...input.output.ledgerIssues, 'decision_artifact_h1_missing'])],
+  };
+  const insertAt = nextH2 > h1Index ? nextH2 : h1Index + 1;
+  const opening = input.artifact.directAnswer;
+  const table = decisionTableMarkdown(input.artifact);
+  const markdown = [
+    ...lines.slice(0, h1Index + 1),
+    '',
+    opening,
+    '',
+    table,
+    '',
+    ...lines.slice(insertAt),
+  ].join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  const derivedLedger: BlogInformationClaimLedgerEntry[] = input.artifact.calculations.map((row) => ({
+    claimFingerprint: row.publicClaimFingerprint,
+    claimText: row.publicClaimText,
+    claimType: 'price',
+    riskLevel: 'MEDIUM',
+  }));
+  return {
+    markdown,
+    claimLedger: [...new Map(
+      [...input.output.claimLedger, ...derivedLedger].map((claim) => [claim.claimFingerprint, claim]),
+    ).values()],
+    ledgerIssues: input.output.ledgerIssues,
+  };
+}
+
+const INTERNAL_LABEL_RE = /\[(?:절약형|일반형|여유형|간식|아침|점심|저녁|[A-Z_]{3,}|(?:price|factual|duration|medium|low|high)[/\]])[^\n]{0,80}\]/i;
+const GENERIC_COMMAND_RE = /(?:확인|비교|결정|고르|선택)하세요/g;
+
+export function inspectBlogEditorialDeterministicallyV1(input: {
+  title: string;
+  markdown: string;
+  intentType: string;
+  artifact?: BlogDecisionArtifactV1 | null;
+}): BlogDeterministicEditorialReportV1 {
+  const visible = input.markdown.replace(/<!--[\s\S]*?-->/g, ' ').trim();
+  const openingWindow = visible.slice(0, 1_200);
+  const failures: string[] = [];
+  const internalLabelLeak = INTERNAL_LABEL_RE.test(visible);
+  if (internalLabelLeak) failures.push('internal_label_leak');
+  const sourceLabelMisleading = (visible.match(/\[(?:공식\s*근거|공식\s*자료)\]\(/g) ?? []).length >= 2
+    && input.artifact?.publicFacts.some((fact) =>
+      fact.sourceLabels.some((label) => ['가격 조사 자료', '검토한 현지 자료', '여소남 집계'].includes(label))) === true;
+  if (sourceLabelMisleading) failures.push('source_label_misleading');
+
+  const budgetPromise = input.intentType === 'food_budget'
+    && /(?:하루|일일|여행\s*방식별).{0,20}(?:식비|예산)|(?:식비|예산).{0,20}(?:하루|시나리오)/i.test(input.title);
+  const scenarioRows = (visible.match(/\|\s*(?:절약형|일반형|여유형)\s*\|/g) ?? []).length;
+  const hasBudgetAmountEarly = /\d[\d,.]*(?:\s*[+~=~–-]\s*\d[\d,.]*)*\s*(?:USD|KRW|JPY|VND|SGD|EUR|THB|달러|원|엔)/i.test(openingWindow);
+  if (budgetPromise && (!hasBudgetAmountEarly || scenarioRows < 3)) failures.push('reader_task_unanswered');
+
+  const citations = (visible.match(/\[[^\]]+\]\(https?:\/\/[^)]+\)/g) ?? []).length;
+  const genericCommands = (visible.match(GENERIC_COMMAND_RE) ?? []).length;
+  const hasCalculation = /\d[\d,.]*\s*\+\s*\d[\d,.]*\s*=\s*\d[\d,.]*/.test(visible);
+  if (input.intentType === 'food_budget' && citations >= 4 && genericCommands >= 5 && !hasCalculation) {
+    failures.push('commodity_source_stitching');
+  }
+  if (input.artifact?.promiseType === 'daily_budget_scenarios'
+    && !input.artifact.calculations.every((calculationRow) => visible.includes(calculationRow.publicClaimText))) {
+    failures.push('decision_artifact_missing');
+  }
+  return {
+    version: BLOG_EDITORIAL_HARNESS_VERSION,
+    passed: failures.length === 0,
+    failureReasons: [...new Set(failures)],
+    evidence: {
+      internalLabelLeak,
+      sourceLabelMisleading,
+      budgetPromise,
+      scenarioRows,
+      hasBudgetAmountEarly,
+      citations,
+      genericCommands,
+      hasCalculation,
+    },
+  };
+}
+
+export function buildBlogEditorialJudgePromptV1(input: {
+  title: string;
+  primaryQuery: string;
+  primaryDecision: string;
+  markdown: string;
+  artifact: BlogDecisionArtifactV1;
+}): string {
+  return [
+    '당신은 여소남 자동발행의 독립 편집 심사자입니다. 작성자가 아니며 점수를 후하게 주면 안 됩니다.',
+    '독자가 검색 질문에 실제 답을 얻는지, 자연스러운 한국어인지, 제목 약속을 끝까지 이행하는지, 출처를 정직하게 부르는지 판정하세요.',
+    '각 차원은 반드시 passed=true 또는 false입니다. 평균 점수로 실패를 감추지 마세요. 한 차원이라도 false이면 전체 passed=false입니다.',
+    '오직 아래 JSON 하나만 반환하세요. 설명이나 코드펜스를 붙이지 마세요.',
+    '{"passed":false,"dimensions":{"usefulness":{"passed":false,"reason":"..."},"naturalKorean":{"passed":false,"reason":"..."},"completeness":{"passed":false,"reason":"..."},"originality":{"passed":false,"reason":"..."},"sourceHonesty":{"passed":false,"reason":"..."}},"failureReasons":["usefulness"]}',
+    `제목: ${input.title}`,
+    `검색 질문: ${input.primaryQuery}`,
+    `독자 결정: ${input.primaryDecision}`,
+    `결정 아티팩트: ${stableJson(input.artifact)}`,
+    '평가할 본문:',
+    input.markdown,
+  ].join('\n\n');
+}
+
+export function parseBlogEditorialJudgeReportV1(raw: string): BlogEditorialJudgeReportV1 {
+  const text = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+  const parsed = JSON.parse(text) as Record<string, unknown>;
+  const dimensions = parsed.dimensions as Record<string, unknown> | undefined;
+  const keys = ['usefulness', 'naturalKorean', 'completeness', 'originality', 'sourceHonesty'] as const;
+  const normalized = Object.fromEntries(keys.map((key) => {
+    const dimension = dimensions?.[key] as Record<string, unknown> | undefined;
+    if (typeof dimension?.passed !== 'boolean' || typeof dimension.reason !== 'string' || !dimension.reason.trim()) {
+      throw new Error(`blog_editorial_judge_invalid_dimension:${key}`);
+    }
+    return [key, { passed: dimension.passed, reason: dimension.reason.trim().slice(0, 500) }];
+  })) as BlogEditorialJudgeReportV1['dimensions'];
+  const failedKeys = keys.filter((key) => !normalized[key].passed);
+  const declaredPassed = parsed.passed === true;
+  if (declaredPassed !== (failedKeys.length === 0)) throw new Error('blog_editorial_judge_inconsistent_pass');
+  return {
+    version: BLOG_EDITORIAL_JUDGE_VERSION,
+    passed: failedKeys.length === 0,
+    dimensions: normalized,
+    failureReasons: failedKeys,
+  };
+}
+
+export function combineBlogEditorialHarnessV1(input: {
+  deterministic: BlogDeterministicEditorialReportV1;
+  semantic: BlogEditorialJudgeReportV1 | null;
+}): BlogEditorialHarnessReportV1 {
+  const semanticFailures = input.semantic?.failureReasons.map((reason) => `semantic_${reason}`)
+    ?? ['semantic_judge_missing'];
+  const failures = [
+    ...input.deterministic.failureReasons.map((reason) => `deterministic_${reason}`),
+    ...semanticFailures,
+  ];
+  return {
+    version: BLOG_EDITORIAL_HARNESS_VERSION,
+    passed: input.deterministic.passed && input.semantic?.passed === true,
+    deterministic: input.deterministic,
+    semantic: input.semantic,
+    failureReasons: failures,
+  };
+}

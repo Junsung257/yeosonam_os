@@ -72,6 +72,7 @@ export interface BlogInformationClaimValidationIssue {
     | 'unclassified_factual_candidate'
     | 'claim_ledger_body_mismatch'
     | 'invalid_claim_ledger'
+    | 'invalid_derivation'
     | 'validator_error';
   claimFingerprint: string;
   claimText?: string;
@@ -763,6 +764,41 @@ export function validateBlogInformationClaims(input: {
           claimType: claim.claimType,
           message: `claim validation status가 발행 가능하지 않습니다: ${persisted.validationStatus}`,
         });
+        continue;
+      }
+      const derivation = persisted.extractedValue?.derivation;
+      if (derivation) {
+        const operandFingerprints = derivation.operandClaimFingerprints;
+        const operandValues = derivation.operandValues.map((value) => Number(value));
+        const result = Number(persisted.extractedValue?.normalizedValue);
+        const operands = operandFingerprints.map((fingerprint) => persistedByFingerprint.get(fingerprint));
+        const structurallyValid = derivation.version === 'blog-claim-derivation-v1'
+          && derivation.operation === 'sum'
+          && operandFingerprints.length >= 2
+          && operandFingerprints.length <= 12
+          && operandFingerprints.length === operandValues.length
+          && operandValues.every((value) => Number.isFinite(value) && value >= 0)
+          && Number.isFinite(result)
+          && Math.abs(operandValues.reduce((sum, value) => sum + value, 0) - result) < 0.005
+          && operands.every((operand, index) => {
+            if (!operand || !['supported', 'approved'].includes(operand.validationStatus)) return false;
+            const operandValue = Number(operand.extractedValue?.normalizedValue);
+            if (!Number.isFinite(operandValue) || Math.abs(operandValue - operandValues[index]!) >= 0.005) return false;
+            if ((operand.extractedValue?.currency ?? '') !== (persisted.extractedValue?.currency ?? '')) return false;
+            return operand.evidence.some((evidence) =>
+              Boolean(evidence.sourceVersionId) && isEvidenceCurrent(evidence, operand.claimType, nowMs));
+          });
+        if (!structurallyValid) {
+          issues.push({
+            code: 'invalid_derivation',
+            claimFingerprint: claim.claimFingerprint,
+            claimText: claim.claimText,
+            claimType: claim.claimType,
+            message: '파생 금액의 피연산자·통화·공식이 승인된 원천 claim과 일치하지 않습니다.',
+          });
+          continue;
+        }
+        supportedClaims += 1;
         continue;
       }
       const claimTypeEvidence = persisted.evidence.filter((evidence) => evidence.claimType === claim.claimType);

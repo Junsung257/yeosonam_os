@@ -6,10 +6,14 @@ const controller = readFileSync('src/app/api/cron/blog-publication-controller/ro
 const autoResearch = readFileSync('src/lib/blog-auto-research.ts', 'utf8');
 
 describe('blog publisher V4 orchestration wiring', () => {
-  it('reserves budget before the only provider-call boundary and settles receipts', () => {
+  it('reserves and settles budget at both generation and editorial-judge provider boundaries', () => {
     const helper = source.slice(
       source.indexOf('async function generatePublisherBlogText'),
       source.indexOf('function publisherRemainingMs'),
+    );
+    const judgeHelper = source.slice(
+      source.indexOf('async function evaluatePublisherEditorialHarnessV5'),
+      source.indexOf('function shouldSkipMediaGenerationFailure'),
     );
     expect(helper.indexOf('reserveBlogAiBudgetBeforeCallV4({')).toBeLessThan(
       helper.indexOf('generateBlogTextWithReceipt(prompt,'),
@@ -17,7 +21,13 @@ describe('blog publisher V4 orchestration wiring', () => {
     expect(helper).toContain('settleBlogAiBudgetReservationV4');
     expect(helper).toContain('receipt: error instanceof BlogAiResponseError ? error.receipt : null');
     expect(helper).toContain('blog_ai_budget_blocked');
-    expect(source.match(/generateBlogTextWithReceipt\(/g)).toHaveLength(1);
+    expect(judgeHelper.indexOf('reserveBlogEditorialJudgeBudgetBeforeCallV5({')).toBeLessThan(
+      judgeHelper.indexOf('generateBlogTextWithReceipt(buildBlogEditorialJudgePromptV1({'),
+    );
+    expect(judgeHelper).toContain('settleBlogAiBudgetReservationV4({');
+    expect(judgeHelper).toContain('cascade: false');
+    expect(judgeHelper).toContain("deepseekThinking: 'disabled'");
+    expect(source.match(/generateBlogTextWithReceipt\(/g)).toHaveLength(2);
   });
 
   it('keeps every publication model stage DeepSeek-only', () => {

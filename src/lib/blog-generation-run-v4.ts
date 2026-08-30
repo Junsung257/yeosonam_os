@@ -10,6 +10,7 @@ import {
   type BlogDeepSeekStage,
   type BlogQualityRouteV4,
 } from './blog-deepseek-orchestrator-v4';
+import type { BlogPromptTraceV1 } from './blog-editorial-harness-v5';
 
 export interface BlogAiBudgetReservationRecordV4 {
   reservationId: string | null;
@@ -41,6 +42,7 @@ export interface BlogGenerationAttemptRecordV4 {
   failureReasons: string[];
   researchFingerprint?: string | null;
   claimFingerprint?: string | null;
+  promptTrace?: BlogPromptTraceV1 | null;
   receipt: BlogAiUsageReceipt;
   attemptStatus?: 'completed' | 'failed';
   errorCode?: string | null;
@@ -239,6 +241,60 @@ export async function reserveBlogAiBudgetBeforeCallV4(input: {
 }
 
 /**
+ * The semantic judge is a separate model call and therefore receives a
+ * separate atomic reservation under the same KST-day cap.
+ */
+export async function reserveBlogEditorialJudgeBudgetBeforeCallV5(input: {
+  queueId: string;
+  attemptNumber: number;
+  model: string;
+  requestedUsd: number;
+  now?: Date;
+  capUsd?: number;
+}): Promise<BlogAiBudgetReservationRecordV4> {
+  const budgetDayKst = blogBudgetDayKstV4(input.now);
+  const capUsd = input.capUsd ?? resolveBlogDailyAiCostCapUsdV4();
+  if (!Number.isFinite(input.requestedUsd) || input.requestedUsd <= 0) {
+    return {
+      reservationId: null, allowed: false, reason: 'invalid_budget_request',
+      budgetDayKst, capUsd, actualUsd: 0, reservedUsd: 0,
+      requestedUsd: 0, remainingUsd: 0,
+    };
+  }
+  const { data, error } = await supabaseAdmin.rpc('reserve_blog_ai_budget_v5', {
+    p_queue_id: input.queueId,
+    p_attempt_number: input.attemptNumber,
+    p_stage: 'editorial_judge',
+    p_provider: 'deepseek',
+    p_model: input.model,
+    p_requested_usd: input.requestedUsd,
+    p_cap_usd: capUsd,
+    p_budget_day_kst: budgetDayKst,
+    p_call_kind: 'editorial_judge',
+  }).maybeSingle();
+  if (error || !data) {
+    return {
+      reservationId: null, allowed: false,
+      reason: `budget_reservation_unavailable:${error?.message || 'empty_response'}`,
+      budgetDayKst, capUsd, actualUsd: 0, reservedUsd: 0,
+      requestedUsd: input.requestedUsd, remainingUsd: 0,
+    };
+  }
+  const row = data as Record<string, unknown>;
+  return {
+    reservationId: typeof row.reservation_id === 'string' ? row.reservation_id : null,
+    allowed: row.allowed === true,
+    reason: typeof row.reason === 'string' ? row.reason : 'daily_ai_cost_cap_reached',
+    budgetDayKst,
+    capUsd: Number(row.cap_usd ?? capUsd),
+    actualUsd: Number(row.actual_usd ?? 0),
+    reservedUsd: Number(row.reserved_usd ?? 0),
+    requestedUsd: Number(row.requested_usd ?? input.requestedUsd),
+    remainingUsd: Number(row.remaining_usd ?? 0),
+  };
+}
+
+/**
  * Settles a reservation from a durable provider receipt. If actual cost is
  * unknown (currently Gemini), the RPC must retain the full reservation until
  * the KST day closes. This is intentionally conservative.
@@ -331,6 +387,12 @@ export async function recordBlogGenerationAttemptV4(
     model: input.receipt.model,
     thinking_mode: input.receipt.thinkingMode
       ?? (input.stage === 'draft_flash' ? 'disabled' : 'enabled'),
+    prompt_hash: input.promptTrace?.renderedPromptHash ?? null,
+    prompt_trace_version: input.promptTrace?.version ?? null,
+    prompt_template_version: input.promptTrace?.templateVersion ?? null,
+    git_commit_sha: input.promptTrace?.gitCommitSha ?? null,
+    brief_hash: input.promptTrace?.briefHash ?? null,
+    claim_packet_hash: input.promptTrace?.claimPacketHash ?? null,
     research_fingerprint: input.researchFingerprint ?? null,
     claim_fingerprint: input.claimFingerprint ?? null,
     output_hash: outputHash,

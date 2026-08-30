@@ -1,4 +1,11 @@
-# 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-08-29 기준)
+# 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-08-30 기준)
+
+## 2026-08-30 블로그 People-First 편집 하네스 V5
+
+- 정보성 블로그는 모델 prose 전에 `blog-decision-artifact-v1`을 만든다. 제목 약속·직접 답변·공개 fact·정직한 출처 등급·계산 피연산자와 가정·근거 공백을 고정하고, 식비 시나리오 표와 57/67/85 USD 같은 합계는 모델이 아니라 결정론 코드가 만든다. 하루 총액을 뒷받침할 가격 묶음이 부족하면 제목을 메뉴 가격 예시 범위로 자동 축소한다.
+- 자동발행은 기존 claim/SEO/render/중복 게이트에 더해 결정론 편집 검사와 DeepSeek Pro 독립 편집 심사의 usefulness·natural Korean·completeness·originality·source honesty를 모두 통과해야 한다. 한 차원이라도 실패하면 초안 뒤 재작성 1회만 허용하고 재실패·심사 호출/저장 실패는 격리한다. HIGH risk 사람 승인 규칙은 그대로다.
+- `blog_generation_attempts`에는 실제 렌더 prompt/brief/claim packet 해시와 template/git/model/stage trace를 저장하며 새 승인 행은 DB constraint도 완전성을 강제한다. 편집 심사는 generation과 별도 예산 예약 행을 쓰되 같은 KST 일일 상한에 포함한다.
+- 실제 괌 실패 글을 negative fixture로 박제했고 11 intent × pass/unanswered/source-dishonesty 33개 Promptfoo 사례와 집중 Vitest 계약을 CI에 연결했다. 운영 migration은 `20260830011340_blog_editorial_harness_v5.sql`이다.
 
 ## 2026-08-29 미래 블로그 생성 중복 방지 시스템
 

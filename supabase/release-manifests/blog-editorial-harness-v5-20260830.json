@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "release": "blog-editorial-harness-v5-20260830",
+  "apply_mode": "supabase-db-push-include-all-after-exact-dry-run",
+  "migrations": [
+    {
+      "version": "20260830011340",
+      "file": "supabase/migrations/20260830011340_blog_editorial_harness_v5.sql",
+      "sha256": "36bafb85e6293a14698f6851f6285460d2251d7d4b6cb8e0d8fed2c5b94c867d"
+    }
+  ],
+  "rollback": {
+    "file": "supabase/rollbacks/blog-editorial-harness-v5-compatibility-rollback.sql",
+    "sha256": "78092d89e983af64a6f1af4b3eb0862caa63f0469e9c21f0889044637c9e2221"
+  }
+}
