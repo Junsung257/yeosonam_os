@@ -50,11 +50,23 @@ function hasFailedGate(qa: unknown, gate: string): boolean {
   });
 }
 
+/**
+ * Detects an actual duplicate/canonical collision.
+ *
+ * `publish_gate:duplicate` is an editorial quality dimension emitted by the
+ * V4 quality harness. It means the draft needs one bounded rewrite; it is not
+ * evidence that another canonical article already owns the topic or slug.
+ */
+export function isBlogDuplicateQueueFailure(reason: string): boolean {
+  const text = (reason || '').replace(/\bpublish_gate:duplicate\b/gi, 'publish_gate:quality');
+  return /동일\s*slug|유사\s*slug|이미\s*발행|최근\s*\d+\s*일\s*내|중복|\[duplicate\]|duplicate|slug already|slug .*exists/i.test(text);
+}
+
 export function classifyBlogQueueFailure(reason: string, qa?: unknown): BlogQueueFailureDecision {
   const text = reason || '';
   const lower = text.toLowerCase();
 
-  if (/동일\s*slug|유사\s*slug|이미\s*발행|duplicate|slug already|slug .*exists/i.test(text)) {
+  if (isBlogDuplicateQueueFailure(text)) {
     return { code: 'duplicate_content', retryable: false, selfHealAllowed: false, skipped: true };
   }
 
