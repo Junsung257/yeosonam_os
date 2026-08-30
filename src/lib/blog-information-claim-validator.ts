@@ -125,7 +125,7 @@ export function countUnsupportedNumericBlogInformationClaims(
     .map((claim) => claim.claimFingerprint)).size;
 }
 
-const PRICE_RE = /(?:[₩￦¥￥$€₫]\s*\d[\d,.]*)|(?:\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\s*\d[\d,.]*)|(?:\d[\d,.]*\s*(?:원|엔|달러|위안|유로|바트|동|페소|링깃|루피|파운드|프랑|JPY|KRW|USD|VND|SGD|CNY|EUR|THB))|(?:(?:가격|요금|비용|예산|택시비|교통비|식비|숙박비)\s*(?:은|는|이|가|:)?\s*(?:약\s*)?\d)|(?:(?:취소|변경|예약)?\s*수수료(?:가|는|은)?\s*(?:없|무료|면제|0\b))/i;
+const PRICE_RE = /(?:[₩￦¥￥$€₫]\s*\d[\d,.]*)|(?:\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\s*\d[\d,.]*)|(?:\d[\d,.]*\s*(?:원|엔|달러|위안|유로|바트|동|페소|링깃|루피|파운드|프랑|JPY|KRW|USD|VND|SGD|CNY|EUR|THB))|(?:(?:가격|요금|비용|예산|택시비|교통비|식비|숙박비)\s*(?:은|는|이|가|:)?\s*(?:약\s*)?\d)|(?:(?:취소|변경|예약)?\s*수수료(?:가|는|은)?\s*(?:없|무료|면제))/i;
 const DURATION_RE = /(?:약\s*)?\d+(?:\.\d+)?(?:\s*(?:~|-|–)\s*\d+(?:\.\d+)?)?\s*-?\s*(?:분|시간|mins?|minutes?|hrs?|hours?)(?:\s*(?:~|-|–)\s*\d+(?:\.\d+)?\s*-?\s*(?:분|시간|mins?|minutes?|hrs?|hours?))?/iu;
 const PERCENT_RE = /\d+(?:\.\d+)?\s*%/;
 const DISTANCE_RE = /(?:약|최대|최소|평균)?\s*\d+(?:\.\d+)?\s*(?:km|㎞|킬로미터|m|미터)/i;
@@ -429,7 +429,7 @@ function readCurrency(segment: string): string | null {
 }
 
 function extractClaimValue(segment: string, kind: BlogInformationFactualCandidateKind): BlogInformationExtractedValue {
-  if (kind === 'money_price' && /(?:취소|변경|예약)?\s*수수료(?:가|는|은)?\s*(?:없|무료|면제|0\b)/i.test(segment)) {
+  if (kind === 'money_price' && /(?:취소|변경|예약)?\s*수수료(?:가|는|은)?\s*(?:없|무료|면제)/i.test(segment)) {
     return { normalizedValue: '0', unit: 'fee', currency: readCurrency(segment) };
   }
   const number = segment.match(/-?\d[\d,.]*/)?.[0];
