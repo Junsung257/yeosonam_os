@@ -103,7 +103,11 @@ import {
 import { researchBlogInformationAutomatically } from '@/lib/blog-auto-research';
 import { buildBlogIntentPromptContract, classifyBlogIntent } from '@/lib/blog-content-intent';
 import { ensureDailyPublishableQueue, getBlogPublishingPolicy, MIN_PUBLISHABLE_BUFFER_DAYS, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
-import { classifyBlogQueueFailure, shouldSelfHealBlogQueueItem } from '@/lib/blog-queue-failure-policy';
+import {
+  classifyBlogQueueFailure,
+  isBlogDuplicateQueueFailure,
+  shouldSelfHealBlogQueueItem,
+} from '@/lib/blog-queue-failure-policy';
 import { normalizeBlogAngleType } from '@/lib/blog-queue-normalize';
 import { evaluateBlogTopicFit } from '@/lib/blog-topic-fit-gate';
 import {
@@ -4564,12 +4568,16 @@ async function handleFailure(
   retryPolicy?: { forceQueue?: boolean },
 ): Promise<'queued' | 'failed' | 'skipped'> {
   const attempts = (item.attempts || 0) + 1;
-  const duplicateFailure = /동일\s*slug|유사\s*slug|이미\s*발행|최근\s*\d+\s*일\s*내|중복/i.test(reason);
-  const duplicateTaggedFailure = /\[duplicate\]|duplicate|slug already|slug .*exists/i.test(reason);
   const decision = classifyBlogQueueFailure(reason, qa);
-  const isDuplicateFailure = duplicateFailure || duplicateTaggedFailure || decision.code === 'duplicate_content';
-  const shouldForceFailure = forceFailure || !decision.retryable;
-  const retryDelayMs = decision.selfHealAllowed ? 0 : 2 * 3600 * 1000;
+  const isDuplicateFailure = isBlogDuplicateQueueFailure(reason) || decision.code === 'duplicate_content';
+  // The DeepSeek orchestrator owns and bounds rewrite/reresearch attempts.
+  // A generic queue classifier must not cancel an explicit next stage, while
+  // terminal quarantine and real canonical duplicates remain authoritative.
+  const forceOrchestratorQueue = retryPolicy?.forceQueue === true
+    && !forceFailure
+    && !isDuplicateFailure;
+  const shouldForceFailure = forceFailure || (!decision.retryable && !forceOrchestratorQueue);
+  const retryDelayMs = forceOrchestratorQueue || decision.selfHealAllowed ? 0 : 2 * 3600 * 1000;
   const currentSelfHealRetries = Number((item.meta || {}).self_heal_retry_count ?? 0);
   const keepSelfHealCandidateLive =
     decision.selfHealAllowed
@@ -4577,10 +4585,6 @@ async function handleFailure(
     && !isDuplicateFailure
     && item.source !== 'manual'
     && currentSelfHealRetries < 4;
-  const forceOrchestratorQueue = retryPolicy?.forceQueue === true
-    && !shouldForceFailure
-    && !isDuplicateFailure
-    && !decision.skipped;
   const finalStatus = forceOrchestratorQueue
     ? 'queued'
     : (isDuplicateFailure || decision.skipped) && item.source !== 'manual'
@@ -4611,8 +4615,9 @@ async function handleFailure(
         ...baseMeta,
         last_qa: qa,
         failure_code: decision.code,
-        failure_retryable: decision.retryable,
-        self_heal_blocked: !decision.selfHealAllowed,
+        failure_retryable: forceOrchestratorQueue || decision.retryable,
+        self_heal_blocked: forceOrchestratorQueue ? false : !decision.selfHealAllowed,
+        ...(forceOrchestratorQueue ? { orchestrator_retry_forced: true } : {}),
         ...(keepSelfHealCandidateLive
           ? {
               self_heal_retry_count: currentSelfHealRetries + 1,
@@ -4620,7 +4625,9 @@ async function handleFailure(
             }
           : {}),
         ...(extraMeta || {}),
-        ...(decision.selfHealAllowed ? {} : { quarantine_reason: 'non_retryable_failure' }),
+        ...(forceOrchestratorQueue || decision.selfHealAllowed
+          ? {}
+          : { quarantine_reason: 'non_retryable_failure' }),
         last_failed_at: new Date().toISOString(),
         ...(isDuplicateFailure ? { skipped_duplicate: true } : {}),
       },

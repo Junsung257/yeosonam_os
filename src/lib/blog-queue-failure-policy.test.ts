@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   classifyBlogQueueFailure,
+  isBlogDuplicateQueueFailure,
   shouldSelfHealBlogQueueItem,
 } from './blog-queue-failure-policy';
 import { shouldQuarantineQueuedBlogItem } from './blog-queue-lifecycle';
@@ -125,6 +126,39 @@ describe('blog queue failure policy', () => {
       status: 'skipped',
       reason: 'duplicate_content',
     });
+  });
+
+  it('does not mistake the editorial duplicate gate for an existing canonical duplicate', () => {
+    const reason = [
+      'blog_quality_v4_rewrite_pro_high:unsupported_number',
+      'internal_link_irrelevant',
+      'publish_gate:duplicate',
+      'publish_gate:links',
+      'publish_gate:intent_quality',
+    ].join(',');
+
+    expect(isBlogDuplicateQueueFailure(reason)).toBe(false);
+    expect(classifyBlogQueueFailure(reason)).toMatchObject({
+      code: 'intent_quality',
+      retryable: true,
+      selfHealAllowed: true,
+      skipped: false,
+    });
+  });
+
+  it('still recognizes real duplicate ownership and slug collisions', () => {
+    for (const reason of [
+      'duplicate slug already exists',
+      'information_representative_duplicate_upgrade_review:canonical-slug',
+      'recent_info_duplicate_before_generation: 최근 14일 내 동일 목적지 글 이미 발행됨',
+    ]) {
+      expect(isBlogDuplicateQueueFailure(reason)).toBe(true);
+      expect(classifyBlogQueueFailure(reason)).toMatchObject({
+        code: 'duplicate_content',
+        retryable: false,
+        skipped: true,
+      });
+    }
   });
 
   it('preflight-keeps retryable queued rows under the attempt limit', () => {

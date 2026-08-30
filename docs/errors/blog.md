@@ -374,3 +374,10 @@ Last updated: 2026-08-31
 - **Symptom**: The controlled airport-to-Tumon canary passed fare, duration, operating-hours, luggage, and late-arrival checks in production but still failed `airport_transport:multiple_modes` when the Guam Airport page was one of the direct-fetch failures.
 - **Fix**: The deterministic GRTA Route 14 claims now identify the route as airport public transport. Together with the independently parsed Kakao T Guam taxi claims, the reviewed packet proves two modes even when the airport overview page is temporarily unavailable. The airport page remains an additional official mode source when fetched.
 - **Regression proof**: A focused packet test removes the Guam Airport page entirely and still requires the complete airport-transport readiness gate to pass with GRTA and Kakao Mobility as two official domains.
+
+# ERR-20260831-03 — Editorial duplicate gate must not cancel a bounded rewrite
+
+- **Symptom**: The controlled Guam airport-to-Tumon canary passed source research, then correctly requested `rewrite_pro_high` after the first draft failed unsupported-number and reader-decision gates. The queue was nevertheless marked `skipped` before the second attempt.
+- **Root cause**: The generic failure policy treated the V4 quality reason `publish_gate:duplicate` as proof of an existing canonical duplicate. It also allowed a generic non-retryable classification to override an explicit, attempt-bounded orchestrator rewrite or reresearch route.
+- **Fix**: Duplicate detection now ignores only the editorial `publish_gate:duplicate` marker while preserving real slug, representative, recent-content, and dedup collisions. An explicit non-terminal orchestrator route queues immediately, clears stale quarantine metadata, and records the forced bounded retry; terminal quarantine and real duplicates still fail closed.
+- **Regression proof**: Queue-policy tests cover the exact production failure string and real duplicate variants. Publisher contract tests require the shared duplicate detector and forced-retry metadata. A new canary may be rechecked only under `blog-information-research-recheck-20260831-v6` after deployment.

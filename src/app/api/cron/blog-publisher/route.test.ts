@@ -60,6 +60,9 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('information_research_fingerprint: null');
     expect(source).toContain("forceQueue: qualityRouteV4.route !== 'quarantine'");
     expect(source).toContain('const forceOrchestratorQueue = retryPolicy?.forceQueue === true');
+    expect(source).toContain('const isDuplicateFailure = isBlogDuplicateQueueFailure(reason)');
+    expect(source).toContain('failure_retryable: forceOrchestratorQueue || decision.retryable');
+    expect(source).not.toContain('const duplicateTaggedFailure =');
     expect(source).toContain("failureStatus === 'queued' ? 'rewrite_queued' : failureStatus");
     expect(source).not.toContain("'local_transport_deterministic_evidence_article'");
     expect(source).not.toContain('softenKeywordDensity');

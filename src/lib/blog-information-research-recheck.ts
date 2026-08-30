@@ -5,7 +5,7 @@ import {
 import { readBlogEditorialBacklogDedupKey } from './blog-editorial-backlog-recheck';
 
 export const BLOG_INFORMATION_RESEARCH_RECHECK_VERSION =
-  'blog-information-research-recheck-20260831-v5';
+  'blog-information-research-recheck-20260831-v6';
 
 const AUTOMATED_RESEARCH_INTENTS = new Set<BlogInformationIntent>([
   'food_budget',
