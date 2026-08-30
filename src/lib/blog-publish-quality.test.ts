@@ -92,6 +92,26 @@ describe('blog publish quality', () => {
     );
   });
 
+  it('preserves the informational micro angle for duplicate scoping', async () => {
+    await evaluateBlogPublishQuality({
+      blog_html: '# 괌 공항 교통\n\n공식 근거를 비교합니다.',
+      slug: 'guam-airport-transport',
+      seo_title: '괌 공항 교통',
+      seo_description: '괌 공항 교통 공식 근거를 비교합니다.',
+      destination: '괌',
+      angle_type: 'value',
+      micro_angle: 'airport_arrival',
+    });
+
+    expect(runQualityGatesMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        destination: '괌',
+        angle_type: 'value',
+        micro_angle: 'airport_arrival',
+      }),
+    );
+  });
+
   it('blocks publishing when SEO fails even if render quality passes', async () => {
     computeSeoScoreMock.mockReturnValueOnce({
       score: 74,

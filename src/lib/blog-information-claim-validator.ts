@@ -144,6 +144,7 @@ const ENTRY_RE = /(?:입국|출입국|비자|여권|전자여행허가|ETA|ESTA)
 const INSURANCE_RE = /(?:여행자?\s*보험|보험).*(?:보장|면책|제외|자기부담|청구|한도|가입|의무)/i;
 const POLICY_RE = /(?:규정|정책|법률|법정|의무|금지|허용|운영시간|첫차|막차).*(?:\d|변경|적용|위반|가능|불가|해야|됩니다|입니다)/i;
 const SUPERLATIVE_RE = /(?:가장\s*(?:저렴|비싸|빠르|느리|좋|많|적|높|낮|인기)|최고|최저|유일|1위|최대|최소|압도적)/i;
+const REPORTED_SERVICE_FACT_RE = /(?:안내|명시|공개)(?:한다|합니다)/i;
 const GENERAL_YEAR_ALLOWLIST_RE = /^\d{4}년(?:\s*(?:여행|가이드|목차|판|업데이트|기준))*$/;
 const ITINERARY_ORDINAL_ALLOWLIST_RE = /\d+\s*일\s*차/i;
 const ITINERARY_DURATION_ALLOWLIST_RE = /\d{1,2}\s*박\s*\d{1,2}\s*일/i;
@@ -228,6 +229,7 @@ function classifyClaim(segment: string): Pick<ExtractedBlogInformationClaim, 'cl
   }
   if (POLICY_RE.test(segment)) return { claimType: 'policy', riskLevel: 'HIGH', candidateKind: 'regulated_policy' };
   if (SUPERLATIVE_RE.test(segment)) return { claimType: 'superlative', riskLevel: 'MEDIUM', candidateKind: 'superlative' };
+  if (REPORTED_SERVICE_FACT_RE.test(segment)) return { claimType: 'factual', riskLevel: 'MEDIUM', candidateKind: 'unknown_statement' };
   return null;
 }
 
@@ -270,7 +272,12 @@ const V3_NAMED_PLACE_ASSERTION_RE = /(?:[가-힣]{2,}(?:산|힐|사원|파고다
 const V3_ITINERARY_PROPOSAL_RE = /(?:편집\s*제안|(?:제안\s*일정|동선\s*예시).*(?:배치|구성|정리)|동선(?:은|을|이)?[^.。!?]{0,140}제안|(?:일차|날짜별|마지막\s*일정).*(?:순서|동선|흐름).*(?:제안|배치)|(?:장소별\s*실행\s*순서|이동\s*근거).*(?:정리했습니다|비교합니다)|(?:미방문\s*장소|남은\s*장소).*(?:대체\s*블록|후보).*(?:삼|두)|확인할\s*블록(?:은|을).*(?:입니다|정))/i;
 const V3_ITINERARY_SOURCE_NEUTRAL_GUIDANCE_RE = /^(?=.*(?:일정|동선|순서|블록|공식\s*이동\s*시간|운영\s*시간|입장\s*시각|체류\s*순서|숙소\s*위치|당일\s*컨디션))(?=.*(?:구성하세요|정하세요|정하면\s*됩니다|고르세요|고르면\s*됩니다|결정하세요|비교하세요|확인하세요|판단해야\s*합니다|제안합니다|배치하세요|삼을\s*수\s*있습니다)).+$/i;
 const REGULATED_TRAVEL_TOPIC_RE = /(?:세관|면세|반입|반출|입국|출입국|비자|여권|전자여행허가|ETA|ESTA|여행자?\s*보험|보험\s*(?:보장|면책|청구))/i;
-const ASSERTIVE_STATEMENT_RE = /(?:입니다|합니다|됩니다|있습니다|없습니다|않습니다|필요합니다|가능합니다|불가능합니다|안전합니다|빠릅니다|느립니다|마칩니다|종료됩니다|중단합니다|사용할 수|운행|영업|예약|재고|현금만|대기 시간)/i;
+const ASSERTIVE_STATEMENT_RE = /(?:입니다|합니다|됩니다|있습니다|없습니다|않습니다|필요합니다|가능합니다|불가능합니다|안전합니다|빠릅니다|느립니다|마칩니다|종료됩니다|중단합니다|안내(?:한다|합니다)|사용할 수|운행|영업|예약|재고|현금만|대기 시간)/i;
+// Reader-owned route decisions are editorial instructions, not destination
+// facts. Keep the allowlist deliberately narrow: the sentence must start from
+// the reader's decision/action, contain no measured value or operational
+// status, and must not start by assigning a property to a named operator.
+const V3_ROUTE_DECISION_GUIDANCE_RE = /^(?!.*(?:\d|[₩￦¥￥$€₫]|\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\b|현재|실제로|항상|통상|평균|저렴|비싸|빠르|느리|안전|적합|가능|불가|마감|매진|운영\s*중|영업\s*중))(?:(?:이동|교통)수단을|예산을|수하물을|승차\s*전|하차\s*후|중간\s*구간에서는|이동\s*구간에서는|먼저\s|자신의\s)(?=.*(?:이동수단|교통수단|예산|요금|수하물|항공\s*지연|승차|하차|중간\s*구간|이동\s*구간|예약\s*화면|공식\s*(?:채널|안내)))(?=.*(?:고르|선택|비교|확인|정하|결정|분리|대조|따로)).+$/i;
 const SOURCE_NEUTRAL_PLANNING_CANDIDATE_KINDS = new Set<BlogInformationFactualCandidateKind>([
   'availability_status',
   'time_schedule',
@@ -341,6 +348,7 @@ export function classifyBlogInformationStatement(segment: string): {
       || V3_SOURCE_NEUTRAL_DECISION_METHOD_RE.test(segment)
       || V3_FOOD_BUDGET_EDITORIAL_GUIDANCE_RE.test(segment)
       || V3_FOOD_BUDGET_SCOPE_LIMITATION_RE.test(segment)
+      || V3_ROUTE_DECISION_GUIDANCE_RE.test(segment)
   );
   const itineraryContingencyGuidance = !unsupportedLocalEvaluation
     && V3_ITINERARY_CONTINGENCY_GUIDANCE_RE.test(planningText);

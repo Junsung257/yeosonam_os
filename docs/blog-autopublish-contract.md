@@ -595,6 +595,14 @@ Rules:
 
 ## Daily Verification
 
+### Evidence-asymmetric airport transport articles (2026-08-31)
+
+- A route title may promise only the fields that the approved packet actually contains. When GRTA has fare/schedule evidence but the taxi packet has only luggage/delay handling, the title must name those asymmetric fields instead of promising a symmetric time/cost comparison.
+- A route number is a numeric surface. Outside an exact approved claim sentence, editorial prose uses the operator name without the route number. Schedule words such as first/last service also stay out of headings unless the heading itself is evidence-backed.
+- Operator-reported nonnumeric service statements such as flight-delay handling remain factual claims. They may enter a rewrite only when the exact sentence passed literal-source support and deterministic factual-type compatibility, and they must appear once in the visible body and ledger.
+- Reader-owned instructions that begin from the choice, boarding, middle segment, or alighting action may remain source-neutral. They must not assign an unapproved property, status, advantage, fare, or duration to an operator.
+- Informational duplicate checks must preserve `micro_angle` through the aggregate publish-quality boundary. A recent `food_budget` post must not block a distinct `airport_arrival` article merely because both use the broad `value` angle.
+
 Run:
 
 ```bash

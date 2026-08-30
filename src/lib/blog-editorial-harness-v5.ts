@@ -331,7 +331,8 @@ function destinationFromTitle(title: string): string {
 
 function buildRouteDecisionAnswer(
   publicFacts: BlogDecisionPublicFactV1[],
-): Pick<BlogDecisionArtifactV1, 'directAnswer' | 'gaps'> {
+  originalTitle: string,
+): Pick<BlogDecisionArtifactV1, 'directAnswer' | 'gaps' | 'resolvedTitle'> {
   const joined = publicFacts.map((fact) => fact.claimText).join(' ');
   const hasGrta = /GRTA|Route\s*14|14번\s*노선/i.test(joined);
   const hasKakaoTaxi = /카카오\s*T\s*괌택시|Kakao\s*T.*Guam\s*Taxi/i.test(joined);
@@ -350,14 +351,22 @@ function buildRouteDecisionAnswer(
     /승차\s*(?:장소|위치)|타는\s*곳|정류장|승강장|curb|platform|stop/i.test(fact.claimText));
 
   const directAnswer = hasGrta && hasKakaoTaxi
-    ? `공항 이동수단은 ${hasFare ? '확인된 승차 요금으로 예산을 먼저 고정하려면 ' : ''}GRTA Route 14를, ${hasLuggage && hasFlightDelay ? '수하물 적재와 항공 지연 대응 안내가 필요하면 ' : ''}카카오 T 괌택시를 먼저 비교하는 방식입니다.`
-    : '공항 이동수단은 확인된 요금·운행 정보와 수하물·항공 지연 대응 조건을 나눠 비교하는 방식입니다.';
+    ? '이동수단을 고를 때는 GRTA와 카카오 T 괌택시에서 확인된 항목과 비어 있는 항목을 분리해 비교하면 됩니다.'
+    : '이동수단을 고를 때는 확인된 항목과 비어 있는 항목을 분리해 비교하면 됩니다.';
+  const colonPrefix = originalTitle.split(':')[0]?.trim() || originalTitle.trim();
+  const directionalPrefix = colonPrefix.match(/^(.+?\s*공항)(?:에서)?\s*(.+?)(?:까지)?\s*(?:교통(?:수단)?|이동(?:수단|방법)?)$/u);
+  const titlePrefix = directionalPrefix
+    ? `${directionalPrefix[1]} ${directionalPrefix[2]} 교통`.replace(/\s+/g, ' ').trim()
+    : colonPrefix;
+  const resolvedTitle = hasGrta && hasKakaoTaxi && hasFare && hasLuggage && hasFlightDelay
+    ? `${titlePrefix}: GRTA 요금·운행 근거와 괌택시 수하물·지연 대응`
+    : `${titlePrefix}: 공식 근거와 예약 전 확인 항목`;
   const gaps = [
     ...(!hasTaxiBaseFare ? ['택시 기본요금은 현재 승인된 근거에서 확인되지 않아 예약 화면에서 재확인 필요'] : []),
     ...(!hasDoorToDoorDuration ? ['공항에서 숙소까지의 실제 소요시간은 현재 승인된 근거에서 확인되지 않아 출발 전 재확인 필요'] : []),
     ...(!hasExactBoardingLocation ? ['정확한 승차·하차 위치는 현재 승인된 근거에서 확인되지 않아 공식 채널에서 재확인 필요'] : []),
   ];
-  return { directAnswer, gaps };
+  return { directAnswer, gaps, resolvedTitle };
 }
 
 export function buildBlogDecisionArtifactV1(input: {
@@ -404,14 +413,14 @@ export function buildBlogDecisionArtifactV1(input: {
     };
   }
   if (['airport_transport', 'local_transport'].includes(input.intentType)) {
-    const routeDecision = buildRouteDecisionAnswer(publicFacts);
+    const routeDecision = buildRouteDecisionAnswer(publicFacts, input.title);
     return {
       version: BLOG_DECISION_ARTIFACT_VERSION,
       question: input.question,
       directAnswer: routeDecision.directAnswer,
       promiseType: 'route_decision',
       originalTitle: input.title,
-      resolvedTitle: input.title,
+      resolvedTitle: routeDecision.resolvedTitle,
       publicFacts,
       calculations: [],
       firstPartyInsights,
