@@ -287,7 +287,7 @@ describe('blog information research backlog recheck', () => {
       action: 'requeue',
       reason: 'controlled_harness_defect_rewrite_retry',
       meta: {
-        information_research_recheck_version: 'blog-information-research-recheck-20260831-v9',
+        information_research_recheck_version: 'blog-information-research-recheck-20260831-v10',
         information_research_recheck_result: 'controlled_harness_defect_rewrite_requeued',
         ai_orchestration_v4: {
           route: 'rewrite_pro_max',
@@ -295,6 +295,63 @@ describe('blog information research backlog recheck', () => {
         },
       },
     });
+  });
+
+  it('re-researches the exact V9 canary after customer-quality and evidence-scope defects', () => {
+    const failureMarkers = [
+      'editorial_harness_retry_exhausted',
+      'unsupported_number',
+      'claim_support_coverage_below_90_percent',
+      'unsupported_number_present',
+      'publish_gate:public_customer_quality',
+      'public_customer:info_answer_mismatch',
+      'editorial_harness_v5:semantic_usefulness',
+      'editorial_harness_v5:semantic_completeness',
+    ];
+    const decision = buildBlogInformationResearchRecheckDecision({
+      row: failedResearchRow({
+        source: 'user_seed',
+        status: 'failed',
+        last_error: `blog_quality_v4_quarantine:${failureMarkers.join(',')}`,
+        meta: {
+          micro_angle: 'airport_arrival',
+          controlled_publish_canary: true,
+          editor_approved_seed: true,
+          information_research_bundle: { version: 'reviewed-source-direct-fetch-v2' },
+          decision_artifact_v1: { version: 'blog-decision-artifact-v1' },
+          auto_research: { version: 'reviewed-source-direct-fetch-v2' },
+          controlled_harness_defect_recovered_at: '2026-08-31T03:00:00.000Z',
+          information_research_recheck_version: 'blog-information-research-recheck-20260831-v9',
+          information_research_recheck_result: 'controlled_harness_defect_rewrite_requeued',
+          requeued_by: 'blog-information-research-recheck-20260831-v9',
+          ai_orchestration_v4: {
+            version: 'blog-deepseek-orchestrator-v4',
+            route: 'quarantine',
+            next_stage: null,
+            failure_evidence: failureMarkers,
+            research_attempts: 0,
+          },
+        },
+      }),
+      checkedAt: '2026-08-31T04:00:00.000Z',
+    });
+
+    expect(decision).toMatchObject({
+      action: 'requeue',
+      reason: 'controlled_harness_reresearch_retry',
+      meta: {
+        information_research_recheck_version: 'blog-information-research-recheck-20260831-v10',
+        information_research_recheck_result: 'controlled_harness_reresearch_requeued',
+        ai_orchestration_v4: {
+          route: 'reresearch',
+          next_stage: 'rewrite_pro_max',
+          research_attempts: 1,
+        },
+      },
+    });
+    expect(decision.meta).not.toHaveProperty('information_research_bundle');
+    expect(decision.meta).not.toHaveProperty('decision_artifact_v1');
+    expect(decision.meta).not.toHaveProperty('auto_research');
   });
 
   it('does not retry product rows or unsupported general topics', () => {

@@ -96,6 +96,19 @@ describe('unsupported numeric claim accounting', () => {
     });
   });
 
+  it('treats the deterministic route answer, route scope title, and fare-product choice as editorial structure', () => {
+    for (const sentence of [
+      '대중교통 요금을 확인하려면 GRTA 항목을, 현지 택시 요금·공항 승차 위치와 카카오 T 괌택시의 수하물·항공 지연 대응을 확인하려면 택시 항목을 보면 됩니다.',
+      '괌 공항 투몬 교통: GRTA·택시 요금과 공항 택시 승차·수하물 안내',
+      '1회 탑승과 1일권 중 어느 요금이 자신의 동선에 맞는지는 예상 탑승 횟수를 기준으로 직접 비교하면 됩니다.',
+    ]) {
+      expect(classifyBlogInformationStatement(sentence)).toEqual({
+        category: 'navigation_boilerplate',
+        factualClassification: null,
+      });
+    }
+  });
+
   it('does not relabel a nonnumeric unclassified sentence as an unsupported number', () => {
     const report = {
       passed: false,

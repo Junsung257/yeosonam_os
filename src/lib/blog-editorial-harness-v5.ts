@@ -342,29 +342,38 @@ function buildRouteDecisionAnswer(
   const hasLuggage = /수하물|캐리어|luggage|baggage/i.test(joined);
   const hasFlightDelay = /항공\s*지연|비행편명|flight\s*(?:number|delay)/i.test(joined);
   const hasTaxiBaseFare = publicFacts.some((fact) => fact.claimType === 'price'
-    && /괌택시|Guam\s*Taxi/i.test(fact.claimText)
-    && /기본|승차\s*요금|base\s*fare/i.test(fact.claimText));
+    && /괌.{0,30}택시|Guam.{0,30}Taxi/i.test(fact.claimText)
+    && /기본|미터\s*요금|승차\s*요금|base\s*fare|flag\s*rate/i.test(fact.claimText));
   const hasDoorToDoorDuration = publicFacts.some((fact) => fact.claimType === 'duration'
     && /공항|GIAA|airport/i.test(fact.claimText)
-    && /투몬|숙소|호텔|Tumon|hotel/i.test(fact.claimText));
-  const hasExactBoardingLocation = publicFacts.some((fact) =>
-    /승차\s*(?:장소|위치)|타는\s*곳|정류장|승강장|curb|platform|stop/i.test(fact.claimText));
+    && /숙소|호텔|lodging|hotel/i.test(fact.claimText));
+  const hasTaxiPickupLocation = publicFacts.some((fact) =>
+    /택시\s*카운터|서쪽\s*도착\s*터미널|west\s*arrival|taxi\s*counter|curb/i.test(fact.claimText));
+  const hasTransitToTumon = publicFacts.some((fact) =>
+    /대중교통\s*노선[\s\S]{0,80}투몬\s*호텔|transit[\s\S]{0,80}tumon\s*hotel/i.test(fact.claimText));
+  const hasExactBusBoardingLocation = publicFacts.some((fact) =>
+    /GRTA|버스|대중교통|transit|bus/i.test(fact.claimText)
+    && /승차\s*(?:장소|위치)|타는\s*곳|정류장|승강장|platform|stop/i.test(fact.claimText));
 
   const directAnswer = hasGrta && hasKakaoTaxi
-    ? '이동수단을 고를 때는 GRTA와 카카오 T 괌택시에서 확인된 항목과 비어 있는 항목을 분리해 비교하면 됩니다.'
-    : '이동수단을 고를 때는 확인된 항목과 비어 있는 항목을 분리해 비교하면 됩니다.';
+    ? '대중교통 요금을 확인하려면 GRTA 항목을, 현지 택시 요금·공항 승차 위치와 카카오 T 괌택시의 수하물·항공 지연 대응을 확인하려면 택시 항목을 보면 됩니다.'
+    : '대중교통과 택시에서 확인할 항목을 나누어 보면 됩니다.';
   const colonPrefix = originalTitle.split(':')[0]?.trim() || originalTitle.trim();
   const directionalPrefix = colonPrefix.match(/^(.+?\s*공항)(?:에서)?\s*(.+?)(?:까지)?\s*(?:교통(?:수단)?|이동(?:수단|방법)?)$/u);
   const titlePrefix = directionalPrefix
     ? `${directionalPrefix[1]} ${directionalPrefix[2]} 교통`.replace(/\s+/g, ' ').trim()
     : colonPrefix;
-  const resolvedTitle = hasGrta && hasKakaoTaxi && hasFare && hasLuggage && hasFlightDelay
-    ? `${titlePrefix}: GRTA 요금·운행 근거와 괌택시 수하물·지연 대응`
+  const resolvedTitle = hasGrta && hasKakaoTaxi && hasFare && hasTaxiBaseFare
+    && hasTaxiPickupLocation && hasLuggage && hasFlightDelay && hasTransitToTumon
+    ? `${titlePrefix}: GRTA·택시 요금과 공항 택시 승차·수하물 안내`
+    : hasGrta && hasKakaoTaxi && hasFare && hasLuggage && hasFlightDelay
+      ? `${titlePrefix}: GRTA 요금과 괌택시 수하물·지연 대응`
     : `${titlePrefix}: 공식 근거와 예약 전 확인 항목`;
   const gaps = [
     ...(!hasTaxiBaseFare ? ['택시 기본요금은 현재 승인된 근거에서 확인되지 않아 예약 화면에서 재확인 필요'] : []),
     ...(!hasDoorToDoorDuration ? ['공항에서 숙소까지의 실제 소요시간은 현재 승인된 근거에서 확인되지 않아 출발 전 재확인 필요'] : []),
-    ...(!hasExactBoardingLocation ? ['정확한 승차·하차 위치는 현재 승인된 근거에서 확인되지 않아 공식 채널에서 재확인 필요'] : []),
+    ...(!hasTaxiPickupLocation ? ['공항 택시 승차 위치는 현재 승인된 근거에서 확인되지 않아 공항 공식 채널에서 재확인 필요'] : []),
+    ...(!hasExactBusBoardingLocation ? ['공항의 정확한 GRTA 승차 위치는 현재 승인된 근거에서 확인되지 않아 GRTA 공식 채널에서 재확인 필요'] : []),
   ];
   return { directAnswer, gaps, resolvedTitle };
 }

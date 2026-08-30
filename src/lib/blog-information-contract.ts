@@ -314,6 +314,7 @@ const SOURCE_POLICIES: Record<BlogInformationIntent, BlogInformationSourcePolicy
     'airport',
     'transport_operator',
     'government',
+    'official_tourism',
     'reputable_local_source',
     'reputable_price_source',
   ]),

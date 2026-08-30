@@ -54,6 +54,7 @@ const MAX_REVIEWED_PAGE_TEXT = 12_000;
 const GRTA_FIXED_ROUTE_SCHEDULE_PATH = '/sites/default/files/master_-_fixed_route_schedule_updated112625.pdf';
 const GRTA_FARE_RATE_PATH = '/sites/default/files/grta_bus_pass_sales_information_sheet.pdf';
 const GUAM_AIRPORT_GROUND_TRANSPORT_PATH = '/passenger/ground-transportation';
+const VISIT_GUAM_TRANSPORTATION_PATH = '/planning/transportation/';
 const KAKAO_GUAM_TAXI_FAQ_API_PATH = '/api/cs/v1/faqs/categories/44/contents';
 const CHIN_FE_GUAM_MENU_HOST = 'chinfe.menuguam.com';
 const BOOKING_GUAM_FAMILY_PATH = '/family/country/gu.ko.html';
@@ -3026,6 +3027,26 @@ export function augmentGrtaAirportTransportPayload(
     && /A taxi counter is conveniently located outside the West Arrival terminal building/i.test(airportGroundText)
     && /car rental reservation and tour group counters located outside the baggage claim area/i.test(airportGroundText);
 
+  const visitGuamTransportPageIndex = pages.findIndex((page) => {
+    try {
+      const url = new URL(page.url);
+      return (url.hostname.toLowerCase() === 'visitguam.com'
+          || url.hostname.toLowerCase() === 'www.visitguam.com')
+        && url.pathname === VISIT_GUAM_TRANSPORTATION_PATH;
+    } catch {
+      return false;
+    }
+  });
+  const visitGuamTransportText = visitGuamTransportPageIndex >= 0
+    ? clean(pages[visitGuamTransportPageIndex]!.text)
+    : '';
+  const hasReviewedTaxiMeterRates = /All taxis have regulated meters/i.test(visitGuamTransportText)
+    && /standard flag rate is \$\s*2\.40/i.test(visitGuamTransportText)
+    && /\$\s*4\.00 for the first mile/i.test(visitGuamTransportText)
+    && /\$\s*0\.80 every (?:¼|1\s*\/\s*4) mile thereafter/i.test(visitGuamTransportText);
+  const hasReviewedTumonTransitCoverage = /transportation on the line includes[\s\S]{0,180}hotels in Tumon/i
+    .test(visitGuamTransportText);
+
   const kakaoFaqPageIndex = pages.findIndex((page) => {
     try {
       const url = new URL(page.url);
@@ -3060,6 +3081,7 @@ export function augmentGrtaAirportTransportPayload(
     && /현지\s*업체에서\s*도착\s*시간\s*확인\s*후\s*탑승/i.test(delayFaqText);
 
   const matchingAirportSource = takeMatchingSource(airportGroundPageIndex);
+  const matchingVisitGuamSource = takeMatchingSource(visitGuamTransportPageIndex);
   const matchingKakaoFaqSource = takeMatchingSource(kakaoFaqPageIndex);
   const decisionSources: GroundedSourceDraft[] = [];
   const decisionEvidence: GroundedEvidenceDraft[] = [];
@@ -3079,23 +3101,88 @@ export function augmentGrtaAirportTransportPayload(
     decisionEvidence.push({
       evidenceKey: 'guam-airport-ground-transport-options',
       sourceKey,
-      excerpt: 'Guam Airport lists public transportation services, a taxi counter outside West Arrivals, and car-rental reservation counters outside baggage claim.',
+      excerpt: '괌 공항은 택시 카운터가 서쪽 도착 터미널 건물 밖에 있다고 안내한다.',
       sourceLocator: 'Ground Transportation > introduction',
       claimType: 'factual',
       riskLevel: 'LOW',
       country: '괌',
       destination,
       applicableTo: `${destination} 공항 도착 여행자`,
-      normalizedValue: 'public transportation services',
+      normalizedValue: 'outside West Arrival terminal building',
       conditions: ['도착 후 현장 카운터 위치와 운영 여부 재확인'],
     });
     decisionClaims.push({
-      claimText: '괌 공항 공식 안내에는 공항 대중교통과 택시 카운터, 렌터카 예약 카운터가 함께 제시되어 있다.',
+      claimText: '괌 공항은 택시 카운터가 서쪽 도착 터미널 건물 밖에 있다고 안내한다.',
       claimType: 'factual',
       riskLevel: 'LOW',
       evidenceKeys: ['guam-airport-ground-transport-options'],
-      normalizedValue: 'public transportation services',
+      normalizedValue: 'outside West Arrival terminal building',
     });
+  }
+  if (hasReviewedTaxiMeterRates || hasReviewedTumonTransitCoverage) {
+    const sourceKey = clean(matchingVisitGuamSource?.sourceKey) || 'visit-guam-transportation';
+    decisionSources.push({
+      ...matchingVisitGuamSource,
+      sourceKey,
+      groundingChunkIndex: visitGuamTransportPageIndex,
+      publisher: clean(matchingVisitGuamSource?.publisher) || 'Guam Visitors Bureau',
+      sourceType: 'official_tourism',
+      claimTypes: [...new Set([
+        ...normalizeList(matchingVisitGuamSource?.claimTypes),
+        ...(hasReviewedTaxiMeterRates ? ['price'] : []),
+        ...(hasReviewedTumonTransitCoverage ? ['factual'] : []),
+      ])],
+      country: clean(matchingVisitGuamSource?.country) || '괌',
+      destination,
+    });
+    if (hasReviewedTaxiMeterRates) {
+      decisionEvidence.push({
+        evidenceKey: 'visit-guam-regulated-taxi-meter-rates',
+        sourceKey,
+        excerpt: '괌 관광청은 표준 택시 미터 요금을 기본 호출 2.40 USD, 최초 1마일 4.00 USD, 이후 0.25마일마다 0.80 USD로 안내한다.',
+        sourceLocator: 'Transportation > Taxis',
+        claimType: 'price',
+        riskLevel: 'MEDIUM',
+        country: '괌',
+        destination,
+        applicableTo: `${destination} 현지 미터 택시 이용 여행자`,
+        normalizedValue: '2.40',
+        unit: '기본 호출',
+        currency: 'USD',
+        conditions: ['규제 미터 택시 표준요금', '탑승 전 현장 요금표 재확인'],
+      });
+      decisionClaims.push({
+        claimText: '괌 관광청은 표준 택시 미터 요금을 기본 호출 2.40 USD, 최초 1마일 4.00 USD, 이후 0.25마일마다 0.80 USD로 안내한다.',
+        claimType: 'price',
+        riskLevel: 'MEDIUM',
+        evidenceKeys: ['visit-guam-regulated-taxi-meter-rates'],
+        normalizedValue: '2.40',
+        unit: '기본 호출',
+        currency: 'USD',
+      });
+    }
+    if (hasReviewedTumonTransitCoverage) {
+      decisionEvidence.push({
+        evidenceKey: 'visit-guam-tumon-hotel-transit-coverage',
+        sourceKey,
+        excerpt: '괌 관광청은 대중교통 노선에 투몬 호텔이 포함된다고 안내한다.',
+        sourceLocator: 'Transportation > Buses',
+        claimType: 'factual',
+        riskLevel: 'LOW',
+        country: '괌',
+        destination,
+        applicableTo: `${destination} 대중교통 이용 여행자`,
+        normalizedValue: 'Tumon hotels included',
+        conditions: ['정확한 정류장과 당일 운행 여부는 공식 노선표 재확인'],
+      });
+      decisionClaims.push({
+        claimText: '괌 관광청은 대중교통 노선에 투몬 호텔이 포함된다고 안내한다.',
+        claimType: 'factual',
+        riskLevel: 'LOW',
+        evidenceKeys: ['visit-guam-tumon-hotel-transit-coverage'],
+        normalizedValue: 'Tumon hotels included',
+      });
+    }
   }
   if (hasReviewedLuggagePolicy || hasReviewedDelayPolicy) {
     const sourceKey = clean(matchingKakaoFaqSource?.sourceKey) || 'kakao-guam-taxi-faq';
