@@ -30,7 +30,11 @@ function limitValue(): number {
   return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 500) : 120;
 }
 
-async function loadResearchFailureRows(limit: number, destination: string | null): Promise<QueueRow[]> {
+async function loadResearchFailureRows(
+  limit: number,
+  destination: string | null,
+  queueId: string | null,
+): Promise<QueueRow[]> {
   let query = supabaseAdmin
     .from('blog_topic_queue')
     .select('id,product_id,topic,destination,source,status,attempts,priority,angle_type,last_error,meta')
@@ -39,6 +43,7 @@ async function loadResearchFailureRows(limit: number, destination: string | null
     .order('updated_at', { ascending: false })
     .limit(limit);
   if (destination) query = query.eq('destination', destination);
+  if (queueId) query = query.eq('id', queueId);
   const { data, error } = await query;
   if (error) throw new Error(error.message);
   return (data ?? []) as QueueRow[];
@@ -74,8 +79,9 @@ async function loadExistingDedupKeys(): Promise<Map<string, string>> {
 async function main() {
   const write = process.argv.includes('--write');
   const destination = value('--destination');
+  const queueId = value('--queue-id');
   const checkedAt = new Date().toISOString();
-  const rows = await loadResearchFailureRows(limitValue(), destination);
+  const rows = await loadResearchFailureRows(limitValue(), destination, queueId);
   const existingKeys = await loadExistingDedupKeys();
   const requeuedThisRun = new Map<string, string>();
   const results: Array<Record<string, unknown>> = [];
@@ -148,6 +154,7 @@ async function main() {
     mode: write ? 'write' : 'dry-run',
     checked_at: checkedAt,
     destination,
+    queue_id: queueId,
     scanned: rows.length,
     counts,
     updated: results.filter((row) => row.updated).length,

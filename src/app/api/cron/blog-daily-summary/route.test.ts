@@ -57,6 +57,13 @@ describe('blog daily summary report day', () => {
     expect(source).toContain('public_publication_enabled: publicDailyTarget > 0');
   });
 
+  it('uses the public eligibility view for publication totals and rollout observations', () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/api/cron/blog-daily-summary/route.ts'), 'utf8');
+
+    expect((source.match(/from\(PUBLIC_BLOG_READ_SOURCE\)/g) ?? []).length).toBeGreaterThanOrEqual(5);
+    expect(source).toContain(".gte('published_at', reportDay.start.toISOString())");
+  });
+
   it('does not flag publisher cron observation when the selected report day already met quota', () => {
     const routeSource = readFileSync(join(process.cwd(), 'src/app/api/cron/blog-daily-summary/route.ts'), 'utf8');
     const diagnoseSource = readFileSync(join(process.cwd(), 'scripts/diagnose-blog-autopublish.ts'), 'utf8');

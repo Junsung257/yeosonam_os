@@ -269,6 +269,10 @@ npm run audit:blog-search-daily:strict
 
 For a controlled public proof, mark exactly one low-risk informational queue row with `meta.controlled_publish_canary=true`, then call the authorized publisher with `targetQueueId=<queue UUID>`. Do not select entry/visa or insurance. Verify the queue, creative, persisted source/evidence/claims, active representative, publication record, indexing outbox, public API, public page, canonical, citations, and images. Then update the same creative through authenticated blog PATCH with `status='published'` and verify a new publication fingerprint and indexing job without a new URL. Never invoke the unrestricted publisher merely to test one candidate.
 
+When recovering an `evidence_insufficient` informational candidate, always select the one audited row explicitly: `npm run recheck:blog-information-research -- --queue-id=<queue UUID> --write`. Run the same command without `--write` first and require exactly one `requeue` decision. Never use an unscoped write for a controlled canary.
+
+When the rollout is frozen, keep the controlled V5 canary private. Generate the exact flagged row, verify the selected attempt and editorial evaluation, then run `npm run recover:blog-publication-rollout` without `--apply`. The dry-run must report every check `true`. Only then run the same command with `--apply --canary-run-id=<UUID> --incident-creative-id=<UUID> --recovered-by=<operator> --reason=<20+ character reason>`. Read back the recovery audit and confirm the state is `active/pilot_3` before invoking the model-free publication controller for that exact run. Never update `blog_publication_rollout_state` directly.
+
 If local Supabase environment variables are unavailable, use `/admin/blog` and `/api/admin/blog/ops-summary` against the authenticated deployed admin surface as the source of truth.
 
 ## Completion Definition
@@ -294,10 +298,10 @@ The blog system is complete only when the admin UI can answer these questions wi
 
 ## 2026-07-08 Daily Publish Count Reconciliation
 
-- `diagnose:blog-autopublish` now reports both the raw `content_creatives` selected-day count and the reconciled operating count.
-- If the closed-day `blog-daily-summary` and latest `blog-publisher.dailyQuota` agree that the daily target was reached, the diagnosis uses that evidence for `published.selected_day` and exposes the raw count under `published.selected_day_raw`.
-- Do not open a `daily_publish_sla_miss` or `publisher_timeout` bucket from stale raw-count drift when the same-day daily summary and publisher quota show quota reached, preflight passes, and current-day publisher health is healthy.
-- Treat this reconciliation as an operating-report correction only. If raw `content_creatives` drift persists, inspect the source query/date boundary separately instead of marking publishing broken.
+- `diagnose:blog-autopublish` reports the selected-day `public_blog_content_creatives` count as the operating count. The compatibility field `selected_day_raw` means the same public-eligibility-view count, never the raw mutable `content_creatives.status` count.
+- Closed-day `blog-daily-summary` and `blog-publisher.dailyQuota` values remain visible only as diagnostic evidence. They can never raise `published.selected_day` above the public eligibility view because a later-hidden or unsafe row is not a successful public publication.
+- Do not suppress a `daily_publish_sla_miss` merely because stale daily-summary or publisher evidence says quota reached. Suppression requires the public-eligibility view itself to meet quota, preflight to pass, and current-day publisher health to be healthy.
+- Treat this reconciliation as an operating-report correction only. If daily-summary or publisher evidence differs from the public-eligibility view, inspect the source query/date boundary separately instead of marking publishing broken.
 
 ## 2026-07-08 Customer Language Quality Hardening
 

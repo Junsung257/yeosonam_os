@@ -40,4 +40,9 @@ describe('blog publication controller source contract', () => {
     expect(source).toContain("dueRunsQuery.eq('id', targetedRunId).limit(1)");
     expect(source).not.toContain("searchParams.get('force') === 'true' ? 30");
   });
+
+  it('counts only public-eligible posts against the daily publication cap', () => {
+    expect(source).toContain(".from(PUBLIC_BLOG_READ_SOURCE)");
+    expect(source).not.toMatch(/\.from\('content_creatives'\)[\s\S]{0,180}\.select\('id', \{ count: 'exact', head: true \}\)/);
+  });
 });

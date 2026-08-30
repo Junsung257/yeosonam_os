@@ -879,10 +879,8 @@ function getKstDayRangeUtc(now = new Date()): { startIso: string; endIso: string
 async function getTodayBlogPublishCount(): Promise<{ count: number; dayKey: string }> {
   const range = getKstDayRangeUtc();
   const { count, error } = await supabaseAdmin
-    .from('content_creatives')
+    .from(PUBLIC_BLOG_READ_SOURCE)
     .select('id', { count: 'exact', head: true })
-    .eq('channel', 'naver_blog')
-    .eq('status', 'published')
     .gte('published_at', range.startIso)
     .lt('published_at', range.endIso);
 

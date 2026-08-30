@@ -27,4 +27,20 @@ describe('blog queue lifecycle schema contract', () => {
     expect(lifecycleSource).toContain('research_failed_at: now');
     expect(lifecycleSource).toContain("forcedReason === 'information_research_not_ready'");
   });
+
+  it('requeues research failures only when a verified demand signal is still present', () => {
+    const lifecycleSource = readFileSync(join(process.cwd(), 'src/lib/blog-queue-lifecycle.ts'), 'utf8');
+
+    expect(lifecycleSource).toContain('buildBlogInformationResearchRecheckDecision({');
+    expect(lifecycleSource).toContain('hasVerifiedBlogDemandSignal(');
+    expect(lifecycleSource).toContain("researchDecision.action === 'requeue' && demandVerified");
+    expect(lifecycleSource).toContain('verified_demand_recovery: true');
+    expect(lifecycleSource).toContain(".eq('last_error', 'evidence_insufficient')");
+  });
+
+  it('uses only public-eligible posts as active editorial duplicate truth', () => {
+    const lifecycleSource = readFileSync(join(process.cwd(), 'src/lib/blog-queue-lifecycle.ts'), 'utf8');
+
+    expect(lifecycleSource).toContain('.from(PUBLIC_BLOG_READ_SOURCE)');
+  });
 });
