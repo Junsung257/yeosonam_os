@@ -32,6 +32,12 @@ create table if not exists public.blog_publication_rollout_recoveries (
 
 create index if not exists idx_blog_publication_rollout_recoveries_recent
   on public.blog_publication_rollout_recoveries(scope, recovered_at desc);
+create index if not exists idx_blog_publication_rollout_recoveries_incident
+  on public.blog_publication_rollout_recoveries(incident_creative_id);
+create index if not exists idx_blog_publication_rollout_recoveries_canary_run
+  on public.blog_publication_rollout_recoveries(canary_run_id);
+create index if not exists idx_blog_publication_rollout_recoveries_canary_attempt
+  on public.blog_publication_rollout_recoveries(canary_attempt_id);
 
 create or replace function public.recover_blog_publication_rollout_v1(
   p_expected_state_version bigint,

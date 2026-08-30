@@ -27,5 +27,8 @@ describe('blog publication rollout manual recovery migration', () => {
     expect(migration).toContain('blog_publication_rollout_recoveries');
     expect(migration).toContain('revoke all on table public.blog_publication_rollout_recoveries');
     expect(migration).toContain('state_version_after = state_version_before + 1');
+    expect(migration).toContain('idx_blog_publication_rollout_recoveries_incident');
+    expect(migration).toContain('idx_blog_publication_rollout_recoveries_canary_run');
+    expect(migration).toContain('idx_blog_publication_rollout_recoveries_canary_attempt');
   });
 });
