@@ -602,6 +602,8 @@ Rules:
 - Operator-reported nonnumeric service statements such as flight-delay handling remain factual claims. They may enter a rewrite only when the exact sentence passed literal-source support and deterministic factual-type compatibility, and they must appear once in the visible body and ledger.
 - Reader-owned instructions that begin from the choice, boarding, middle segment, or alighting action may remain source-neutral. They must not assign an unapproved property, status, advantage, fare, or duration to an operator.
 - Informational duplicate checks must preserve `micro_angle` through the aggregate publish-quality boundary. A recent `food_budget` post must not block a distinct `airport_arrival` article merely because both use the broad `value` angle.
+- A Guam `airport_transport` research run performs one focused second fetch for any missing critical reviewed URL: GRTA schedule, GRTA fare sheet, Guam Airport ground transportation, Guam Visitors Bureau transportation, and the Kakao T Guam taxi FAQ. The retry never expands beyond registry-approved URLs. Successful runs persist the requested/recovered retry counts and direct-fetch failure count.
+- When all ten required route facts are approved, the public airport-route body is code-owned. It discards model-authored route prose and renders only the approved GRTA fares/durations/first departure, taxi meter and airport-counter facts, Tumon transit coverage, Kakao T luggage/delay facts, and explicit evidence gaps. Unapproved clock times, durations, pickup locations, and availability claims cannot survive this boundary.
 
 Run:
 
