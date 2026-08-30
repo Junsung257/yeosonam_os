@@ -53,6 +53,8 @@ const MAX_REVIEWED_PAGE_BYTES = 1_500_000;
 const MAX_REVIEWED_PAGE_TEXT = 12_000;
 const GRTA_FIXED_ROUTE_SCHEDULE_PATH = '/sites/default/files/master_-_fixed_route_schedule_updated112625.pdf';
 const GRTA_FARE_RATE_PATH = '/sites/default/files/grta_bus_pass_sales_information_sheet.pdf';
+const GUAM_AIRPORT_GROUND_TRANSPORT_PATH = '/passenger/ground-transportation';
+const KAKAO_GUAM_TAXI_FAQ_API_PATH = '/api/cs/v1/faqs/categories/44/contents';
 const CHIN_FE_GUAM_MENU_HOST = 'chinfe.menuguam.com';
 const BOOKING_GUAM_FAMILY_PATH = '/family/country/gu.ko.html';
 const AGODA_GUAM_HOTEL_GUIDE_PATH = '/ko-kr/travel-guides/guam/where-to-stay-in-guam-best-hotels/';
@@ -366,7 +368,7 @@ async function fetchReviewedDirectPage(input: {
       redirect: 'manual',
       signal: AbortSignal.timeout(remainingMs),
       headers: {
-        accept: 'text/html,text/plain;q=0.9',
+        accept: 'text/html,application/json,application/xml,text/xml,text/plain;q=0.9,application/pdf;q=0.8',
         'user-agent': 'yeosonam-reviewed-source-research/1.0',
       },
     });
@@ -2860,12 +2862,16 @@ export function augmentGrtaAirportTransportPayload(
 
   const deterministicSourceKey = 'grta-fixed-route-schedule';
   const sourceDrafts = [...(payload.sources ?? [])];
-  const matchingSourceIndex = sourceDrafts.findIndex(
-    (source) => Number(source.groundingChunkIndex) === pageIndex,
-  );
-  const matchingSource = matchingSourceIndex >= 0
-    ? sourceDrafts.splice(matchingSourceIndex, 1)[0]
-    : null;
+  const takeMatchingSource = (targetPageIndex: number): GroundedSourceDraft | null => {
+    if (targetPageIndex < 0) return null;
+    const matchingSourceIndex = sourceDrafts.findIndex(
+      (source) => Number(source.groundingChunkIndex) === targetPageIndex,
+    );
+    return matchingSourceIndex >= 0
+      ? sourceDrafts.splice(matchingSourceIndex, 1)[0] ?? null
+      : null;
+  };
+  const matchingSource = takeMatchingSource(pageIndex);
   const grtaFarePageIndex = pages.findIndex((page) => {
     try {
       const url = new URL(page.url);
@@ -2875,12 +2881,7 @@ export function augmentGrtaAirportTransportPayload(
       return false;
     }
   });
-  const grtaFareSourceIndex = sourceDrafts.findIndex(
-    (source) => Number(source.groundingChunkIndex) === grtaFarePageIndex,
-  );
-  const matchingFareSource = grtaFareSourceIndex >= 0
-    ? sourceDrafts.splice(grtaFareSourceIndex, 1)[0]
-    : null;
+  const matchingFareSource = takeMatchingSource(grtaFarePageIndex);
   const grtaFareSourceKey = clean(matchingFareSource?.sourceKey) || 'grta-fare-sheet';
   const fareText = grtaFarePageIndex >= 0 ? pages[grtaFarePageIndex]!.text : '';
   const hasReviewedRegularFares = /REGULAR FARE PASSES\s*One Ride\s*=\s*\$\s*1\.50\s*One Day Pass\s*=\s*\$\s*4\.00/i
@@ -2895,6 +2896,7 @@ export function augmentGrtaAirportTransportPayload(
     claimTypes: [...new Set([
       ...normalizeList(matchingSource?.claimTypes),
       'duration',
+      'factual',
     ])],
     country: clean(matchingSource?.country) || '괌',
     destination,
@@ -2916,28 +2918,54 @@ export function augmentGrtaAirportTransportPayload(
       stopOrdinal: 10,
     },
   ];
-  const deterministicEvidence: GroundedEvidenceDraft[] = rows.map((row) => ({
-    evidenceKey: row.evidenceKey,
-    sourceKey: sourceKeyValue,
-    excerpt: `GRTA Route 14 첫 운행 시간표에서 GIAA(공항) ${airportTime} 출발, ${row.destinationLabel} ${row.endTime} 도착으로 ${row.minutes}분이 소요된다.`,
-    sourceLocator: `Route 14 first run, stop 8 to stop ${row.stopOrdinal}`,
-    claimType: 'duration',
-    riskLevel: 'MEDIUM',
-    country: '괌',
-    destination,
-    applicableTo: `${destination} 공항 대중교통 이용자`,
-    normalizedValue: String(row.minutes),
-    unit: '분',
-    conditions: ['GRTA Route 14 첫 운행 시간표', '2025-11-26 게시본', '운행 전 최신 시간표 재확인'],
-  }));
-  const deterministicClaims: GroundedClaimDraft[] = rows.map((row) => ({
-    claimText: `GRTA Route 14 첫 운행 기준 괌 공항에서 ${row.destinationLabel}까지 ${row.minutes}분이다.`,
-    claimType: 'duration',
-    riskLevel: 'MEDIUM',
-    evidenceKeys: [row.evidenceKey],
-    normalizedValue: String(row.minutes),
-    unit: '분',
-  }));
+  const deterministicEvidence: GroundedEvidenceDraft[] = [
+    ...rows.map((row) => ({
+      evidenceKey: row.evidenceKey,
+      sourceKey: sourceKeyValue,
+      excerpt: `GRTA Route 14 첫 운행 시간표에서 GIAA(공항) ${airportTime} 출발, ${row.destinationLabel} ${row.endTime} 도착으로 ${row.minutes}분이 소요된다.`,
+      sourceLocator: `Route 14 first run, stop 8 to stop ${row.stopOrdinal}`,
+      claimType: 'duration',
+      riskLevel: 'MEDIUM',
+      country: '괌',
+      destination,
+      applicableTo: `${destination} 공항 대중교통 이용자`,
+      normalizedValue: String(row.minutes),
+      unit: '분',
+      conditions: ['GRTA Route 14 첫 운행 시간표', '2025-11-26 게시본', '운행 전 최신 시간표 재확인'],
+    })),
+    {
+      evidenceKey: 'grta-giaa-first-departure',
+      sourceKey: sourceKeyValue,
+      excerpt: `GRTA Route 14 첫차는 GIAA(괌 공항)에서 ${airportTime}에 출발한다.`,
+      sourceLocator: 'Route 14 first run, stop 8',
+      claimType: 'factual',
+      riskLevel: 'MEDIUM',
+      country: '괌',
+      destination,
+      applicableTo: `${destination} 공항 대중교통 이용자`,
+      normalizedValue: airportTime,
+      unit: 'time',
+      conditions: ['2025-11-26 게시본', '운행 전 최신 시간표 재확인'],
+    },
+  ];
+  const deterministicClaims: GroundedClaimDraft[] = [
+    ...rows.map((row) => ({
+      claimText: `GRTA Route 14 첫 운행 기준 괌 공항에서 ${row.destinationLabel}까지 ${row.minutes}분이다.`,
+      claimType: 'duration',
+      riskLevel: 'MEDIUM',
+      evidenceKeys: [row.evidenceKey],
+      normalizedValue: String(row.minutes),
+      unit: '분',
+    })),
+    {
+      claimText: `GRTA Route 14 괌 공항 첫차 출발 시각은 ${airportTime}이다.`,
+      claimType: 'factual',
+      riskLevel: 'MEDIUM',
+      evidenceKeys: ['grta-giaa-first-departure'],
+      normalizedValue: airportTime,
+      unit: 'time',
+    },
+  ];
   const deterministicFareEvidence: GroundedEvidenceDraft[] = hasReviewedRegularFares
     ? [
         {
@@ -2981,9 +3009,157 @@ export function augmentGrtaAirportTransportPayload(
     unit: item.unit,
     currency: item.currency,
   }));
+  const airportGroundPageIndex = pages.findIndex((page) => {
+    try {
+      const url = new URL(page.url);
+      return (url.hostname.toLowerCase() === 'guamairport.com'
+          || url.hostname.toLowerCase() === 'www.guamairport.com')
+        && url.pathname === GUAM_AIRPORT_GROUND_TRANSPORT_PATH;
+    } catch {
+      return false;
+    }
+  });
+  const airportGroundText = airportGroundPageIndex >= 0
+    ? clean(pages[airportGroundPageIndex]!.text)
+    : '';
+  const hasReviewedAirportModes = /There are a number of public transportation services/i.test(airportGroundText)
+    && /A taxi counter is conveniently located outside the West Arrival terminal building/i.test(airportGroundText)
+    && /car rental reservation and tour group counters located outside the baggage claim area/i.test(airportGroundText);
+
+  const kakaoFaqPageIndex = pages.findIndex((page) => {
+    try {
+      const url = new URL(page.url);
+      return url.hostname.toLowerCase() === 'service.kakaomobility.com'
+        && url.pathname === KAKAO_GUAM_TAXI_FAQ_API_PATH
+        && url.searchParams.get('recordsPerPage') === '100'
+        && url.searchParams.get('currentPageNo') === '1';
+    } catch {
+      return false;
+    }
+  });
+  let kakaoFaqEntries: Array<{ title?: string; content?: string }> = [];
+  if (kakaoFaqPageIndex >= 0) {
+    try {
+      const parsed = JSON.parse(pages[kakaoFaqPageIndex]!.text) as {
+        contents?: Array<{ title?: string; content?: string }>;
+      };
+      kakaoFaqEntries = Array.isArray(parsed.contents) ? parsed.contents : [];
+    } catch {
+      kakaoFaqEntries = [];
+    }
+  }
+  const faqEntryText = (titlePattern: RegExp): string => {
+    const entry = kakaoFaqEntries.find((item) => titlePattern.test(clean(item.title)));
+    return entry?.content ? clean(cheerio.load(entry.content).text()) : '';
+  };
+  const luggageFaqText = faqEntryText(/수화물\s*\(짐\)/);
+  const delayFaqText = faqEntryText(/항공이\s*지연/);
+  const hasReviewedLuggagePolicy = /24kg\s*캐리어\s*기준으로\s*3\s*~\s*4개까지\s*실을\s*수/i.test(luggageFaqText)
+    && /과도한\s*수화물[\s\S]{0,160}(?:탑승이\s*제한|추가\s*요금)/i.test(luggageFaqText);
+  const hasReviewedDelayPolicy = /예약\s*시\s*비행편명을\s*기재한\s*경우/i.test(delayFaqText)
+    && /현지\s*업체에서\s*도착\s*시간\s*확인\s*후\s*탑승/i.test(delayFaqText);
+
+  const matchingAirportSource = takeMatchingSource(airportGroundPageIndex);
+  const matchingKakaoFaqSource = takeMatchingSource(kakaoFaqPageIndex);
+  const decisionSources: GroundedSourceDraft[] = [];
+  const decisionEvidence: GroundedEvidenceDraft[] = [];
+  const decisionClaims: GroundedClaimDraft[] = [];
+  if (hasReviewedAirportModes) {
+    const sourceKey = clean(matchingAirportSource?.sourceKey) || 'guam-airport-ground-transportation';
+    decisionSources.push({
+      ...matchingAirportSource,
+      sourceKey,
+      groundingChunkIndex: airportGroundPageIndex,
+      publisher: clean(matchingAirportSource?.publisher) || 'A.B. Won Pat International Airport Authority, Guam',
+      sourceType: 'airport',
+      claimTypes: [...new Set([...normalizeList(matchingAirportSource?.claimTypes), 'factual'])],
+      country: clean(matchingAirportSource?.country) || '괌',
+      destination,
+    });
+    decisionEvidence.push({
+      evidenceKey: 'guam-airport-ground-transport-options',
+      sourceKey,
+      excerpt: 'Guam Airport lists public transportation services, a taxi counter outside West Arrivals, and car-rental reservation counters outside baggage claim.',
+      sourceLocator: 'Ground Transportation > introduction',
+      claimType: 'factual',
+      riskLevel: 'LOW',
+      country: '괌',
+      destination,
+      applicableTo: `${destination} 공항 도착 여행자`,
+      normalizedValue: 'public transportation services',
+      conditions: ['도착 후 현장 카운터 위치와 운영 여부 재확인'],
+    });
+    decisionClaims.push({
+      claimText: '괌 공항 공식 안내에는 공항 대중교통과 택시 카운터, 렌터카 예약 카운터가 함께 제시되어 있다.',
+      claimType: 'factual',
+      riskLevel: 'LOW',
+      evidenceKeys: ['guam-airport-ground-transport-options'],
+      normalizedValue: 'public transportation services',
+    });
+  }
+  if (hasReviewedLuggagePolicy || hasReviewedDelayPolicy) {
+    const sourceKey = clean(matchingKakaoFaqSource?.sourceKey) || 'kakao-guam-taxi-faq';
+    decisionSources.push({
+      ...matchingKakaoFaqSource,
+      sourceKey,
+      groundingChunkIndex: kakaoFaqPageIndex,
+      publisher: clean(matchingKakaoFaqSource?.publisher) || '카카오모빌리티 고객지원',
+      sourceType: 'transport_operator',
+      claimTypes: [...new Set([...normalizeList(matchingKakaoFaqSource?.claimTypes), 'factual'])],
+      country: clean(matchingKakaoFaqSource?.country) || '괌',
+      destination,
+    });
+    if (hasReviewedLuggagePolicy) {
+      decisionEvidence.push({
+        evidenceKey: 'kakao-guam-taxi-luggage-capacity',
+        sourceKey,
+        excerpt: '배차 차량마다 트렁크 공간이 다를 수 있지만 보통 24kg 캐리어 기준 3~4개까지 실을 수 있고, 과도한 수화물은 탑승 제한이나 추가 요금이 생길 수 있다.',
+        sourceLocator: '괌택시 FAQ > 차량에 수화물(짐)을 얼마나 실을 수 있나요?',
+        claimType: 'factual',
+        riskLevel: 'MEDIUM',
+        country: '괌',
+        destination,
+        applicableTo: `${destination} 택시 이용 여행자`,
+        normalizedValue: '3~4',
+        unit: '캐리어',
+        conditions: ['차량별 트렁크 공간 상이', '과도한 수화물은 탑승 제한 또는 추가 요금 가능'],
+      });
+      decisionClaims.push({
+        claimText: '카카오 T 괌택시는 차량별 트렁크 공간이 다를 수 있으며 보통 24kg 캐리어 3~4개까지 적재할 수 있다고 안내한다.',
+        claimType: 'factual',
+        riskLevel: 'MEDIUM',
+        evidenceKeys: ['kakao-guam-taxi-luggage-capacity'],
+        normalizedValue: '3~4',
+        unit: '캐리어',
+      });
+    }
+    if (hasReviewedDelayPolicy) {
+      decisionEvidence.push({
+        evidenceKey: 'kakao-guam-taxi-flight-delay',
+        sourceKey,
+        excerpt: '예약 시 비행편명을 기재하면 항공 지연 때 현지 업체가 도착 시간을 확인한 뒤 탑승을 돕는다.',
+        sourceLocator: '괌택시 FAQ > 항공이 지연 되었습니다.',
+        claimType: 'factual',
+        riskLevel: 'MEDIUM',
+        country: '괌',
+        destination,
+        applicableTo: `${destination} 공항 픽업 예약 여행자`,
+        normalizedValue: '도착 시간 확인',
+        conditions: ['예약에 비행편명 입력', '도착 후 공항 내 안내 데스크 확인'],
+      });
+      decisionClaims.push({
+        claimText: '카카오 T 괌택시는 예약에 비행편명을 입력하면 항공 지연 때 현지 업체가 도착 시간을 확인해 탑승을 돕는다고 안내한다.',
+        claimType: 'factual',
+        riskLevel: 'MEDIUM',
+        evidenceKeys: ['kakao-guam-taxi-flight-delay'],
+        normalizedValue: '도착 시간 확인',
+      });
+    }
+  }
   const deterministicEvidenceKeys = new Set([
-    ...rows.map((row) => row.evidenceKey),
+    ...deterministicEvidence.map((item) => item.evidenceKey!),
     ...deterministicFareEvidence.map((item) => item.evidenceKey!),
+    ...decisionEvidence.map((item) => item.evidenceKey!),
   ]);
   const competingTransitFarePattern = /(?:버스|대중교통|현지\s*교통편|bus|일일권|1일권|월간권|월간\s*(?:대중교통\s*)?정기권|정기권|편도\s*티켓|하루\s*이용권|승차당|one\s*day\s*pass|one\s*ride|monthly\s*pass|one-way\s*ticket)/i;
   const originalEvidence = (payload.evidence ?? [])
@@ -3040,13 +3216,20 @@ export function augmentGrtaAirportTransportPayload(
     .sort((left, right) => Number(right.claimType === 'price') - Number(left.claimType === 'price'));
   const selectedOriginalClaims: GroundedClaimDraft[] = [];
   const selectedEvidenceKeys = new Set<string>();
-  const deterministicClaimsWithFares = [...deterministicClaims, ...deterministicFareClaims];
+  const deterministicClaimsWithFares = [
+    ...deterministicClaims,
+    ...deterministicFareClaims,
+    ...decisionClaims,
+  ];
   for (const claim of originalClaims) {
     const evidenceKeys = normalizeList(claim.evidenceKeys);
     const additionalEvidenceCount = evidenceKeys.filter((key) => !selectedEvidenceKeys.has(key)).length;
     if (selectedOriginalClaims.length >= MAX_RESEARCH_CLAIMS - deterministicClaimsWithFares.length) break;
     if (selectedEvidenceKeys.size + additionalEvidenceCount
-      > MAX_RESEARCH_EVIDENCE - deterministicEvidence.length - deterministicFareEvidence.length) {
+      > MAX_RESEARCH_EVIDENCE
+        - deterministicEvidence.length
+        - deterministicFareEvidence.length
+        - decisionEvidence.length) {
       continue;
     }
     evidenceKeys.forEach((key) => selectedEvidenceKeys.add(key));
@@ -3056,6 +3239,7 @@ export function augmentGrtaAirportTransportPayload(
   const selectedEvidence = [
     ...deterministicEvidence,
     ...deterministicFareEvidence,
+    ...decisionEvidence,
     ...originalEvidence.filter((evidence) => selectedEvidenceKeys.has(clean(evidence.evidenceKey))),
   ];
   const fareSource: GroundedSourceDraft | null = hasReviewedRegularFares
@@ -3073,7 +3257,7 @@ export function augmentGrtaAirportTransportPayload(
 
   return {
     ...payload,
-    sources: [scheduleSource, ...(fareSource ? [fareSource] : []), ...sourceDrafts]
+    sources: [scheduleSource, ...(fareSource ? [fareSource] : []), ...decisionSources, ...sourceDrafts]
       .slice(0, MAX_GROUNDING_SOURCES),
     evidence: selectedEvidence,
     claims: selectedClaims,

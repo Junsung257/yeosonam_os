@@ -245,6 +245,7 @@ describe('fetchReviewedDirectPages', () => {
   it('passes a finite phase-bounded timeout signal to every reviewed source request', async () => {
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
       expect(init?.signal).toBeInstanceOf(AbortSignal);
+      expect(new Headers(init?.headers).get('accept')).toContain('application/json');
       return new Response(`<main>${'bounded official source content '.repeat(10)}</main>`, {
         status: 200,
         headers: { 'content-type': 'text/html' },
@@ -511,16 +512,98 @@ describe('augmentGrtaAirportTransportPayload', () => {
       claims: [],
     });
 
-    expect(payload.evidence?.map((item) => item.normalizedValue)).toEqual(['5', '8']);
+    expect(payload.evidence?.map((item) => item.normalizedValue)).toEqual(['5', '8', '5:55']);
     expect(payload.claims?.map((item) => item.evidenceKeys?.[0])).toEqual([
       'grta-giaa-kmart-duration',
       'grta-giaa-upper-tumon-duration',
+      'grta-giaa-first-departure',
     ]);
     expect(payload.sources?.[0]).toMatchObject({
       sourceKey: 's1',
       groundingChunkIndex: 0,
       sourceType: 'transport_operator',
     });
+  });
+
+  it('builds a publishable Guam airport packet with mode, schedule, luggage, and delay coverage', () => {
+    const pages = [
+      schedulePage,
+      {
+        url: 'https://grta.guam.gov/sites/default/files/grta_bus_pass_sales_information_sheet.pdf',
+        title: 'GRTA fare sheet',
+        text: 'REGULAR FARE PASSES One Ride = $ 1.50 One Day Pass = $ 4.00',
+      },
+      {
+        url: 'https://www.guamairport.com/passenger/ground-transportation',
+        title: 'Guam Airport ground transportation',
+        text: [
+          'There are a number of public transportation services you can use to get from the Airport to your destination of choice.',
+          'A taxi counter is conveniently located outside the West Arrival terminal building.',
+          'There are several car rental reservation and tour group counters located outside the baggage claim area.',
+        ].join(' '),
+      },
+      {
+        url: 'https://service.kakaomobility.com/api/cs/v1/faqs/categories/44/contents?recordsPerPage=100&currentPageNo=1',
+        title: 'Kakao T Guam taxi FAQ',
+        text: JSON.stringify({
+          contents: [
+            {
+              title: '차량에 수화물(짐)을 얼마나 실을 수 있나요?',
+              content: '<p>배차되는 차량마다 트렁크 공간이 다를 수 있지만, 보통 24kg 캐리어 기준으로 3~4개까지 실을 수 있어요. 과도한 수화물을 싣고자 하는 경우 현장에서 탑승이 제한되거나 추가 요금이 발생할 수 있어요.</p>',
+            },
+            {
+              title: '항공이 지연 되었습니다.',
+              content: '<p>예약 시 비행편명을 기재한 경우 현지 업체에서 도착 시간 확인 후 탑승을 도와드릴 예정입니다.</p>',
+            },
+          ],
+        }),
+      },
+    ];
+    const payload = augmentGrtaAirportTransportPayload(pages, '괌', {
+      sources: [],
+      evidence: [],
+      claims: [],
+    });
+    const sourcePolicy = {
+      minimumClaimSourceCoverage: 0.9,
+      primarySourcesRequired: false,
+      exactNumbersRequireSource: true,
+      retrievedAtRequired: true,
+      sourceTypes: ['airport', 'transport_operator', 'government', 'reputable_local_source', 'reputable_price_source'],
+    };
+    const now = new Date();
+    const built = buildBlogResearchBundleFromGrounding({
+      contentKey: 'guam-airport-tumon-transport',
+      destination: '괌',
+      locale: 'ko-KR',
+      brief: { intentType: 'airport_transport', sourcePolicy },
+      payload,
+      groundingChunks: pages.map((page) => ({ web: { uri: page.url, title: page.title } })),
+      directSourceUrls: pages.map((page) => page.url),
+      officialRegistry: [
+        { id: 'grta', hostname: 'grta.guam.gov', sourceType: 'transport_operator', authorityLevel: 'official_primary', allowSubdomains: true },
+        { id: 'airport', hostname: 'guamairport.com', sourceType: 'airport', authorityLevel: 'official_primary', allowSubdomains: true },
+        { id: 'kakao', hostname: 'kakaomobility.com', sourceType: 'transport_operator', authorityLevel: 'official_primary', allowSubdomains: true },
+      ],
+      now,
+    });
+    const readiness = evaluateBlogGenerationResearchReadiness({
+      meta: { information_research_bundle: built.bundle },
+      expectedContentKey: 'guam-airport-tumon-transport',
+      destination: '괌',
+      intent: 'airport_transport',
+      locale: 'ko-KR',
+      sourcePolicy,
+      now,
+    });
+
+    expect(payload.claims?.map((claim) => claim.claimText).join('\n')).toMatch(/대중교통[\s\S]*택시[\s\S]*렌터카/);
+    expect(payload.claims?.map((claim) => claim.claimText).join('\n')).toMatch(/첫차/);
+    expect(payload.claims?.map((claim) => claim.claimText).join('\n')).toMatch(/캐리어/);
+    expect(payload.claims?.map((claim) => claim.claimText).join('\n')).toMatch(/항공 지연/);
+    expect(built.issues).toEqual([]);
+    expect(readiness.issues).toEqual([]);
+    expect(readiness.passed).toBe(true);
   });
 
   it('does not infer durations when a published timetable value changes', () => {
@@ -605,7 +688,7 @@ describe('augmentGrtaAirportTransportPayload', () => {
       ],
     });
 
-    expect(payload.claims?.map((item) => item.normalizedValue)).toEqual(['5', '8', '4.00', '2.40']);
+    expect(payload.claims?.map((item) => item.normalizedValue)).toEqual(['5', '8', '5:55', '4.00', '2.40']);
     expect(payload.evidence?.some((item) => item.evidenceKey === 'old-bus')).toBe(false);
   });
 });
