@@ -134,6 +134,7 @@ export interface BlogAutoResearchResult {
   directSourceFailures: string[];
   criticalSourceRetryCount: number;
   criticalSourceRecoveredCount: number;
+  criticalSourceSnapshotFallbackCount: number;
   observedSourceTypes: string[];
   observedGroundingChunkIndexes: number[];
   observedSources: Array<{
@@ -241,6 +242,18 @@ export type ReviewedDirectPage = {
   url: string;
   title: string;
   text: string;
+  acquisition?: 'reviewed_direct_fetch' | 'reviewed_registry_snapshot';
+};
+
+export type ReviewedRegistrySnapshotRow = {
+  source_url?: string | null;
+  publisher?: string | null;
+  snapshot_content?: string | null;
+  retrieved_at?: string | null;
+  valid_until?: string | null;
+  status?: string | null;
+  official_source_registry_id?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 const JMA_CLIMATE_ROW_MARKER = 'JMA_CLIMATE_ROW:';
@@ -411,7 +424,12 @@ async function fetchReviewedDirectPage(input: {
       const parsed = await pdfParse(pdfBuffer);
       const text = extractReviewedPageTextForResearch(parsed.text);
       if (text.length < 80) throw new Error(`content_too_short:${input.entry.hostname}`);
-      return { url: currentUrl, title: input.entry.hostname, text };
+      return {
+        url: currentUrl,
+        title: input.entry.hostname,
+        text,
+        acquisition: 'reviewed_direct_fetch',
+      };
     }
 
     const body = await response.text();
@@ -421,14 +439,19 @@ async function fetchReviewedDirectPage(input: {
     if (contentType.includes('text/plain') || isStructuredText) {
       const text = extractReviewedPageTextForResearch(body);
       if (text.length < 80) throw new Error(`content_too_short:${input.entry.hostname}`);
-      return { url: currentUrl, title: input.entry.hostname, text };
+      return {
+        url: currentUrl,
+        title: input.entry.hostname,
+        text,
+        acquisition: 'reviewed_direct_fetch',
+      };
     }
 
     const $ = cheerio.load(body);
     const title = clean($('title').first().text()) || input.entry.hostname;
     const text = extractReviewedHtmlTextForResearch({ body, url: currentUrl });
     if (text.length < 80) throw new Error(`content_too_short:${input.entry.hostname}`);
-    return { url: currentUrl, title, text };
+    return { url: currentUrl, title, text, acquisition: 'reviewed_direct_fetch' };
   }
   throw new Error(`too_many_redirects:${input.entry.hostname}`);
 }
@@ -538,13 +561,13 @@ function guamAirportCriticalSourceKey(value: string): string | null {
 export function selectMissingCriticalGuamAirportTransportRegistry(
   registry: Array<Pick<
     BlogInformationOfficialSourceRegistryEntry,
-    'hostname' | 'allowSubdomains' | 'researchUrls'
+    'id' | 'hostname' | 'allowSubdomains' | 'researchUrls'
   >>,
   pages: ReviewedDirectPage[],
   input: { destination: string; intent: string },
 ): Array<Pick<
   BlogInformationOfficialSourceRegistryEntry,
-  'hostname' | 'allowSubdomains' | 'researchUrls'
+  'id' | 'hostname' | 'allowSubdomains' | 'researchUrls'
 >> {
   const destination = clean(input.destination).normalize('NFKC').toLowerCase();
   if (!['괌', 'guam'].includes(destination) || input.intent !== 'airport_transport') return [];
@@ -556,6 +579,83 @@ export function selectMissingCriticalGuamAirportTransportRegistry(
     });
     return missingUrls.length > 0 ? [{ ...entry, researchUrls: missingUrls }] : [];
   });
+}
+
+export function selectUsableReviewedRegistrySnapshots(input: {
+  rows: ReviewedRegistrySnapshotRow[];
+  registry: Array<Pick<
+    BlogInformationOfficialSourceRegistryEntry,
+    'id' | 'hostname' | 'allowSubdomains' | 'researchUrls'
+  >>;
+  now?: Date;
+}): ReviewedDirectPage[] {
+  const now = input.now ?? new Date();
+  const oldestAllowed = now.getTime() - 30 * 24 * 60 * 60 * 1_000;
+  const newestAllowed = now.getTime() + 5 * 60 * 1_000;
+  const registryByUrl = new Map(input.registry.flatMap((entry) =>
+    (entry.researchUrls ?? []).map((url) => [url, entry] as const)));
+  const seen = new Set<string>();
+
+  return input.rows.flatMap((row) => {
+    const url = clean(row.source_url);
+    const entry = registryByUrl.get(url);
+    const retrievedAt = Date.parse(clean(row.retrieved_at));
+    const validUntil = Date.parse(clean(row.valid_until));
+    const snapshot = normalizeBlogInformationSourceSnapshot(clean(row.snapshot_content));
+    const acquisition = clean(row.metadata?.acquisition);
+    if (!entry
+      || seen.has(url)
+      || row.status !== 'active'
+      || clean(row.official_source_registry_id) !== entry.id
+      || acquisition !== 'reviewed_registry_snapshot'
+      || !urlMatchesRegistryEntry(url, entry)
+      || !Number.isFinite(retrievedAt)
+      || retrievedAt < oldestAllowed
+      || retrievedAt > newestAllowed
+      || !Number.isFinite(validUntil)
+      || validUntil < now.getTime()
+      || snapshot.length < 80) {
+      return [];
+    }
+    seen.add(url);
+    return [{
+      url,
+      title: clean(row.publisher) || entry.hostname,
+      text: extractReviewedPageTextForResearch(snapshot),
+      acquisition: 'reviewed_registry_snapshot' as const,
+    }];
+  });
+}
+
+async function loadReviewedRegistrySnapshotPages(input: {
+  registry: Array<Pick<
+    BlogInformationOfficialSourceRegistryEntry,
+    'id' | 'hostname' | 'allowSubdomains' | 'researchUrls'
+  >>;
+  now: Date;
+}): Promise<{ pages: ReviewedDirectPage[]; failures: string[] }> {
+  const urls = [...new Set(input.registry.flatMap((entry) => entry.researchUrls ?? []))];
+  if (urls.length === 0) return { pages: [], failures: [] };
+  const { data, error } = await supabaseAdmin
+    .from('blog_information_source_versions')
+    .select('source_url, publisher, snapshot_content, retrieved_at, valid_until, status, official_source_registry_id, metadata')
+    .in('source_url', urls)
+    .eq('status', 'active')
+    .order('retrieved_at', { ascending: false });
+  if (error) {
+    return {
+      pages: [],
+      failures: [`reviewed_registry_snapshot_lookup:${clean(error.message)}`],
+    };
+  }
+  return {
+    pages: selectUsableReviewedRegistrySnapshots({
+      rows: (data ?? []) as ReviewedRegistrySnapshotRow[],
+      registry: input.registry,
+      now: input.now,
+    }),
+    failures: [],
+  };
 }
 
 async function fetchTrustedSearchPages(input: {
@@ -906,6 +1006,10 @@ export function buildBlogResearchBundleFromGrounding(input: {
   payload: GroundedBlogResearchPayload;
   groundingChunks: GroundingChunk[];
   directSourceUrls?: string[];
+  sourceAcquisitionByUrl?: Record<
+    string,
+    'reviewed_direct_fetch' | 'reviewed_registry_snapshot'
+  >;
   officialRegistry?: BlogInformationOfficialSourceRegistryEntry[];
   reputableRegistry?: BlogInformationReputableSourceRegistryEntry[];
   now?: Date;
@@ -916,7 +1020,10 @@ export function buildBlogResearchBundleFromGrounding(input: {
   const webChunks = groundedWebChunks(input.groundingChunks);
   const registry = input.officialRegistry ?? [];
   const reputableRegistry = input.reputableRegistry ?? [];
-  const directSourceUrls = new Set(input.directSourceUrls ?? []);
+  const sourceAcquisitionByUrl = new Map<string, string>([
+    ...(input.directSourceUrls ?? []).map((url) => [url, 'reviewed_direct_fetch'] as const),
+    ...Object.entries(input.sourceAcquisitionByUrl ?? {}),
+  ]);
   const sourceDrafts = Array.isArray(input.payload.sources) ? input.payload.sources : [];
   const chunkByOriginalIndex = new Map(webChunks.map((chunk) => [chunk.chunkIndex, chunk]));
   const sourceRecords = sourceDrafts.flatMap((draft, sourceDraftIndex) => {
@@ -1095,9 +1202,8 @@ export function buildBlogResearchBundleFromGrounding(input: {
           ? normalizeList(draft.conditions)
           : ['검색 근거 확인일 기준'],
       },
-      capturedBy: directSourceUrls.has(source.uri)
-        ? 'reviewed_direct_fetch'
-        : 'gemini_google_search_grounding',
+      capturedBy: sourceAcquisitionByUrl.get(source.uri)
+        ?? 'gemini_google_search_grounding',
       metadata: {
         grounded_source_index: source.draftIndex,
         grounded_statement: statement,
@@ -1310,9 +1416,8 @@ export function buildBlogResearchBundleFromGrounding(input: {
           ? 'HIGH'
           : 'MEDIUM',
         metadata: {
-          acquisition: directSourceUrls.has(source.uri)
-            ? 'reviewed_direct_fetch'
-            : 'google_search_grounding',
+          acquisition: sourceAcquisitionByUrl.get(source.uri)
+            ?? 'google_search_grounding',
           model: AUTO_RESEARCH_MODEL,
         },
       };
@@ -3759,6 +3864,7 @@ export async function researchBlogInformationAutomatically(input: {
   let directSourceFailures: string[] = [];
   let criticalSourceRetryCount = 0;
   let criticalSourceRecoveredCount = 0;
+  let criticalSourceSnapshotFallbackCount = 0;
   let finishReason: string | null = null;
   let responseTextLength = 0;
   const deadline = Date.now() + AUTO_RESEARCH_TIMEOUT_MS;
@@ -3812,6 +3918,23 @@ export async function researchBlogInformationAutomatically(input: {
       reviewedPages = [...reviewedPages, ...focusedResult.pages]
         .filter((page, index, all) => all.findIndex((candidate) => candidate.url === page.url) === index)
         .slice(0, MAX_SOURCE_CATALOG);
+
+      const stillMissingCriticalRegistry = selectMissingCriticalGuamAirportTransportRegistry(
+        reviewedRegistry,
+        reviewedPages,
+        { destination: input.destination, intent: input.brief.intentType },
+      );
+      if (stillMissingCriticalRegistry.length > 0) {
+        const snapshotResult = await loadReviewedRegistrySnapshotPages({
+          registry: stillMissingCriticalRegistry,
+          now,
+        });
+        criticalSourceSnapshotFallbackCount = snapshotResult.pages.length;
+        directSourceFailures = [...directSourceFailures, ...snapshotResult.failures];
+        reviewedPages = [...reviewedPages, ...snapshotResult.pages]
+          .filter((page, index, all) => all.findIndex((candidate) => candidate.url === page.url) === index)
+          .slice(0, MAX_SOURCE_CATALOG);
+      }
     }
     directSourceCount = reviewedPages.length;
     const groundingChunks: GroundingChunk[] = reviewedPages.map((page) => ({
@@ -3834,6 +3957,13 @@ export async function researchBlogInformationAutomatically(input: {
     if (!groundedDigest || eligibleWebChunks.length === 0) {
       throw new Error('BLOG_RESEARCH_REVIEWED_SOURCE_EMPTY');
     }
+    const deterministicAirportTransportPayload = input.brief.intentType === 'airport_transport'
+      ? augmentGrtaAirportTransportPayload(reviewedPages, input.destination, {
+          sources: [],
+          evidence: [],
+          claims: [],
+        })
+      : null;
     let payload = input.brief.intentType === 'monthly_weather'
       ? buildWmoMonthlyWeatherPayload(reviewedPages, input.destination)
         ?? buildJmaMonthlyWeatherPayload(reviewedPages, input.destination)
@@ -3843,13 +3973,17 @@ export async function researchBlogInformationAutomatically(input: {
         ? buildGuamHotelAreasPayload(reviewedPages, input.destination)
         : input.brief.intentType === 'currency_payment'
           ? buildGuamCurrencyPaymentPayload(reviewedPages, input.destination)
+          : (deterministicAirportTransportPayload?.claims?.length ?? 0) >= 10
+            ? deterministicAirportTransportPayload
           : null;
     if (payload) {
       finishReason = input.brief.intentType === 'monthly_weather'
         ? 'DETERMINISTIC_OFFICIAL_CLIMATE'
         : input.brief.intentType === 'hotel_areas'
           ? 'DETERMINISTIC_GUAM_HOTEL_AREAS'
-          : 'DETERMINISTIC_GUAM_CURRENCY_PAYMENT';
+          : input.brief.intentType === 'currency_payment'
+            ? 'DETERMINISTIC_GUAM_CURRENCY_PAYMENT'
+            : 'DETERMINISTIC_GUAM_AIRPORT_TRANSPORT';
       responseTextLength = JSON.stringify(payload).length;
     } else {
       const sourceCatalog = eligibleWebChunks
@@ -3948,7 +4082,13 @@ export async function researchBlogInformationAutomatically(input: {
           brief: input.brief,
           payload,
           groundingChunks,
-          directSourceUrls: reviewedPages.map((page) => page.url),
+          directSourceUrls: reviewedPages
+            .filter((page) => page.acquisition !== 'reviewed_registry_snapshot')
+            .map((page) => page.url),
+          sourceAcquisitionByUrl: Object.fromEntries(reviewedPages.map((page) => [
+            page.url,
+            page.acquisition ?? 'reviewed_direct_fetch',
+          ])),
           officialRegistry: registry,
           reputableRegistry,
           now,
@@ -4012,7 +4152,13 @@ export async function researchBlogInformationAutomatically(input: {
       brief: input.brief,
       payload,
       groundingChunks,
-      directSourceUrls: reviewedPages.map((page) => page.url),
+      directSourceUrls: reviewedPages
+        .filter((page) => page.acquisition !== 'reviewed_registry_snapshot')
+        .map((page) => page.url),
+      sourceAcquisitionByUrl: Object.fromEntries(reviewedPages.map((page) => [
+        page.url,
+        page.acquisition ?? 'reviewed_direct_fetch',
+      ])),
       officialRegistry: registry,
       reputableRegistry,
       now,
@@ -4042,6 +4188,7 @@ export async function researchBlogInformationAutomatically(input: {
       directSourceFailures,
       criticalSourceRetryCount,
       criticalSourceRecoveredCount,
+      criticalSourceSnapshotFallbackCount,
       observedSourceTypes: [...new Set((payload.sources ?? []).map((source) => clean(source.sourceType)).filter(Boolean))],
       observedGroundingChunkIndexes: [...new Set((payload.sources ?? [])
         .map((source) => Number(source.groundingChunkIndex))
@@ -4062,6 +4209,7 @@ export async function researchBlogInformationAutomatically(input: {
       directSourceFailures,
       criticalSourceRetryCount,
       criticalSourceRecoveredCount,
+      criticalSourceSnapshotFallbackCount,
       observedSourceTypes: [],
       observedGroundingChunkIndexes: [],
       observedSources: [],
