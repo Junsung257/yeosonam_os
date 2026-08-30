@@ -2950,7 +2950,7 @@ export function augmentGrtaAirportTransportPayload(
   ];
   const deterministicClaims: GroundedClaimDraft[] = [
     ...rows.map((row) => ({
-      claimText: `GRTA Route 14 첫 운행 기준 괌 공항에서 ${row.destinationLabel}까지 ${row.minutes}분이다.`,
+      claimText: `GRTA 공항 대중교통 Route 14 첫 운행 기준 괌 공항에서 ${row.destinationLabel}까지 ${row.minutes}분이다.`,
       claimType: 'duration',
       riskLevel: 'MEDIUM',
       evidenceKeys: [row.evidenceKey],
