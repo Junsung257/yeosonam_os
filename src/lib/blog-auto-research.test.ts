@@ -22,12 +22,17 @@ import {
   fetchReviewedDirectPages,
   normalizeAutoResearchStructuredValue,
   sanitizeGroundedResearchPayload,
+  selectMissingCriticalGuamAirportTransportRegistry,
   selectReputableResearchRegistryForIntent,
   shouldRetrySanitizedAutoResearchPayload,
 } from '@/lib/blog-auto-research';
 import { evaluateBlogGenerationResearchReadiness } from '@/lib/blog-generation-research';
-import { buildBlogDecisionArtifactV1 } from '@/lib/blog-editorial-harness-v5';
+import {
+  applyBlogDecisionArtifactToWriterOutputV1,
+  buildBlogDecisionArtifactV1,
+} from '@/lib/blog-editorial-harness-v5';
 import { selectDecisionRelevantRewriteClaimsV4 } from '@/lib/blog-deepseek-orchestrator-v4';
+import { validateBlogInformationStructure } from '@/lib/blog-information-structure';
 
 describe('normalizeAutoResearchStructuredValue', () => {
   it.each([
@@ -266,6 +271,68 @@ describe('fetchReviewedDirectPages', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe('selectMissingCriticalGuamAirportTransportRegistry', () => {
+  const registry = [
+    {
+      hostname: 'grta.guam.gov',
+      allowSubdomains: true,
+      researchUrls: [
+        'https://grta.guam.gov/sites/default/files/master_-_fixed_route_schedule_updated112625.pdf',
+        'https://grta.guam.gov/sites/default/files/grta_bus_pass_sales_information_sheet.pdf',
+      ],
+    },
+    {
+      hostname: 'guamairport.com',
+      allowSubdomains: true,
+      researchUrls: ['https://www.guamairport.com/passenger/ground-transportation'],
+    },
+    {
+      hostname: 'visitguam.com',
+      allowSubdomains: true,
+      researchUrls: ['https://www.visitguam.com/planning/transportation/'],
+    },
+    {
+      hostname: 'kakaomobility.com',
+      allowSubdomains: true,
+      researchUrls: ['https://service.kakaomobility.com/api/cs/v1/faqs/categories/44/contents?recordsPerPage=100&currentPageNo=1'],
+    },
+  ];
+
+  it('selects only missing reviewed airport sources for a fresh focused retry', () => {
+    const selected = selectMissingCriticalGuamAirportTransportRegistry(registry, [
+      {
+        url: registry[0]!.researchUrls[0]!,
+        title: 'schedule',
+        text: 'reviewed schedule',
+      },
+      {
+        url: registry[3]!.researchUrls[0]!,
+        title: 'taxi faq',
+        text: 'reviewed faq',
+      },
+    ], { destination: '괌', intent: 'airport_transport' });
+
+    expect(selected.flatMap((entry) => entry.researchUrls ?? [])).toEqual([
+      registry[0]!.researchUrls[1],
+      registry[1]!.researchUrls[0],
+      registry[2]!.researchUrls[0],
+    ]);
+  });
+
+  it('does not broaden focused retries to another destination or intent', () => {
+    expect(selectMissingCriticalGuamAirportTransportRegistry(
+      registry,
+      [],
+      { destination: '다낭', intent: 'airport_transport' },
+    )).toEqual([]);
+    expect(selectMissingCriticalGuamAirportTransportRegistry(
+      registry,
+      [],
+      { destination: '괌', intent: 'food_budget' },
+    )).toEqual([]);
   });
 });
 
@@ -644,6 +711,23 @@ describe('augmentGrtaAirportTransportPayload', () => {
     expect(selectedClaims).toMatch(/서쪽 도착 터미널/);
     expect(selectedClaims).toMatch(/기본 호출 2\.40 USD/);
     expect(selectedClaims).toMatch(/투몬 호텔/);
+
+    const writerOutput = applyBlogDecisionArtifactToWriterOutputV1({
+      artifact,
+      output: {
+        markdown: '# 모델 초안\n\n공항은 24시간 운영하며 택시로 15~30분 걸립니다.',
+        claimLedger: [],
+        ledgerIssues: [],
+      },
+    });
+    expect(writerOutput.markdown.trimStart()).toMatch(/^<!-- blog_decision_artifact:route_decision:v1 -->/);
+    expect(writerOutput.markdown).not.toMatch(/24시간|15~30분/);
+    expect(writerOutput.markdown).toContain('실제 숙소까지의 소요시간은 승인된 근거에서 확인되지 않음');
+    expect(writerOutput.claimLedger).toHaveLength(10);
+    expect(validateBlogInformationStructure({
+      intent: 'airport_transport',
+      markdown: writerOutput.markdown,
+    }).issues).toEqual([]);
   });
 
   it('keeps multi-mode coverage when the Guam Airport page is unavailable', () => {

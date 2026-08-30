@@ -548,11 +548,123 @@ function decisionTableMarkdown(artifact: BlogDecisionArtifactV1): string {
   ].join('\n');
 }
 
+const ROUTE_DECISION_BLOCK_START = '<!-- blog_decision_artifact:route_decision:v1 -->';
+const ROUTE_DECISION_BLOCK_END = '<!-- /blog_decision_artifact:route_decision:v1 -->';
+
+function routeDecisionFact(
+  facts: BlogDecisionPublicFactV1[],
+  pattern: RegExp,
+  claimType?: string,
+): BlogDecisionPublicFactV1 | null {
+  return facts.find((fact) => (!claimType || fact.claimType === claimType) && pattern.test(fact.claimText)) ?? null;
+}
+
+function routeDecisionFactMarkdown(fact: BlogDecisionPublicFactV1): string {
+  const url = fact.sourceUrls[0] ?? '';
+  const citation = url ? ` [${fact.citationLabel}](${url})` : '';
+  return `${fact.claimText}${citation}`;
+}
+
+function routeDecisionTableCell(facts: BlogDecisionPublicFactV1[]): string {
+  return facts.map(routeDecisionFactMarkdown).join('<br>').replace(/\|/g, '\\|');
+}
+
+function deterministicRouteDecisionArticle(
+  artifact: BlogDecisionArtifactV1,
+): { markdown: string; facts: BlogDecisionPublicFactV1[] } | null {
+  const facts = artifact.publicFacts;
+  const oneRide = routeDecisionFact(facts, /GRTA[\s\S]{0,80}(?:1회\s*탑승|One\s*Ride)[\s\S]{0,80}1\.50\s*USD/i, 'price');
+  const oneDay = routeDecisionFact(facts, /GRTA[\s\S]{0,80}(?:1일권|One\s*Day)[\s\S]{0,80}4\.00\s*USD/i, 'price');
+  const kmartDuration = routeDecisionFact(facts, /괌\s*공항[\s\S]{0,100}Kmart[\s\S]{0,40}5분/i, 'duration');
+  const upperTumonDuration = routeDecisionFact(facts, /괌\s*공항[\s\S]{0,100}GTA\s*Upper\s*Tumon[\s\S]{0,40}8분/i, 'duration');
+  const firstDeparture = routeDecisionFact(facts, /GRTA[\s\S]{0,80}괌\s*공항[\s\S]{0,50}첫차[\s\S]{0,40}5:55/i);
+  const taxiMeter = routeDecisionFact(facts, /택시[\s\S]{0,80}(?:미터\s*요금|기본\s*호출)[\s\S]{0,80}2\.40\s*USD/i, 'price');
+  const taxiPickup = routeDecisionFact(facts, /택시\s*카운터[\s\S]{0,100}서쪽\s*도착\s*터미널/i);
+  const tumonTransit = routeDecisionFact(facts, /대중교통\s*노선[\s\S]{0,100}투몬\s*호텔/i);
+  const luggage = routeDecisionFact(facts, /카카오\s*T\s*괌택시[\s\S]{0,100}(?:캐리어|수하물)/i);
+  const delay = routeDecisionFact(facts, /카카오\s*T\s*괌택시[\s\S]{0,100}(?:항공\s*지연|비행편명)/i);
+  const required = [
+    oneRide, oneDay, kmartDuration, upperTumonDuration, firstDeparture,
+    taxiMeter, taxiPickup, tumonTransit, luggage, delay,
+  ];
+  if (required.some((fact) => !fact)) return null;
+  const selectedFacts = required as BlogDecisionPublicFactV1[];
+  const gapLines = artifact.gaps.length > 0
+    ? artifact.gaps.map((gap) => `- ${gap}`)
+    : ['- 출발일의 최신 운행·요금 조건은 각 공식 링크에서 다시 확인하세요.'];
+  const sourceLines = [...new Map(selectedFacts.flatMap((fact) => fact.sourceUrls.map((url) => [
+    url,
+    `- [${fact.citationLabel}](${url})`,
+  ] as const))).values()];
+  const fareFacts = [oneRide!, oneDay!];
+
+  return {
+    facts: selectedFacts,
+    markdown: [
+      ROUTE_DECISION_BLOCK_START,
+      `# ${artifact.resolvedTitle}`,
+      '',
+      artifact.directAnswer,
+      '',
+      '공식 근거가 확인된 범위만 표에 넣었습니다. 택시의 실제 숙소 도착 시간과 공항의 정확한 GRTA 승차 위치처럼 확인되지 않은 항목은 별도로 표시합니다.',
+      '',
+      '## 교통수단별 공식 확인 결과',
+      '',
+      '| 수단·구간 | 공식 요금 | 확인된 소요시간·운행 | 공항 승차·이용 조건 |',
+      '| --- | --- | --- | --- |',
+      `| GRTA Route 14 · 공항→Kmart | ${routeDecisionTableCell(fareFacts)} | ${routeDecisionTableCell([firstDeparture!, kmartDuration!])} | 정확한 공항 승차 위치는 공식 채널에서 출발 전에 재확인 |`,
+      `| GRTA Route 14 · 공항→GTA Upper Tumon | ${routeDecisionTableCell(fareFacts)} | ${routeDecisionTableCell([firstDeparture!, upperTumonDuration!])} | ${routeDecisionTableCell([tumonTransit!])} |`,
+      `| 현지 미터택시 | ${routeDecisionTableCell([taxiMeter!])} | 실제 숙소까지의 소요시간은 승인된 근거에서 확인되지 않음 | ${routeDecisionTableCell([taxiPickup!])} |`,
+      '| 카카오 T 괌택시 | 예약 화면에서 최종 요금 확인 | 비행편 도착 조건은 아래 공식 안내 확인 | 수하물과 항공 지연 조건을 예약 전에 확인 |',
+      '',
+      '대중교통은 공식 시간표와 요금을 먼저 맞춰 보고, 택시는 미터요금·공항 카운터 위치·수하물 조건을 함께 확인하면 됩니다. 확인되지 않은 택시 소요시간을 임의로 예상값으로 바꾸지 않았습니다.',
+      '',
+      '## 수하물·항공 지연·늦은 도착 확인',
+      '',
+      `- ${routeDecisionFactMarkdown(luggage!)}`,
+      `- ${routeDecisionFactMarkdown(delay!)}`,
+      '- 늦은 도착편은 예약 화면에 비행편 정보를 정확히 입력하고, 최종 배차·탑승 안내를 다시 확인하세요.',
+      '',
+      '## 아직 공식 근거로 확정하지 못한 범위',
+      '',
+      ...gapLines,
+      '',
+      '## 출발 전에 확인할 순서',
+      '',
+      '1. GRTA를 이용한다면 공식 시간표에서 출발일 운행 여부와 공항 승차 위치를 확인합니다.',
+      '2. 현지 미터택시를 이용한다면 공항 택시 카운터 위치와 현장 미터요금을 확인합니다.',
+      '3. 예약 택시를 이용한다면 인원·수하물·비행편 정보를 입력한 뒤 최종 요금을 확인합니다.',
+      '4. 숙소까지 실제 소요시간은 도착 시각과 교통 상황을 반영해 당일 다시 확인합니다.',
+      '',
+      '## 확인한 공식 원문',
+      '',
+      ...sourceLines,
+      '',
+      ROUTE_DECISION_BLOCK_END,
+    ].join('\n').replace(/\n{3,}/g, '\n\n').trim(),
+  };
+}
+
 export function applyBlogDecisionArtifactToWriterOutputV1(input: {
   output: BlogInformationWriterOutput;
   artifact: BlogDecisionArtifactV1;
 }): BlogInformationWriterOutput {
   if (!['daily_budget_scenarios', 'route_decision'].includes(input.artifact.promiseType)) return input.output;
+  if (input.artifact.promiseType === 'route_decision') {
+    const deterministic = deterministicRouteDecisionArticle(input.artifact);
+    if (deterministic) {
+      return {
+        markdown: deterministic.markdown,
+        claimLedger: deterministic.facts.map((fact) => ({
+          claimFingerprint: fact.claimFingerprint,
+          claimText: fact.claimText,
+          claimType: fact.claimType as BlogInformationClaimLedgerEntry['claimType'],
+          riskLevel: fact.riskLevel as BlogInformationClaimLedgerEntry['riskLevel'],
+        })),
+        ledgerIssues: [],
+      };
+    }
+  }
   const lines = input.output.markdown.trim().split(/\r?\n/);
   const h1Index = lines.findIndex((line) => /^#\s+\S/.test(line.trim()));
   const nextH2 = lines.findIndex((line, index) => index > h1Index && /^##\s+\S/.test(line.trim()));

@@ -132,6 +132,8 @@ export interface BlogAutoResearchResult {
   groundingSourceCount: number;
   directSourceCount: number;
   directSourceFailures: string[];
+  criticalSourceRetryCount: number;
+  criticalSourceRecoveredCount: number;
   observedSourceTypes: string[];
   observedGroundingChunkIndexes: number[];
   observedSources: Array<{
@@ -501,6 +503,59 @@ export async function fetchReviewedDirectPages(
     }
   });
   return { pages, failures };
+}
+
+function guamAirportCriticalSourceKey(value: string): string | null {
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase();
+    if (hostname === 'grta.guam.gov' && url.pathname === GRTA_FIXED_ROUTE_SCHEDULE_PATH) {
+      return 'grta_schedule';
+    }
+    if (hostname === 'grta.guam.gov' && url.pathname === GRTA_FARE_RATE_PATH) {
+      return 'grta_fares';
+    }
+    if ((hostname === 'guamairport.com' || hostname === 'www.guamairport.com')
+      && url.pathname === GUAM_AIRPORT_GROUND_TRANSPORT_PATH) {
+      return 'airport_ground_transport';
+    }
+    if ((hostname === 'visitguam.com' || hostname === 'www.visitguam.com')
+      && url.pathname === VISIT_GUAM_TRANSPORTATION_PATH) {
+      return 'visit_guam_transportation';
+    }
+    if (hostname === 'service.kakaomobility.com'
+      && url.pathname === KAKAO_GUAM_TAXI_FAQ_API_PATH
+      && url.searchParams.get('recordsPerPage') === '100'
+      && url.searchParams.get('currentPageNo') === '1') {
+      return 'kakao_guam_taxi_faq';
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+export function selectMissingCriticalGuamAirportTransportRegistry(
+  registry: Array<Pick<
+    BlogInformationOfficialSourceRegistryEntry,
+    'hostname' | 'allowSubdomains' | 'researchUrls'
+  >>,
+  pages: ReviewedDirectPage[],
+  input: { destination: string; intent: string },
+): Array<Pick<
+  BlogInformationOfficialSourceRegistryEntry,
+  'hostname' | 'allowSubdomains' | 'researchUrls'
+>> {
+  const destination = clean(input.destination).normalize('NFKC').toLowerCase();
+  if (!['괌', 'guam'].includes(destination) || input.intent !== 'airport_transport') return [];
+  const fetchedKeys = new Set(pages.map((page) => guamAirportCriticalSourceKey(page.url)).filter(Boolean));
+  return registry.flatMap((entry) => {
+    const missingUrls = (entry.researchUrls ?? []).filter((url) => {
+      const key = guamAirportCriticalSourceKey(url);
+      return Boolean(key && !fetchedKeys.has(key));
+    });
+    return missingUrls.length > 0 ? [{ ...entry, researchUrls: missingUrls }] : [];
+  });
 }
 
 async function fetchTrustedSearchPages(input: {
@@ -3702,6 +3757,8 @@ export async function researchBlogInformationAutomatically(input: {
   let groundingSourceCount = 0;
   let directSourceCount = 0;
   let directSourceFailures: string[] = [];
+  let criticalSourceRetryCount = 0;
+  let criticalSourceRecoveredCount = 0;
   let finishReason: string | null = null;
   let responseTextLength = 0;
   const deadline = Date.now() + AUTO_RESEARCH_TIMEOUT_MS;
@@ -3736,9 +3793,26 @@ export async function researchBlogInformationAutomatically(input: {
     // topic, but factual evidence must already exist in the reviewed registry
     // and be fetched from the original URL. Missing coverage fails closed
     // instead of invoking another model or trusting a search snippet.
-    const reviewedPages = directResult.pages
+    let reviewedPages = directResult.pages
       .filter((page, index, all) => all.findIndex((candidate) => candidate.url === page.url) === index)
       .slice(0, MAX_SOURCE_CATALOG);
+    const criticalRetryRegistry = selectMissingCriticalGuamAirportTransportRegistry(
+      reviewedRegistry,
+      reviewedPages,
+      { destination: input.destination, intent: input.brief.intentType },
+    );
+    criticalSourceRetryCount = criticalRetryRegistry.reduce(
+      (count, entry) => count + (entry.researchUrls?.length ?? 0),
+      0,
+    );
+    if (criticalSourceRetryCount > 0) {
+      const focusedResult = await fetchReviewedDirectPages(criticalRetryRegistry);
+      criticalSourceRecoveredCount = focusedResult.pages.length;
+      directSourceFailures = [...directSourceFailures, ...focusedResult.failures];
+      reviewedPages = [...reviewedPages, ...focusedResult.pages]
+        .filter((page, index, all) => all.findIndex((candidate) => candidate.url === page.url) === index)
+        .slice(0, MAX_SOURCE_CATALOG);
+    }
     directSourceCount = reviewedPages.length;
     const groundingChunks: GroundingChunk[] = reviewedPages.map((page) => ({
       web: {
@@ -3966,6 +4040,8 @@ export async function researchBlogInformationAutomatically(input: {
       groundingSourceCount,
       directSourceCount,
       directSourceFailures,
+      criticalSourceRetryCount,
+      criticalSourceRecoveredCount,
       observedSourceTypes: [...new Set((payload.sources ?? []).map((source) => clean(source.sourceType)).filter(Boolean))],
       observedGroundingChunkIndexes: [...new Set((payload.sources ?? [])
         .map((source) => Number(source.groundingChunkIndex))
@@ -3984,6 +4060,8 @@ export async function researchBlogInformationAutomatically(input: {
       groundingSourceCount,
       directSourceCount,
       directSourceFailures,
+      criticalSourceRetryCount,
+      criticalSourceRecoveredCount,
       observedSourceTypes: [],
       observedGroundingChunkIndexes: [],
       observedSources: [],

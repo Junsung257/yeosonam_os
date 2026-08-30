@@ -805,6 +805,39 @@ describe('blog information claim validator', () => {
     ]);
   });
 
+  it('validates the code-owned airport route article even when SEO metadata precedes its marker', () => {
+    const claimText = '괌 관광청은 표준 택시 미터 요금을 기본 호출 2.40 USD로 안내합니다.';
+    const persisted = supportedRecord(claimText, {
+      excerpt: `2026년 괌 KR 대상 택시 공식 요금: ${claimText}`,
+      scope: { country: '괌', destination: '괌', applicableTo: 'KR', currency: 'USD' },
+    });
+    persisted.extractedValue!.currency = 'USD';
+    persisted.evidence[0]!.scope.currency = 'USD';
+    const ledger = ledgerFor(claimText);
+    ledger[0]!.riskLevel = 'MEDIUM';
+    const markdown = [
+      '괌 공항 교통 공식 근거 안내',
+      '',
+      '<!-- blog_decision_artifact:route_decision:v1 -->',
+      '# 괌 공항 투몬 교통',
+      '',
+      claimText,
+      '',
+      '<!-- /blog_decision_artifact:route_decision:v1 -->',
+    ].join('\n');
+    const report = validateBlogInformationClaims({
+      markdown,
+      persistedClaims: [persisted],
+      claimLedger: ledger,
+      intentType: 'airport_transport',
+      now: NOW,
+    });
+
+    expect(report.issues).toEqual([]);
+    expect(report.passed).toBe(true);
+    expect(report.coverage).toBe(1);
+  });
+
   it('fails closed when the writer ledger downgrades deterministic price risk', () => {
     const claimText = '미선 유적지 입장료는 국제 방문객 기준 150,000 VND입니다.';
     const ledger = ledgerFor(claimText);
