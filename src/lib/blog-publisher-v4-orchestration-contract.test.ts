@@ -95,5 +95,6 @@ describe('blog publisher V4 orchestration wiring', () => {
     expect(source).toContain('loadBlogAttemptRevalidationCandidateV4(');
     expect(source).toContain('revalidateBlogGenerationAttemptV4({');
     expect(source).toContain('model_calls: 0');
+    expect(source.match(/alignGuamAirportCanaryDescriptionV4\(/g)).toHaveLength(3);
   });
 });
