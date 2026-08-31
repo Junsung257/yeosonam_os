@@ -34,6 +34,9 @@ export async function POST(request: NextRequest) {
   if (!isSupabaseAdminConfigured) {
     return apiResponse({ error: 'Research intake unavailable' }, { status: 503, headers: NO_STORE });
   }
+  if (request.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase() !== 'application/json') {
+    return apiResponse({ error: 'Content-Type must be application/json' }, { status: 415, headers: NO_STORE });
+  }
 
   const declaredBytes = Number(request.headers.get('content-length') ?? '0');
   if (Number.isFinite(declaredBytes) && declaredBytes > MAX_BODY_BYTES) {
@@ -82,7 +85,7 @@ export async function POST(request: NextRequest) {
         task_id: task.id,
         status: task.status,
         duplicate: task.duplicate,
-        review_status: 'pending',
+        review_status: 'review_required',
       },
       { status: task.duplicate ? 200 : 202, headers: NO_STORE },
     );

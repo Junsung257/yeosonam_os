@@ -4,8 +4,11 @@ import { dirname, resolve } from 'node:path';
 import { CheerioCrawler, PlaywrightCrawler, log } from 'crawlee';
 
 import {
+  assertPublicHostname,
   buildSignal,
   compactText,
+  crawlerRequest,
+  validateReviewedRequestUrl,
   validateReviewedSource,
   validateSignal,
 } from './signal-utils.mjs';
@@ -31,11 +34,28 @@ if (manifest.schemaVersion !== 1 || !Array.isArray(manifest.sources) || manifest
 if (manifest.sources.length > 20) throw new Error('pilot manifest is limited to 20 sources');
 
 const sources = manifest.sources.map(validateReviewedSource);
-const sourceByUrl = new Map(sources.map((source) => [source.url, source]));
+const sourceById = new Map(sources.map((source) => [source.id, source]));
 const collectedAt = new Date().toISOString();
 const collectorVersion = '3.18.1';
 const results = new Map();
-const browserFallback = [];
+const browserFallback = new Map();
+const publicHostChecks = new Map();
+
+function sourceForRequest(request) {
+  const source = sourceById.get(String(request.userData?.sourceId ?? ''));
+  if (!source) throw new Error(`unreviewed request reached crawler: ${request.url}`);
+  return source;
+}
+
+async function ensurePublicHost(hostname) {
+  const existing = publicHostChecks.get(hostname);
+  if (existing) return existing;
+  const pending = assertPublicHostname(hostname);
+  publicHostChecks.set(hostname, pending);
+  return pending;
+}
+
+await Promise.all(sources.map((source) => ensurePublicHost(new URL(source.url).hostname)));
 
 log.setLevel(log.LEVELS.WARNING);
 
@@ -43,49 +63,87 @@ const cheerio = new CheerioCrawler({
   maxConcurrency: 4,
   maxRequestsPerCrawl: sources.length,
   requestHandlerTimeoutSecs: 30,
+  preNavigationHooks: [async ({ request }, gotOptions) => {
+    const source = sourceForRequest(request);
+    const { hostname } = validateReviewedRequestUrl(source, request.url);
+    await ensurePublicHost(hostname);
+    gotOptions.followRedirect = false;
+    gotOptions.maxRedirects = 0;
+  }],
   async requestHandler({ request, $, response }) {
-    const source = sourceByUrl.get(request.url);
-    if (!source) throw new Error(`unreviewed URL reached handler: ${request.url}`);
+    const source = sourceForRequest(request);
     $('script, style, noscript, svg').remove();
     const title = compactText($('title').first().text() || $('h1').first().text());
     const text = compactText($('main, article, [role="main"]').first().text() || $('body').text());
-    const signal = buildSignal({ source, title, text, collectedAt, collectorVersion });
-    results.set(source.id, { ...signal, collectorMeta: { ...signal.collectorMeta, statusCode: response?.statusCode ?? null, engine: 'cheerio' } });
-    if (validateSignal(signal).length > 0) browserFallback.push(source);
+    const signal = buildSignal({
+      source,
+      title,
+      text,
+      collectedAt,
+      collectorVersion,
+      statusCode: response?.statusCode ?? null,
+      engine: 'cheerio',
+    });
+    results.set(source.id, signal);
+    if (validateSignal(signal).length > 0) browserFallback.set(source.id, source);
   },
   failedRequestHandler({ request, error }) {
-    const source = sourceByUrl.get(request.url);
-    if (source) browserFallback.push(source);
+    const source = sourceById.get(String(request.userData?.sourceId ?? ''));
+    if (source) browserFallback.set(source.id, source);
     console.warn(`Cheerio failed for ${request.url}: ${error.message}`);
   },
 });
 
-await cheerio.run(sources.map((source) => source.url));
+await cheerio.run(sources.map((source) => crawlerRequest(source, 'cheerio')));
 
-if (!noBrowser && browserFallback.length > 0) {
-  const fallbackByUrl = new Map(browserFallback.map((source) => [source.url, source]));
+if (!noBrowser && browserFallback.size > 0) {
+  const fallbackSources = [...browserFallback.values()];
   const browser = new PlaywrightCrawler({
     maxConcurrency: 2,
-    maxRequestsPerCrawl: browserFallback.length,
+    maxRequestsPerCrawl: fallbackSources.length,
     requestHandlerTimeoutSecs: 45,
-    launchContext: { launchOptions: { headless: true } },
-    preNavigationHooks: [async ({ page }) => {
+    launchContext: { launchOptions: { headless: true }, useIncognitoPages: true },
+    browserPoolOptions: {
+      prePageCreateHooks: [(_pageId, _browserController, pageOptions) => {
+        pageOptions.serviceWorkers = 'block';
+      }],
+    },
+    preNavigationHooks: [async ({ page, request }) => {
+      const source = sourceForRequest(request);
       await page.route('**/*', async (route) => {
-        const resourceType = route.request().resourceType();
-        if (['image', 'media', 'font'].includes(resourceType)) await route.abort();
-        else await route.continue();
+        const outbound = route.request();
+        if (['image', 'media', 'font'].includes(outbound.resourceType())) {
+          await route.abort();
+          return;
+        }
+        try {
+          const { hostname } = validateReviewedRequestUrl(source, outbound.url());
+          // Browser requests are independently resolved so DNS changes cannot
+          // inherit the manifest preflight result for the rest of the crawl.
+          await assertPublicHostname(hostname);
+          await route.continue();
+        } catch {
+          await route.abort('blockedbyclient');
+        }
       });
     }],
     async requestHandler({ request, page, response }) {
-      const source = fallbackByUrl.get(request.url);
-      if (!source) throw new Error(`unreviewed URL reached browser handler: ${request.url}`);
+      const source = sourceForRequest(request);
       const title = compactText(await page.title());
       const text = compactText(await page.locator('main, article, [role="main"], body').first().innerText());
-      const signal = buildSignal({ source, title, text, collectedAt, collectorVersion });
-      results.set(source.id, { ...signal, collectorMeta: { ...signal.collectorMeta, statusCode: response?.status() ?? null, engine: 'playwright' } });
+      const signal = buildSignal({
+        source,
+        title,
+        text,
+        collectedAt,
+        collectorVersion,
+        statusCode: response?.status() ?? null,
+        engine: 'playwright',
+      });
+      results.set(source.id, signal);
     },
   });
-  await browser.run(browserFallback.map((source) => source.url));
+  await browser.run(fallbackSources.map((source) => crawlerRequest(source, 'playwright')));
 }
 
 const signals = sources.map((source) => results.get(source.id)).filter(Boolean);
@@ -99,6 +157,7 @@ await writeFile(outputPath, `${JSON.stringify({
   schemaVersion: 1,
   generatedAt: collectedAt,
   collector: `crawlee@${collectorVersion}`,
+  sourceCount: sources.length,
   signals,
   failures,
 }, null, 2)}\n`, 'utf8');

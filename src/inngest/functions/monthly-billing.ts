@@ -1,5 +1,5 @@
 import { billingChargeTenantEvent, inngest } from '../client';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase';
 import {
   billingPeriodFromTimestamp,
   buildInngestEventId,
@@ -23,7 +23,7 @@ export const monthlyBillingFn = inngest.createFunction(
     if (!isInngestBillingEnabled()) {
       return { skipped: true, reason: 'inngest_billing_not_enabled' };
     }
-    if (!isSupabaseConfigured) return { skipped: true };
+    if (!isSupabaseAdminConfigured) return { skipped: true, reason: 'Supabase admin 미설정' };
 
     const billingPeriod = billingPeriodFromTimestamp(event.ts);
 

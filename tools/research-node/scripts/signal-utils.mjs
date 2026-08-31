@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 
 const SHA256 = /^sha256:[a-f0-9]{64}$/u;
@@ -29,7 +30,8 @@ export function validateIntakeEndpoint(value) {
   return endpoint;
 }
 
-function isPrivateIp(hostname) {
+export function isPrivateNetworkAddress(address) {
+  const hostname = String(address ?? '').toLowerCase().replace(/^\[|\]$/gu, '');
   const version = isIP(hostname);
   if (version === 4) {
     const [a, b] = hostname.split('.').map(Number);
@@ -38,13 +40,69 @@ function isPrivateIp(hostname) {
       || (a === 169 && b === 254)
       || (a === 172 && b >= 16 && b <= 31)
       || (a === 192 && b === 168)
-      || a === 0;
+      || (a === 100 && b >= 64 && b <= 127)
+      || (a === 198 && (b === 18 || b === 19))
+      || a === 0
+      || a >= 224;
   }
   if (version === 6) {
-    const value = hostname.toLowerCase();
-    return value === '::1' || value.startsWith('fc') || value.startsWith('fd') || value.startsWith('fe8');
+    const first = Number.parseInt(hostname.split(':')[0] || '0', 16);
+    const mappedIpv4 = hostname.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/u)?.[1];
+    return hostname === '::'
+      || hostname === '::1'
+      || hostname.startsWith('fc')
+      || hostname.startsWith('fd')
+      || (Number.isFinite(first) && (first & 0xffc0) === 0xfe80)
+      || hostname.startsWith('ff')
+      || hostname.startsWith('2001:db8:')
+      || (mappedIpv4 ? isPrivateNetworkAddress(mappedIpv4) : false);
   }
   return false;
+}
+
+function hostnameMatchesSource(source, hostname) {
+  return hostname === source.approvedHostname
+    || (source.allowSubdomains === true && hostname.endsWith(`.${source.approvedHostname}`));
+}
+
+export function validateReviewedRequestUrl(source, value) {
+  let url;
+  try {
+    url = new URL(String(value ?? ''));
+  } catch {
+    throw new Error(`source ${source.id} produced an invalid request URL`);
+  }
+  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/gu, '');
+  if (
+    url.protocol !== 'https:'
+    || url.username
+    || url.password
+    || (url.port && url.port !== '443')
+    || !hostnameMatchesSource(source, hostname)
+    || isPrivateNetworkAddress(hostname)
+  ) {
+    throw new Error(`source ${source.id} attempted an unreviewed destination`);
+  }
+  return { url, hostname };
+}
+
+export async function assertPublicHostname(hostname, resolver = lookup) {
+  const addresses = await resolver(hostname, { all: true, verbatim: true });
+  if (!Array.isArray(addresses) || addresses.length === 0) {
+    throw new Error(`hostname ${hostname} did not resolve`);
+  }
+  const blocked = addresses.find((entry) => isPrivateNetworkAddress(entry?.address));
+  if (blocked) throw new Error(`hostname ${hostname} resolved to a private address`);
+  return addresses;
+}
+
+export function crawlerRequest(source, engine) {
+  if (!['cheerio', 'playwright'].includes(engine)) throw new Error('invalid crawler engine');
+  return {
+    url: source.url,
+    uniqueKey: `${engine}:${source.id}`,
+    userData: { sourceId: source.id },
+  };
 }
 
 export function validateReviewedSource(source) {
@@ -61,7 +119,13 @@ export function validateReviewedSource(source) {
   if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '443')) {
     throw new Error(`source ${id} must use credential-free HTTPS`);
   }
-  if (isPrivateIp(hostname) || hostname === 'localhost' || hostname.endsWith('.local') || hostname.endsWith('.internal')) {
+  if (
+    isPrivateNetworkAddress(hostname)
+    || hostname === 'localhost'
+    || hostname.endsWith('.localhost')
+    || hostname.endsWith('.local')
+    || hostname.endsWith('.internal')
+  ) {
     throw new Error(`source ${id} targets a private host`);
   }
   const hostMatches = hostname === approvedHostname
@@ -101,7 +165,7 @@ export function redactExcerpt(value) {
     .replace(/\d{6}[-\s]?[1-4]\d{6}/gu, '[id-redacted]');
 }
 
-export function buildSignal({ source, title, text, collectedAt, collectorVersion }) {
+export function buildSignal({ source, title, text, collectedAt, collectorVersion, statusCode, engine }) {
   const body = compactText(text);
   const pageTitle = compactText(title);
   const bodyPresent = body.length >= 200;
@@ -110,6 +174,7 @@ export function buildSignal({ source, title, text, collectedAt, collectorVersion
     schemaVersion: 1,
     sourceUrl: source.url,
     sourcePlatform: 'web',
+    title: redactExcerpt(pageTitle.slice(0, 240)),
     collectedAt,
     collector: 'crawlee',
     collectorVersion,
@@ -127,7 +192,8 @@ export function buildSignal({ source, title, text, collectedAt, collectorVersion
     },
     collectorMeta: {
       sourceId: source.id,
-      title: pageTitle.slice(0, 240),
+      statusCode,
+      engine,
     },
   };
 }
@@ -142,7 +208,49 @@ export function validateSignal(signal) {
   if (signal?.contentCheck?.requiredFieldsPresent !== true) errors.push('requiredFieldsPresent');
   if (signal?.contentCheck?.emptyResult !== false) errors.push('emptyResult');
   if (signal?.contentCheck?.loginError !== false) errors.push('loginError');
+  if (!String(signal?.title ?? '').trim()) errors.push('title');
   if (!String(signal?.excerpt ?? '').trim()) errors.push('excerpt');
+  if (!Number.isInteger(signal?.collectorMeta?.statusCode)
+    || signal.collectorMeta.statusCode < 200
+    || signal.collectorMeta.statusCode >= 300) errors.push('statusCode');
+  if (!['cheerio', 'playwright'].includes(signal?.collectorMeta?.engine)) errors.push('engine');
+  return errors;
+}
+
+export function validateSignalReport(report, { previousReport = null } = {}) {
+  const errors = [];
+  if (report?.schemaVersion !== 1) errors.push('report:schemaVersion');
+  if (!Number.isFinite(Date.parse(String(report?.generatedAt ?? '')))) errors.push('report:generatedAt');
+  if (!/^crawlee@\d+\.\d+\.\d+(?:[-+][a-z0-9.-]+)?$/iu.test(String(report?.collector ?? ''))) {
+    errors.push('report:collector');
+  }
+  if (!Number.isInteger(report?.sourceCount) || report.sourceCount < 1 || report.sourceCount > 20) {
+    errors.push('report:sourceCount');
+  }
+  const signals = Array.isArray(report?.signals) ? report.signals : [];
+  const reportFailures = Array.isArray(report?.failures) ? report.failures : null;
+  if (!Array.isArray(report?.signals)) errors.push('report:signals');
+  if (reportFailures === null) errors.push('report:failures');
+  else if (reportFailures.length > 0) errors.push(...reportFailures.map((failure) => `report_failure:${failure}`));
+  if (signals.length === 0) errors.push('report:no_signals');
+  if (Number.isInteger(report?.sourceCount) && signals.length !== report.sourceCount) {
+    errors.push('report:partial_batch');
+  }
+
+  const sourceIds = new Set();
+  for (const signal of signals) {
+    const sourceId = String(signal?.collectorMeta?.sourceId ?? 'unknown');
+    if (sourceIds.has(sourceId)) errors.push(`report:duplicate_source:${sourceId}`);
+    sourceIds.add(sourceId);
+    errors.push(...validateSignal(signal).map((code) => `${sourceId}:${code}`));
+  }
+
+  if (previousReport && Array.isArray(previousReport.signals) && previousReport.signals.length >= 4) {
+    const minimumExpected = Math.ceil(previousReport.signals.length / 2);
+    if (signals.length < minimumExpected) {
+      errors.push(`report:signal_count_drop:${previousReport.signals.length}->${signals.length}`);
+    }
+  }
   return errors;
 }
 

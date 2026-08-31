@@ -27,6 +27,14 @@ export function billingPeriodFromTimestamp(timestamp?: number): string {
   return `${utcDayFromTimestamp(timestamp).slice(0, 7)}-01`;
 }
 
+export function nextBillingDateFromPeriod(period: string): string {
+  if (!/^\d{4}-(?:0[1-9]|1[0-2])-01$/u.test(period)) {
+    throw new Error('invalid billing period');
+  }
+  const [year, month] = period.split('-').map(Number);
+  return new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
+}
+
 export function buildInngestEventId(prefix: string, subjectId: string, period: string): string {
   const normalizedPrefix = prefix.replace(/[^a-z0-9-]/gi, '-').slice(0, 40);
   const normalizedSubject = subjectId.replace(/[^a-z0-9-]/gi, '-').slice(0, 64);

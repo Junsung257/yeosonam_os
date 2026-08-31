@@ -256,6 +256,102 @@ describe('buildAgentOfficeSnapshot', () => {
     expect(snapshot.workrooms[0]?.title).not.toContain('M12345678');
   });
 
+  it('surfaces bounded review-only research evidence without exposing raw task context', () => {
+    const snapshot = buildAgentOfficeSnapshot({
+      generatedAt: NOW,
+      tasks: [task({
+        source: 'research_node',
+        agent_type: 'marketing',
+        specialist_id: 'research-intake',
+        status: 'queued',
+        task_context: {
+          schema: 'ResearchSignalEnvelopeV1',
+          disposition: 'review_required',
+          publicationAllowed: false,
+          productFactAllowed: false,
+          signal: {
+            title: '괌 공식 정보 example@test.com',
+            excerpt: '공식 사이트에서 새로운 여행 안내 후보가 확인됐습니다.',
+            sourceUrl: 'https://www.visitguam.com/articles/',
+            sourcePlatform: 'web',
+            collectedAt: '2026-07-28T10:00:00.000Z',
+            collector: 'crawlee',
+            collectorVersion: '3.18.1',
+            evidenceClass: 'official_source_candidate',
+            confidence: 0.8,
+          },
+        },
+      })],
+      approvals: [],
+      incidents: [],
+      traces: [],
+    });
+
+    expect(snapshot.workrooms[0]?.title).toContain('[EMAIL]');
+    expect(snapshot.workrooms[0]?.tasks[0]?.researchSignal).toMatchObject({
+      sourceHostname: 'www.visitguam.com',
+      disposition: 'review_required',
+      publicationAllowed: false,
+      productFactAllowed: false,
+    });
+    expect(snapshot.workrooms[0]?.tasks[0]?.researchSignal?.sourceUrl)
+      .toBe('https://www.visitguam.com/articles/');
+  });
+
+  it('does not present malformed research context as reviewed evidence', () => {
+    const snapshot = buildAgentOfficeSnapshot({
+      generatedAt: NOW,
+      tasks: [task({
+        source: 'research_node',
+        task_context: {
+          schema: 'ResearchSignalEnvelopeV1',
+          disposition: 'review_required',
+          publicationAllowed: true,
+          productFactAllowed: false,
+          signal: { title: 'unsafe' },
+        },
+      })],
+      approvals: [],
+      incidents: [],
+      traces: [],
+    });
+
+    expect(snapshot.workrooms[0]?.tasks[0]?.researchSignal).toBeNull();
+    expect(snapshot.workrooms[0]?.title).toBe('외부 조사 신호');
+  });
+
+  it('does not surface research evidence with an invalid collection timestamp', () => {
+    const snapshot = buildAgentOfficeSnapshot({
+      generatedAt: NOW,
+      tasks: [task({
+        source: 'research_node',
+        task_context: {
+          schema: 'ResearchSignalEnvelopeV1',
+          disposition: 'review_required',
+          publicationAllowed: false,
+          productFactAllowed: false,
+          signal: {
+            title: '괌 공식 정보',
+            excerpt: '공식 사이트에서 새로운 여행 안내 후보가 확인됐습니다.',
+            sourceUrl: 'https://www.visitguam.com/articles/',
+            sourcePlatform: 'web',
+            collectedAt: 'not-a-timestamp',
+            collector: 'crawlee',
+            collectorVersion: '3.18.1',
+            evidenceClass: 'official_source_candidate',
+            confidence: 0.8,
+          },
+        },
+      })],
+      approvals: [],
+      incidents: [],
+      traces: [],
+    });
+
+    expect(snapshot.workrooms[0]?.tasks[0]?.researchSignal).toBeNull();
+    expect(snapshot.workrooms[0]?.title).toBe('외부 조사 신호');
+  });
+
   it('turns technical objective identifiers into readable labels', () => {
     const snapshot = buildAgentOfficeSnapshot({
       generatedAt: NOW,

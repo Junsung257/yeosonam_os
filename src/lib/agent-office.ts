@@ -75,6 +75,22 @@ export interface AgentOfficeTimelineEvent {
   tone: 'neutral' | 'info' | 'warning' | 'danger' | 'success';
 }
 
+export interface AgentOfficeResearchSignalSummary {
+  title: string;
+  excerpt: string;
+  sourceUrl: string;
+  sourceHostname: string;
+  sourcePlatform: string;
+  collectedAt: string;
+  collector: string;
+  collectorVersion: string;
+  evidenceClass: string;
+  confidence: number;
+  disposition: 'review_required';
+  publicationAllowed: false;
+  productFactAllowed: false;
+}
+
 export interface AgentOfficeTaskSummary {
   id: string;
   agentType: string;
@@ -89,6 +105,7 @@ export interface AgentOfficeTaskSummary {
   createdAt: string;
   updatedAt: string;
   lastError: string | null;
+  researchSignal: AgentOfficeResearchSignalSummary | null;
 }
 
 export interface AgentOfficeWorkroom {
@@ -231,8 +248,76 @@ function roleLabel(task: AgentOfficeTaskRow): string {
   return AGENT_LABELS[task.agent_type] ?? task.agent_type;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function researchSignalSummary(task: AgentOfficeTaskRow): AgentOfficeResearchSignalSummary | null {
+  if (task.source !== 'research_node') return null;
+  const context = asRecord(task.task_context);
+  const signal = asRecord(context?.signal);
+  if (
+    context?.schema !== 'ResearchSignalEnvelopeV1'
+    || context.disposition !== 'review_required'
+    || context.publicationAllowed !== false
+    || context.productFactAllowed !== false
+    || !signal
+  ) return null;
+
+  const title = safeText(signal.title, 160);
+  const excerpt = safeText(signal.excerpt, 480);
+  const sourcePlatform = safeText(signal.sourcePlatform, 40);
+  const collector = safeText(signal.collector, 40);
+  const collectorVersion = safeText(signal.collectorVersion, 80);
+  const evidenceClass = safeText(signal.evidenceClass, 60);
+  const collectedAt = safeText(signal.collectedAt, 40);
+  const confidence = typeof signal.confidence === 'number' && Number.isFinite(signal.confidence)
+    ? Math.min(1, Math.max(0, signal.confidence))
+    : null;
+  let sourceUrl: URL;
+  try {
+    sourceUrl = new URL(String(signal.sourceUrl ?? ''));
+  } catch {
+    return null;
+  }
+  if (
+    !title
+    || !excerpt
+    || !sourcePlatform
+    || !collector
+    || !collectorVersion
+    || !evidenceClass
+    || !collectedAt
+    || !Number.isFinite(Date.parse(collectedAt))
+    || confidence === null
+    || sourceUrl.protocol !== 'https:'
+    || sourceUrl.username
+    || sourceUrl.password
+  ) return null;
+
+  return {
+    title,
+    excerpt,
+    sourceUrl: sourceUrl.toString(),
+    sourceHostname: sourceUrl.hostname,
+    sourcePlatform,
+    collectedAt,
+    collector,
+    collectorVersion,
+    evidenceClass,
+    confidence,
+    disposition: 'review_required',
+    publicationAllowed: false,
+    productFactAllowed: false,
+  };
+}
+
 function workroomTitle(tasks: AgentOfficeTaskRow[]): string {
   for (const task of tasks) {
+    const researchSignal = researchSignalSummary(task);
+    if (researchSignal) return researchSignal.title;
     const context = task.task_context ?? {};
     const title =
       safeText(context.officeObjective, 120)
@@ -429,6 +514,7 @@ export function buildAgentOfficeSnapshot(input: BuildAgentOfficeSnapshotInput): 
           createdAt: task.created_at,
           updatedAt: task.updated_at,
           lastError: safeText(task.last_error, 180),
+          researchSignal: researchSignalSummary(task),
         })),
       timeline: buildTimeline(tasks, approvals, incidents, traces),
     } satisfies AgentOfficeWorkroom;

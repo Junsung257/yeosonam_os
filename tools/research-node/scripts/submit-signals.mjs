@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-import { intakePayload, validateIntakeEndpoint, validateSignal } from './signal-utils.mjs';
+import { intakePayload, validateIntakeEndpoint, validateSignalReport } from './signal-utils.mjs';
 
 const input = process.argv.find((item) => item.startsWith('--input='))?.slice('--input='.length)
   ?? 'outputs/signals.json';
@@ -12,13 +12,15 @@ if (token.length < 32) throw new Error('RESEARCH_NODE_INGEST_TOKEN must contain 
 
 const report = JSON.parse(await readFile(resolve(input), 'utf8'));
 const signals = Array.isArray(report.signals) ? report.signals : [];
-if (signals.length === 0) throw new Error('no signals to submit');
+const reportFailures = validateSignalReport(report);
+if (reportFailures.length > 0) {
+  throw new Error(`signal report failed local checks: ${reportFailures.join(',')}`);
+}
 
 for (const signal of signals) {
-  const failures = validateSignal(signal);
-  if (failures.length > 0) throw new Error(`signal failed local checks: ${failures.join(',')}`);
   const response = await fetch(endpoint, {
     method: 'POST',
+    redirect: 'error',
     headers: {
       authorization: `Bearer ${token}`,
       'content-type': 'application/json',

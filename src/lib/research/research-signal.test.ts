@@ -10,6 +10,7 @@ function validSignal() {
     schemaVersion: 1,
     sourceUrl: 'https://www.youtube.com/watch?v=abc&utm_source=test&token=secret#comments',
     sourcePlatform: 'youtube',
+    title: '오사카 후기 test@example.com 010-1234-5678',
     collectedAt: '2026-08-31T00:00:00.000Z',
     publishedAt: '2026-08-30T03:00:00.000Z',
     collector: 'opencli',
@@ -37,6 +38,8 @@ describe('ResearchSignalEnvelopeV1', () => {
     if (!parsed.success) return;
 
     expect(parsed.data.sourceUrl).toBe('https://www.youtube.com/watch?v=abc');
+    expect(parsed.data.title).toContain('[email-redacted]');
+    expect(parsed.data.title).toContain('[phone-redacted]');
     expect(parsed.data.excerpt).toContain('[email-redacted]');
     expect(parsed.data.excerpt).toContain('[phone-redacted]');
   });

@@ -30,6 +30,7 @@ function validSignal() {
     schemaVersion: 1,
     sourceUrl: 'https://www.visitguam.com/?utm_source=pilot',
     sourcePlatform: 'web',
+    title: '괌 공식 관광 정보 변화 후보',
     collectedAt: new Date().toISOString(),
     collector: 'crawlee',
     collectorVersion: '3.18.1',
@@ -48,12 +49,12 @@ function validSignal() {
   };
 }
 
-function request(body: unknown) {
+function request(body: unknown, contentType = 'application/json') {
   return new NextRequest('https://yeosonam.com/api/internal/research/signals', {
     method: 'POST',
     headers: {
       authorization: `Bearer ${'r'.repeat(48)}`,
-      'content-type': 'application/json',
+      'content-type': contentType,
     },
     body: JSON.stringify(body),
   });
@@ -102,6 +103,13 @@ describe('POST /api/internal/research/signals', () => {
     expect(mocks.createTask).not.toHaveBeenCalled();
   });
 
+  it('rejects non-JSON media types before parsing or persistence', async () => {
+    const response = await POST(request(validSignal(), 'text/plain'));
+
+    expect(response.status).toBe(415);
+    expect(mocks.createTask).not.toHaveBeenCalled();
+  });
+
   it('accepts a valid signal as a review-only queued task', async () => {
     const response = await POST(request(validSignal()));
     const body = await response.json();
@@ -117,6 +125,6 @@ describe('POST /api/internal/research/signals', () => {
         productFactAllowed: false,
       },
     });
-    expect(body).toMatchObject({ task_id: 'task-1', review_status: 'pending' });
+    expect(body).toMatchObject({ task_id: 'task-1', review_status: 'review_required' });
   });
 });

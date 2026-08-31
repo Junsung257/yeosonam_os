@@ -5,6 +5,7 @@ import {
   buildInngestEventId,
   isInngestBillingEnabled,
   isInngestScheduleExecutionEnabled,
+  nextBillingDateFromPeriod,
   utcDayFromTimestamp,
 } from '@/inngest/runtime-policy';
 
@@ -40,7 +41,13 @@ describe('Inngest runtime policy', () => {
 
     expect(utcDayFromTimestamp(timestamp)).toBe('2026-08-31');
     expect(billingPeriodFromTimestamp(timestamp)).toBe('2026-08-01');
+    expect(nextBillingDateFromPeriod('2026-08-01')).toBe('2026-09-01');
+    expect(nextBillingDateFromPeriod('2026-12-01')).toBe('2027-01-01');
     expect(buildInngestEventId('billing tenant', 'tenant/one', '2026-08-01'))
       .toBe('billing-tenant:tenant-one:2026-08-01');
+  });
+
+  it('rejects malformed billing periods instead of drifting from execution time', () => {
+    expect(() => nextBillingDateFromPeriod('2026-08-31')).toThrow('invalid billing period');
   });
 });

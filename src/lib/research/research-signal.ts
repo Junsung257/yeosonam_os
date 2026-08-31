@@ -24,6 +24,7 @@ const RawResearchSignalEnvelopeV1Schema = z.object({
     'github',
     'web',
   ]),
+  title: z.string().trim().min(1).max(240),
   collectedAt: z.string().datetime({ offset: true }),
   publishedAt: z.string().datetime({ offset: true }).optional(),
   collector: z.enum(['opencli', 'agent-reach', 'crawlee', 'manual']),
@@ -45,7 +46,7 @@ const RawResearchSignalEnvelopeV1Schema = z.object({
 
 export type ResearchSignalEnvelopeV1 = z.infer<typeof RawResearchSignalEnvelopeV1Schema>;
 
-function isPrivateIp(hostname: string): boolean {
+function isPrivateNetworkAddress(hostname: string): boolean {
   const version = isIP(hostname);
   if (version === 4) {
     const [a, b] = hostname.split('.').map(Number);
@@ -54,11 +55,23 @@ function isPrivateIp(hostname: string): boolean {
       || (a === 169 && b === 254)
       || (a === 172 && b >= 16 && b <= 31)
       || (a === 192 && b === 168)
-      || a === 0;
+      || (a === 100 && b >= 64 && b <= 127)
+      || (a === 198 && (b === 18 || b === 19))
+      || a === 0
+      || a >= 224;
   }
   if (version === 6) {
     const value = hostname.toLowerCase();
-    return value === '::1' || value.startsWith('fc') || value.startsWith('fd') || value.startsWith('fe8');
+    const first = Number.parseInt(value.split(':')[0] || '0', 16);
+    const mappedIpv4 = value.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/u)?.[1];
+    return value === '::'
+      || value === '::1'
+      || value.startsWith('fc')
+      || value.startsWith('fd')
+      || (Number.isFinite(first) && (first & 0xffc0) === 0xfe80)
+      || value.startsWith('ff')
+      || value.startsWith('2001:db8:')
+      || (mappedIpv4 ? isPrivateNetworkAddress(mappedIpv4) : false);
   }
   return false;
 }
@@ -81,7 +94,7 @@ export function normalizeResearchSourceUrl(value: string): string {
     || hostname.endsWith('.localhost')
     || hostname.endsWith('.local')
     || hostname.endsWith('.internal')
-    || isPrivateIp(hostname)
+    || isPrivateNetworkAddress(hostname)
   ) {
     throw new Error('sourceUrl cannot target a local or private host');
   }
@@ -118,7 +131,9 @@ export function parseResearchSignalEnvelopeV1(input: unknown):
 
   try {
     const sourceUrl = normalizeResearchSourceUrl(parsed.data.sourceUrl);
+    const title = redactResearchExcerpt(parsed.data.title);
     const excerpt = redactResearchExcerpt(parsed.data.excerpt);
+    if (!title) return { success: false, issues: ['title:empty_after_redaction'] };
     if (!excerpt) return { success: false, issues: ['excerpt:empty_after_redaction'] };
     const collectedAt = Date.parse(parsed.data.collectedAt);
     const publishedAt = parsed.data.publishedAt ? Date.parse(parsed.data.publishedAt) : null;
@@ -128,7 +143,7 @@ export function parseResearchSignalEnvelopeV1(input: unknown):
     if (publishedAt !== null && publishedAt > collectedAt + 5 * 60 * 1000) {
       return { success: false, issues: ['publishedAt:after_collection'] };
     }
-    return { success: true, data: { ...parsed.data, sourceUrl, excerpt } };
+    return { success: true, data: { ...parsed.data, sourceUrl, title, excerpt } };
   } catch (error) {
     return {
       success: false,

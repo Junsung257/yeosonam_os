@@ -38,8 +38,7 @@ function parseInngestFunctions() {
         file: relative(ROOT, file).replaceAll('\\', '/'),
         cronTriggers,
         eventTriggers,
-        failClosed: source.includes('isInngestScheduleExecutionEnabled')
-          || source.includes('isInngestBillingEnabled'),
+        failClosed: /\bisInngest(?:ScheduleExecution|Billing)Enabled\s*\(\s*\)/u.test(source),
       };
     });
 }

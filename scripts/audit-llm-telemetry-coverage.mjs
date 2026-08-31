@@ -47,7 +47,7 @@ export function auditLlmTelemetryCoverage() {
   const staleBaseline = [...allowedUntraced].filter((file) => !currentUntraced.has(file) || !existsSync(join(ROOT, file)));
 
   return {
-    ok: newUntraced.length === 0,
+    ok: newUntraced.length === 0 && staleBaseline.length === 0,
     generatedAt: new Date().toISOString(),
     summary: {
       directCallFiles: entries.length,
@@ -68,7 +68,7 @@ function printHuman(report) {
   console.log(`Traced: ${report.summary.tracedFiles}`);
   console.log(`Grandfathered untraced: ${report.summary.grandfatheredUntracedFiles}`);
   for (const file of report.newUntraced) console.error(`ERROR new_untraced_direct_llm_call:${file}`);
-  for (const file of report.staleBaseline) console.warn(`WARN stale_llm_telemetry_baseline:${file}`);
+  for (const file of report.staleBaseline) console.error(`ERROR stale_llm_telemetry_baseline:${file}`);
 }
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);

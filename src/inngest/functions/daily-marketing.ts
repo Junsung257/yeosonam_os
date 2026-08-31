@@ -1,5 +1,5 @@
 import { inngest, marketingTenantRunEvent } from '../client';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase';
 import {
   buildInngestEventId,
   isInngestScheduleExecutionEnabled,
@@ -24,7 +24,7 @@ export const dailyMarketingFn = inngest.createFunction(
     if (!isInngestScheduleExecutionEnabled()) {
       return { skipped: true, reason: 'inngest_schedule_cutover_not_enabled' };
     }
-    if (!isSupabaseConfigured) return { skipped: true, reason: 'Supabase 미설정' };
+    if (!isSupabaseAdminConfigured) return { skipped: true, reason: 'Supabase admin 미설정' };
 
     const runDate = utcDayFromTimestamp(event.ts);
 

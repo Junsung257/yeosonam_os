@@ -47,7 +47,7 @@ Agent-Reach는 Production 엔진이 아니라 전용 조사 PC의 도구 선택�
 - HTTPS 출처 URL, 플랫폼, 수집 시간, 게시 시간
 - `opencli`, `agent-reach`, `crawlee`, `manual` 중 수집기와 exact semver 또는 commit SHA
 - SHA-256 본문 hash와 비식별 저자 hash
-- 실제 제목·본문 excerpt·언어·evidence type
+- PII가 마스킹된 실제 제목·본문 excerpt·evidence type
 - `officialSource=false`와 조사 노드가 판단한 confidence
 
 다음 입력은 4xx로 거부합니다.
@@ -55,10 +55,10 @@ Agent-Reach는 Production 엔진이 아니라 전용 조사 PC의 도구 선택�
 - 빈 본문·빈 배열·로그인 오류·로봇 차단 페이지
 - `main`, `latest` 같은 움직이는 수집기 버전
 - localhost·private IP·인증정보가 든 URL·비표준 포트
-- excerpt의 이메일·전화·주민번호는 intake에서 마스킹되며 원문은 저장하지 않음
+- 제목과 excerpt의 이메일·전화·주민번호는 디스크 기록 전에 마스킹되고 intake에서도 다시 마스킹되며 원문은 저장하지 않음
 - 외부 조사 결과를 공식 사실이나 자동 공개 가능 근거로 선언하는 신호
 
-동일 신호는 deterministic idempotency key로 중복 작업을 만들지 않습니다. 저장된 작업은 medium risk, `pending`, `review_required`, `publicationAllowed=false`, `productFactAllowed=false`이며 사람 또는 별도 검증 엔진이 승인하기 전에는 어떤 고객 표면에도 반영되지 않습니다.
+동일 신호는 deterministic idempotency key로 중복 작업을 만들지 않습니다. 저장된 작업은 medium risk, `agent_tasks.status=queued`, `task_context.disposition=review_required`, `publicationAllowed=false`, `productFactAllowed=false`입니다. AI 운영실은 마스킹된 제목·요약·출처·수집기·신뢰도와 이 금지 경계를 관찰 전용으로 표시하며, 안전한 승인·재개 엔진이 연결되기 전에는 어떤 고객 표면에도 반영하지 않습니다.
 
 ## 4. 근거 사용 경계
 
@@ -74,7 +74,9 @@ npm run check -- --input=outputs/signals.json
 npm run submit -- --input=outputs/signals.json
 ```
 
-기본 수집은 Cheerio로 시작하고 JavaScript 렌더링이 반드시 필요한 reviewed source에서만 Playwright Chromium으로 fallback합니다. 수집 대상은 버전 관리된 manifest의 exact hostname 허용 목록으로 제한합니다. 제출에 필요한 환경 변수는 `RESEARCH_INTAKE_URL`, `RESEARCH_NODE_INGEST_TOKEN`두 개뿐입니다.
+기본 수집은 Cheerio로 시작하고 JavaScript 렌더링이 반드시 필요한 reviewed source에서만 Playwright Chromium으로 fallback합니다. 수집 대상은 버전 관리된 manifest의 exact hostname 허용 목록으로 제한합니다. 시작 전 DNS 결과가 사설·loopback·link-local이면 실패하고, Cheerio redirect는 따르지 않으며, Playwright의 모든 하위 요청도 승인 host와 공개 DNS를 다시 확인합니다. 브라우저는 incognito context와 service worker 차단으로 실행합니다. 제출에 필요한 환경 변수는 `RESEARCH_INTAKE_URL`, `RESEARCH_NODE_INGEST_TOKEN` 두 개뿐입니다.
+
+수집 보고서는 `sourceCount`, `signals`, `failures`를 하나의 배치로 검증합니다. 일부 소스 실패·중복 source ID·비정상 HTTP 상태가 있으면 제출하지 않습니다. `--previous=<직전 정상 보고서>`를 주면 직전 성공 건수의 절반 미만으로 급락한 결과도 실패 처리합니다.
 
 ## 6. Inngest 전환 게이트
 

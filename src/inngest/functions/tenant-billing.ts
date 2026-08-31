@@ -1,8 +1,8 @@
 import { billingChargeTenantEvent, inngest } from '../client';
 import { getSecret } from '@/lib/secret-registry';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase';
 import { decrypt } from '@/lib/encryption';
-import { isInngestBillingEnabled } from '@/inngest/runtime-policy';
+import { isInngestBillingEnabled, nextBillingDateFromPeriod } from '@/inngest/runtime-policy';
 
 const TOSS_BASE = 'https://api.tosspayments.com/v1';
 
@@ -24,7 +24,7 @@ export const tenantBillingFn = inngest.createFunction(
     if (!isInngestBillingEnabled()) {
       return { skipped: true, reason: 'inngest_billing_not_enabled' };
     }
-    if (!isSupabaseConfigured) return { skipped: true };
+    if (!isSupabaseAdminConfigured) return { skipped: true, reason: 'Supabase admin 미설정' };
 
     const secretKey = getSecret('TOSS_SECRET_KEY');
     if (!secretKey) return { skipped: true, reason: 'TOSS_SECRET_KEY 미설정' };
@@ -48,7 +48,6 @@ export const tenantBillingFn = inngest.createFunction(
 
     const result = await step.run('charge', async () => {
       const billingKey = decrypt(sub.toss_billing_key as string);
-      const now = new Date();
       const orderId = `ysn-${tenantId}-${billingPeriod.slice(0, 7)}`;
       const orderName = `여소남 OS 구독 (${billingPeriod.slice(0, 7)})`;
 
@@ -79,11 +78,9 @@ export const tenantBillingFn = inngest.createFunction(
       });
 
       if (ok) {
-        const nextBilling = new Date(now);
-        nextBilling.setMonth(nextBilling.getMonth() + 1);
         await supabaseAdmin
           .from('tenant_subscriptions')
-          .update({ next_billing_date: nextBilling.toISOString().slice(0, 10) })
+          .update({ next_billing_date: nextBillingDateFromPeriod(billingPeriod) })
           .eq('tenant_id', tenantId);
       } else {
         await supabaseAdmin
