@@ -870,23 +870,16 @@ export function parseBlogEditorialJudgeReportV1(raw: string): BlogEditorialJudge
     }];
   })) as BlogEditorialJudgeReportV1['dimensions'];
   const failedKeys = keys.filter((key) => !normalized[key].passed);
-  const declaredPassed = [
-    report.passed,
-    report.overallPassed,
-    report.overall_passed,
-    report.overallPass,
-    report.overall_pass,
-    report.publishable,
-  ].map(strictBoolean).find((value): value is boolean => value != null);
-  // Required dimension booleans are the primary contract. A declared false is
-  // still honored conservatively when every dimension says true; a declared
-  // true can never hide a failed dimension.
-  const overallDeclaredFailure = declaredPassed === false && failedKeys.length === 0;
+  // The five required dimensions are the authoritative semantic contract.
+  // Provider models sometimes contradict their own dimension verdicts in a
+  // redundant top-level `passed` field. Never let a top-level true hide a
+  // failed dimension, and never let a top-level false veto five explicit
+  // passing dimensions. Missing/invalid dimensions still fail closed above.
   return {
     version: BLOG_EDITORIAL_JUDGE_VERSION,
-    passed: failedKeys.length === 0 && !overallDeclaredFailure,
+    passed: failedKeys.length === 0,
     dimensions: normalized,
-    failureReasons: overallDeclaredFailure ? ['overall'] : failedKeys,
+    failureReasons: failedKeys,
   };
 }
 

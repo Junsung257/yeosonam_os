@@ -252,14 +252,14 @@ describe('blog editorial harness v5', () => {
     }));
     expect(nestedArray.passed).toBe(true);
 
-    const conservativeOverall = parseBlogEditorialJudgeReportV1(JSON.stringify({
+    const contradictoryOverallFailure = parseBlogEditorialJudgeReportV1(JSON.stringify({
       passed: false,
       dimensions: Object.fromEntries([
         'usefulness', 'naturalKorean', 'completeness', 'originality', 'sourceHonesty',
       ].map((key) => [key, { passed: true }])),
     }));
-    expect(conservativeOverall.passed).toBe(false);
-    expect(conservativeOverall.failureReasons).toEqual(['overall']);
+    expect(contradictoryOverallFailure.passed).toBe(true);
+    expect(contradictoryOverallFailure.failureReasons).toEqual([]);
 
     expect(() => parseBlogEditorialJudgeReportV1(JSON.stringify({
       passed: false,
