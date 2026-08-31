@@ -89,7 +89,7 @@ describe('blog publisher V4 orchestration wiring', () => {
   });
 
   it('revalidates the controlled canary without consuming another model attempt', () => {
-    expect(source).toContain("request.reason !== 'opening_heading_exclusion_v1'");
+    expect(source).toContain("['opening_heading_exclusion_v1', 'route_template_dedup_v2'].includes(request.reason)");
     expect(source).toContain('attempts: attemptRevalidationRequest');
     expect(source).toContain('loadBlogAttemptRevalidationCandidateV4(');
     expect(source).toContain('revalidateBlogGenerationAttemptV4({');

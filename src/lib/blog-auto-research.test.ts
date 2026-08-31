@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { GroundingChunk } from '@google/genai';
+import { marked } from 'marked';
 import {
   augmentGuamFoodBudgetPayload,
   augmentGuamFamilyMealPayload,
@@ -34,6 +35,8 @@ import {
 } from '@/lib/blog-editorial-harness-v5';
 import { selectDecisionRelevantRewriteClaimsV4 } from '@/lib/blog-deepseek-orchestrator-v4';
 import { validateBlogInformationStructure } from '@/lib/blog-information-structure';
+import { inspectPublicBlogCustomerQuality } from '@/lib/blog-public-customer-quality';
+import { computeReadability } from '@/lib/blog-readability';
 
 describe('normalizeAutoResearchStructuredValue', () => {
   it.each([
@@ -765,7 +768,7 @@ describe('augmentGrtaAirportTransportPayload', () => {
         sourceUrls: fact.sourceUrls,
       })),
     }).map((claim) => claim.claimText).join('\n');
-    expect(artifact.resolvedTitle).toBe('괌 공항 투몬 교통: GRTA·택시 요금과 공항 택시 승차·수하물 안내');
+    expect(artifact.resolvedTitle).toBe('괌 공항 투몬 교통: 택시 위치·미터요금과 GRTA 요금 비교');
     expect(artifact.gaps).toEqual(expect.arrayContaining([
       expect.stringContaining('실제 소요시간'),
       expect.stringContaining('GRTA 승차 위치'),
@@ -791,6 +794,17 @@ describe('augmentGrtaAirportTransportPayload', () => {
     expect(firstBody).toMatch(/2\.40 USD/);
     expect(writerOutput.markdown).toContain('[여소남 여행지 가이드](/destinations)');
     expect(writerOutput.claimLedger).toHaveLength(10);
+    for (const fact of artifact.publicFacts) {
+      expect(writerOutput.markdown.split(fact.claimText)).toHaveLength(2);
+    }
+    expect(computeReadability(writerOutput.markdown).issues.join('\n')).not.toContain('도배 어절');
+    const rendered = marked.parse(writerOutput.markdown) as string;
+    const publicCustomer = inspectPublicBlogCustomerQuality({
+      expectedType: 'info',
+      path: '/blog/guam-airport-taxi-counter-grta-fares',
+      html: `<!doctype html><html><body><main><article>${rendered}</article></main></body></html>`,
+    });
+    expect(publicCustomer.issues.map((issue) => issue.code)).not.toContain('duplicate_public_section');
     expect(validateBlogInformationStructure({
       intent: 'airport_transport',
       markdown: writerOutput.markdown,

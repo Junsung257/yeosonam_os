@@ -2472,7 +2472,7 @@ async function isRecentInfoDuplicateCandidate(item: any): Promise<boolean> {
 
 interface BlogAttemptRevalidationRequestV4 {
   attemptId: string;
-  reason: 'opening_heading_exclusion_v1';
+  reason: 'opening_heading_exclusion_v1' | 'route_template_dedup_v2';
 }
 
 function readBlogAttemptRevalidationRequestV4(item: any): BlogAttemptRevalidationRequestV4 | null {
@@ -2483,11 +2483,11 @@ function readBlogAttemptRevalidationRequestV4(item: any): BlogAttemptRevalidatio
     || item?.source !== 'user_seed'
     || Number(item?.attempts || 0) !== BLOG_QUALITY_MAX_ATTEMPTS_V4
     || request.mode !== 'deterministic_quality_revalidation'
-    || request.reason !== 'opening_heading_exclusion_v1'
+    || !['opening_heading_exclusion_v1', 'route_template_dedup_v2'].includes(request.reason)
     || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(attemptId)) {
     return null;
   }
-  return { attemptId, reason: request.reason };
+  return { attemptId, reason: request.reason as BlogAttemptRevalidationRequestV4['reason'] };
 }
 
 async function processQueueItem(
@@ -4776,6 +4776,7 @@ async function loadBlogAttemptRevalidationCandidateV4(
       },
       expectedAttemptNumber: Number(item.attempts || 0),
       output: normalizedOutput,
+      reason: request.reason,
     });
   if (!eligible) throw new Error('generation_attempt_revalidation_candidate_not_eligible');
 
@@ -4800,31 +4801,62 @@ async function loadBlogAttemptRevalidationCandidateV4(
     researchBundle: researchReadiness.bundle,
     serpResearch: null,
   });
-  if (!contentBriefV3.passed
-    || normalizedOutput.title !== contentBriefV3.metadata.title
-    || normalizedOutput.slug !== buildQueueSlug(item)
-    || normalizedOutput.markdown.length < 200) {
-    throw new Error('generation_attempt_revalidation_public_output_mismatch');
-  }
-  const writerClaimLedger = Array.isArray(normalizedOutput.audit.writer_claim_ledger)
+  let revalidatedOutput = normalizedOutput;
+  let revalidatedWriterClaimLedger = Array.isArray(normalizedOutput.audit.writer_claim_ledger)
     ? normalizedOutput.audit.writer_claim_ledger as BlogInformationClaimLedgerEntry[]
     : [];
-  const writerClaimLedgerIssues = Array.isArray(normalizedOutput.audit.writer_claim_ledger_issues)
+  let revalidatedWriterClaimLedgerIssues = Array.isArray(normalizedOutput.audit.writer_claim_ledger_issues)
     ? normalizedOutput.audit.writer_claim_ledger_issues.filter(
       (issue): issue is string => typeof issue === 'string',
     )
     : ['claim_ledger_missing'];
-  if (writerClaimLedger.length === 0 || writerClaimLedgerIssues.length > 0) {
+  if (request.reason === 'route_template_dedup_v2') {
+    const decisionArtifact = buildBlogDecisionArtifactV1({
+      title: contentBriefV3.metadata.title,
+      question: contentBriefV3.primaryQuery,
+      primaryDecision: contentBriefV3.primaryDecision,
+      intentType: contentBrief.intentType,
+      bundle: researchReadiness.bundle,
+    });
+    if (decisionArtifact.promiseType !== 'route_decision') {
+      throw new Error('generation_attempt_revalidation_route_artifact_missing');
+    }
+    contentBriefV3.title = decisionArtifact.resolvedTitle;
+    contentBriefV3.metadata.title = decisionArtifact.resolvedTitle;
+    contentBriefV3.metadata.ogTitle = decisionArtifact.resolvedTitle;
+    const repaired = applyBlogDecisionArtifactToWriterOutputV1({
+      artifact: decisionArtifact,
+      output: {
+        markdown: normalizedOutput.markdown,
+        claimLedger: revalidatedWriterClaimLedger,
+        ledgerIssues: revalidatedWriterClaimLedgerIssues,
+      },
+    });
+    revalidatedOutput = {
+      ...normalizedOutput,
+      title: decisionArtifact.resolvedTitle,
+      markdown: repaired.markdown,
+    };
+    revalidatedWriterClaimLedger = repaired.claimLedger;
+    revalidatedWriterClaimLedgerIssues = repaired.ledgerIssues;
+  }
+  if (!contentBriefV3.passed
+    || revalidatedOutput.title !== contentBriefV3.metadata.title
+    || revalidatedOutput.slug !== buildQueueSlug(item)
+    || revalidatedOutput.markdown.length < 200) {
+    throw new Error('generation_attempt_revalidation_public_output_mismatch');
+  }
+  if (revalidatedWriterClaimLedger.length === 0 || revalidatedWriterClaimLedgerIssues.length > 0) {
     throw new Error('generation_attempt_revalidation_claim_ledger_invalid');
   }
 
   return {
     attemptId: attempt.id,
     generated: {
-      blog_html: normalizedOutput.markdown,
-      slug: normalizedOutput.slug,
-      seo_title: normalizedOutput.title,
-      seo_description: normalizedOutput.description,
+      blog_html: revalidatedOutput.markdown,
+      slug: revalidatedOutput.slug,
+      seo_title: revalidatedOutput.title,
+      seo_description: revalidatedOutput.description,
       og_image_url: null,
       generation_meta: {
         prompt_version: 'deterministic-attempt-revalidation-v4',
@@ -4857,13 +4889,13 @@ async function loadBlogAttemptRevalidationCandidateV4(
         content_brief_v3: contentBriefV3,
         writer_claim_ledger: {
           version: 'v1',
-          claims: writerClaimLedger,
-          issues: writerClaimLedgerIssues,
+          claims: revalidatedWriterClaimLedger,
+          issues: revalidatedWriterClaimLedgerIssues,
         },
         writer_output_boundary: {
           version: 'v1',
           original_characters: normalizedOutput.markdown.length,
-          final_characters: normalizedOutput.markdown.length,
+          final_characters: revalidatedOutput.markdown.length,
           truncated: false,
         },
         competitor_copy_risk_v3: {

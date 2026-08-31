@@ -53,7 +53,7 @@ export interface BlogGenerationAttemptRevalidationV4 {
   attemptId: string;
   attemptNumber: number;
   qualityScore: number;
-  reason: 'opening_heading_exclusion_v1';
+  reason: 'opening_heading_exclusion_v1' | 'route_template_dedup_v2';
   output: BlogGenerationAttemptRecordV4['output'];
 }
 
@@ -81,6 +81,7 @@ export function isEligibleBlogGenerationAttemptRevalidationV4(input: {
   snapshot: BlogGenerationAttemptRevalidationSnapshotV4;
   expectedAttemptNumber: number;
   output: BlogGenerationAttemptRecordV4['output'];
+  reason?: BlogGenerationAttemptRevalidationV4['reason'];
 }): boolean {
   const failureReasons = Array.isArray(input.snapshot.failureReasons)
     ? input.snapshot.failureReasons.map(String)
@@ -97,11 +98,46 @@ export function isEligibleBlogGenerationAttemptRevalidationV4(input: {
     : [];
   const oldClaimValidation = oldAudit?.claim_validation as Record<string, unknown> | undefined;
   const oldPublishQuality = oldAudit?.publish_quality as Record<string, unknown> | undefined;
-  return input.snapshot.attemptNumber === input.expectedAttemptNumber
+  const commonEligible = input.snapshot.attemptNumber === input.expectedAttemptNumber
     && input.snapshot.status === 'completed'
     && input.snapshot.route === 'quarantine'
-    && Number(input.snapshot.qualityScore) >= 90
-    && hardBlockers.length === 0
+    && hardBlockers.length === 0;
+  if (!commonEligible) return false;
+  if (input.reason === 'route_template_dedup_v2') {
+    const expectedFailures = [
+      'publish_gate:ai_readability',
+      'publish_gate:public_customer_quality',
+      'public_customer:duplicate_public_section',
+      'editorial_harness_v5:semantic_usefulness',
+      'editorial_harness_v5:semantic_completeness',
+    ];
+    const sameFailures = failureReasons.length === expectedFailures.length
+      && expectedFailures.every((failure) => failureReasons.includes(failure));
+    const unchangedCandidate = publicAttemptOutputMatchesV4(input.snapshot.output, input.output);
+    const marker = '<!-- blog_decision_artifact:route_decision:v1 -->';
+    const repairedCandidate = input.output.title === '괌 공항 교통: 택시 위치·미터요금과 GRTA 요금 비교'
+      && input.output.slug === 'guam-airport-taxi-counter-grta-fares'
+      && input.output.markdown.split(marker).length === 2
+      && [
+        '기본 호출 2.40 USD',
+        '최초 1마일 4.00 USD',
+        '0.25마일마다 0.80 USD',
+        '일반 1회 탑승 요금은 1.50 USD',
+        '일반 1일권 요금은 4.00 USD',
+        '서쪽 도착 터미널 건물 밖',
+      ].every((requiredText) => input.output.markdown.includes(requiredText));
+    return input.expectedAttemptNumber === 3
+      && sameFailures
+      && oldQuality?.passed === true
+      && oldClaimValidation?.passed === true
+      && oldPublishQuality?.passed === false
+      && input.snapshot.output.slug === 'guam-airport-taxi-counter-grta-fares'
+      && input.snapshot.output.slug === input.output.slug
+      && input.snapshot.output.description === input.output.description
+      && input.snapshot.output.markdown.includes('<!-- blog_decision_artifact:route_decision:v1 -->')
+      && (unchangedCandidate || repairedCandidate);
+  }
+  return Number(input.snapshot.qualityScore) >= 90
     && failureReasons.length === 1
     && failureReasons[0] === 'opening_too_similar'
     && oldQualityFailures.length === 1
@@ -530,6 +566,7 @@ export async function revalidateBlogGenerationAttemptV4(
       },
       expectedAttemptNumber: input.attemptNumber,
       output: input.output,
+      reason: input.reason,
     });
     const newAudit = input.output.audit || {};
     const newQuality = newAudit.quality_evaluation_v3 as Record<string, unknown> | undefined;
