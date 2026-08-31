@@ -6,6 +6,10 @@ const migration = readFileSync(
   resolve(process.cwd(), 'supabase/migrations/20260830011340_blog_editorial_harness_v5.sql'),
   'utf8',
 );
+const retryMigration = readFileSync(
+  resolve(process.cwd(), 'supabase/migrations/20260831011721_blog_editorial_judge_retry_v1.sql'),
+  'utf8',
+);
 const recorder = readFileSync(resolve(process.cwd(), 'src/lib/blog-generation-run-v4.ts'), 'utf8');
 
 describe('blog editorial harness v5 migration contract', () => {
@@ -25,6 +29,9 @@ describe('blog editorial harness v5 migration contract', () => {
     expect(migration).toContain('unique (queue_id, attempt_number, call_kind)');
     expect(migration).toContain('reserve_blog_ai_budget_v5');
     expect(migration).toContain("p_requested_usd, p_cap_usd, p_budget_day_kst, 'generation'");
-    expect(recorder).toContain("p_call_kind: 'editorial_judge'");
+    expect(recorder).toContain("p_call_kind: input.callKind ?? 'editorial_judge'");
+    expect(recorder).toContain("callKind?: 'editorial_judge' | 'editorial_judge_retry'");
+    expect(retryMigration).toContain("call_kind in ('generation', 'editorial_judge', 'editorial_judge_retry')");
+    expect(retryMigration).toContain("p_call_kind in ('editorial_judge', 'editorial_judge_retry')");
   });
 });

@@ -94,6 +94,8 @@ export interface BlogAiUsageReceipt {
   } | null;
   /** Null means the caller must retain its conservative budget reservation. */
   estimatedCostUsd?: number | null;
+  /** Durable, non-secret audit evidence added by a higher-level caller. */
+  audit?: Record<string, unknown>;
 }
 
 export interface BlogAiTextResult {

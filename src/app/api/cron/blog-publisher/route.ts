@@ -775,6 +775,32 @@ async function generatePublisherBlogText(
 
 const BLOG_EDITORIAL_JUDGE_MAX_OUTPUT_TOKENS = 1_200;
 
+async function readPersistedBlogEditorialJudgeReportV5(input: {
+  queueId: string;
+  attemptNumber: number;
+}): Promise<ReturnType<typeof parseBlogEditorialJudgeReportV1> | null> {
+  const { data } = await supabaseAdmin
+    .from('blog_ai_budget_reservations')
+    .select('receipt')
+    .eq('queue_id', input.queueId)
+    .eq('attempt_number', input.attemptNumber)
+    .eq('status', 'completed')
+    .in('call_kind', ['editorial_judge', 'editorial_judge_retry'])
+    .order('created_at', { ascending: false });
+  for (const row of data ?? []) {
+    const receipt = row.receipt as Record<string, unknown> | null;
+    const audit = receipt?.audit as Record<string, unknown> | undefined;
+    if (audit?.kind !== 'blog_editorial_judge_v5' || !audit.report) continue;
+    try {
+      return parseBlogEditorialJudgeReportV1(JSON.stringify(audit.report));
+    } catch {
+      // A malformed persisted audit report is never publishable. Continue to
+      // the bounded retry path instead of trusting or silently rewriting it.
+    }
+  }
+  return null;
+}
+
 async function evaluatePublisherEditorialHarnessV5(input: {
   queueId: string;
   attemptNumber: number;
@@ -801,15 +827,35 @@ async function evaluatePublisherEditorialHarnessV5(input: {
     };
   }
 
+  const persistedSemantic = await readPersistedBlogEditorialJudgeReportV5({
+    queueId: input.queueId,
+    attemptNumber: input.attemptNumber,
+  });
+  if (persistedSemantic) {
+    return {
+      report: combineBlogEditorialHarnessV1({ deterministic, semantic: persistedSemantic }),
+      receipt: null,
+    };
+  }
+
   const requestedUsd = estimateBlogEditorialJudgeReservationUsdV5({
     maxOutputTokens: BLOG_EDITORIAL_JUDGE_MAX_OUTPUT_TOKENS,
   });
-  const reservation = await reserveBlogEditorialJudgeBudgetBeforeCallV5({
+  let reservation = await reserveBlogEditorialJudgeBudgetBeforeCallV5({
     queueId: input.queueId,
     attemptNumber: input.attemptNumber,
     model: BLOG_DEEPSEEK_MODELS.rewrite,
     requestedUsd,
   });
+  if (!reservation.allowed && reservation.reason === 'attempt_budget_already_reserved') {
+    reservation = await reserveBlogEditorialJudgeBudgetBeforeCallV5({
+      queueId: input.queueId,
+      attemptNumber: input.attemptNumber,
+      model: BLOG_DEEPSEEK_MODELS.rewrite,
+      requestedUsd,
+      callKind: 'editorial_judge_retry',
+    });
+  }
   if (!reservation.allowed || !reservation.reservationId) {
     return {
       report: combineBlogEditorialHarnessV1({ deterministic, semantic: null }),
@@ -839,9 +885,17 @@ async function evaluatePublisherEditorialHarnessV5(input: {
     );
     receipt = judge.receipt;
     const semantic = parseBlogEditorialJudgeReportV1(judge.text);
+    const settledReceipt = {
+      ...receipt,
+      audit: {
+        kind: 'blog_editorial_judge_v5',
+        report: semantic,
+        sourceAttemptNumber: input.attemptNumber,
+      },
+    };
     await settleBlogAiBudgetReservationV4({
       reservationId: reservation.reservationId,
-      receipt,
+      receipt: settledReceipt,
       status: 'completed',
     });
     return {
@@ -4840,6 +4894,7 @@ async function loadBlogAttemptRevalidationCandidateV4(
     revalidatedOutput = {
       ...normalizedOutput,
       title: decisionArtifact.resolvedTitle,
+      description: contentBriefV3.metadata.description,
       markdown: repaired.markdown,
     };
     revalidatedWriterClaimLedger = repaired.claimLedger;

@@ -581,10 +581,6 @@ function routeDecisionFactMarkdown(fact: BlogDecisionPublicFactV1): string {
   return `${fact.claimText}${citation}`;
 }
 
-function routeDecisionTableCell(facts: BlogDecisionPublicFactV1[]): string {
-  return facts.map((fact) => fact.claimText).join('<br>').replace(/\|/g, '\\|');
-}
-
 function deterministicRouteDecisionArticle(
   artifact: BlogDecisionArtifactV1,
 ): { markdown: string; facts: BlogDecisionPublicFactV1[] } | null {
@@ -612,8 +608,6 @@ function deterministicRouteDecisionArticle(
     url,
     `- [${routeDecisionSourceLabel(url, fact.citationLabel)}](${url})`,
   ] as const))).values()];
-  const fareFacts = [oneRide!, oneDay!];
-
   return {
     facts: selectedFacts,
     markdown: [
@@ -622,28 +616,27 @@ function deterministicRouteDecisionArticle(
       '',
       artifact.directAnswer,
       '',
-      '공식 근거가 확인된 범위만 표에 넣었습니다. 택시의 실제 숙소 도착 시간과 공항의 정확한 GRTA 승차 위치처럼 확인되지 않은 항목은 별도로 표시합니다.',
+      '공식 근거가 확인된 범위만 정리했습니다. 택시의 실제 숙소 도착 시간과 공항의 정확한 GRTA 승차 위치처럼 확인되지 않은 항목은 별도로 표시합니다.',
       '',
       '## 교통수단별 공식 확인 결과',
       '',
       '### GRTA 요금',
       '',
-      '| 수단 | 공식 요금 |',
-      '| --- | --- |',
-      `| GRTA Route 14 | ${routeDecisionTableCell(fareFacts)} |`,
+      `- ${oneRide!.claimText}`,
+      `- ${oneDay!.claimText}`,
       '',
       '### GRTA 첫 운행 기준',
       '',
-      '| 구간 | 확인된 소요시간·운행 | 이용 조건 |',
-      '| --- | --- | --- |',
-      `| 공항→Kmart | ${routeDecisionTableCell([firstDeparture!, kmartDuration!])} | 정확한 공항 승차 위치는 출발 전에 재확인 |`,
-      `| 공항→GTA Upper Tumon | 첫차 운행 기준<br>${routeDecisionTableCell([upperTumonDuration!])} | ${routeDecisionTableCell([tumonTransit!])} |`,
+      `- ${firstDeparture!.claimText}`,
+      `- ${kmartDuration!.claimText}`,
+      `- ${upperTumonDuration!.claimText}`,
+      `- ${tumonTransit!.claimText}`,
+      '- 공항의 정확한 GRTA 승차 위치는 출발 전에 공식 시간표와 현장 안내에서 다시 확인해야 합니다.',
       '',
       '### 현지 미터택시',
       '',
-      '| 수단 | 공식 요금 | 공항 승차 위치 |',
-      '| --- | --- | --- |',
-      `| 현지 미터택시 | ${routeDecisionTableCell([taxiMeter!])} | ${routeDecisionTableCell([taxiPickup!])} |`,
+      `- ${taxiMeter!.claimText}`,
+      `- ${taxiPickup!.claimText}`,
       '',
       '대중교통은 공식 시간표와 요금을 먼저 맞춰 보고, 택시는 미터요금·공항 카운터 위치·수하물 조건을 함께 확인하면 됩니다. 확인되지 않은 택시 소요시간을 임의로 예상값으로 바꾸지 않았습니다.',
       '',
@@ -804,12 +797,26 @@ export function buildBlogEditorialJudgePromptV1(input: {
 }
 
 export function parseBlogEditorialJudgeReportV1(raw: string): BlogEditorialJudgeReportV1 {
-  const text = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+  const stripped = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+  const firstBrace = stripped.indexOf('{');
+  const lastBrace = stripped.lastIndexOf('}');
+  const text = firstBrace >= 0 && lastBrace > firstBrace
+    ? stripped.slice(firstBrace, lastBrace + 1)
+    : stripped;
   const parsed = JSON.parse(text) as Record<string, unknown>;
   const dimensions = parsed.dimensions as Record<string, unknown> | undefined;
   const keys = ['usefulness', 'naturalKorean', 'completeness', 'originality', 'sourceHonesty'] as const;
+  const aliases: Record<(typeof keys)[number], string[]> = {
+    usefulness: ['usefulness'],
+    naturalKorean: ['naturalKorean', 'natural_korean'],
+    completeness: ['completeness'],
+    originality: ['originality'],
+    sourceHonesty: ['sourceHonesty', 'source_honesty'],
+  };
   const normalized = Object.fromEntries(keys.map((key) => {
-    const dimension = dimensions?.[key] as Record<string, unknown> | undefined;
+    const dimension = aliases[key]
+      .map((alias) => dimensions?.[alias] as Record<string, unknown> | undefined)
+      .find(Boolean);
     if (typeof dimension?.passed !== 'boolean' || typeof dimension.reason !== 'string' || !dimension.reason.trim()) {
       throw new Error(`blog_editorial_judge_invalid_dimension:${key}`);
     }

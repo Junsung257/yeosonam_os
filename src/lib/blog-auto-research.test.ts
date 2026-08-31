@@ -37,7 +37,7 @@ import { selectDecisionRelevantRewriteClaimsV4 } from '@/lib/blog-deepseek-orche
 import { validateBlogInformationStructure } from '@/lib/blog-information-structure';
 import { inspectPublicBlogCustomerQuality } from '@/lib/blog-public-customer-quality';
 import { computeReadability } from '@/lib/blog-readability';
-import { checkAiReadability } from '@/lib/blog-quality-gate';
+import { checkAiReadability, checkMarkdownTableIntegrity } from '@/lib/blog-quality-gate';
 
 describe('normalizeAutoResearchStructuredValue', () => {
   it.each([
@@ -800,6 +800,8 @@ describe('augmentGrtaAirportTransportPayload', () => {
     }
     expect(computeReadability(writerOutput.markdown).issues.join('\n')).not.toContain('도배 어절');
     expect(checkAiReadability(writerOutput.markdown, 'info', true).passed).toBe(true);
+    expect(checkMarkdownTableIntegrity(writerOutput.markdown).passed).toBe(true);
+    expect(writerOutput.markdown).not.toContain('| 수단 |');
     const rendered = marked.parse(writerOutput.markdown) as string;
     const publicCustomer = inspectPublicBlogCustomerQuality({
       expectedType: 'info',

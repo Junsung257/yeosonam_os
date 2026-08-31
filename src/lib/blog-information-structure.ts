@@ -129,11 +129,26 @@ function validateWeather(markdown: string, tables: BlogInformationTable[], issue
 }
 
 function validateAirport(markdown: string, tables: BlogInformationTable[], issues: string[]): void {
-  const rows = rowsFrom(tables, /수단|교통|요금|가격|소요|첫차|막차|운영/i);
-  add(issues, distinctFirstCells(rows).length >= 2, 'airport_transport:multiple_modes_required');
+  const tableRows = rowsFrom(tables, /수단|교통|요금|가격|소요|첫차|막차|운영/i);
+  const listRows = markdown
+    .split(/\r?\n/)
+    .map((line) => line.trim().match(/^[-*]\s+(.+)$/)?.[1]?.trim())
+    .filter((line): line is string => Boolean(line))
+    .map((line) => [line]);
+  const rows = tableRows.length > 0 ? tableRows : listRows;
+  const modeKeys = new Set(rows.flatMap((row) => {
+    const text = rowText(row);
+    return [
+      ...(/GRTA|버스|대중교통/i.test(text) ? ['public_transit'] : []),
+      ...(/택시|카카오\s*T/i.test(text) ? ['taxi'] : []),
+      ...(/렌터카|렌트카/i.test(text) ? ['rental_car'] : []),
+      ...(/셔틀|픽업/i.test(text) ? ['shuttle'] : []),
+    ];
+  }));
+  add(issues, modeKeys.size >= 2, 'airport_transport:multiple_modes_required');
   add(issues, rows.filter((row) => PRICE_RE.test(rowText(row))).length >= 2, 'airport_transport:prices_required');
   add(issues, rows.filter((row) => TIME_RE.test(rowText(row))).length >= 2, 'airport_transport:durations_required');
-  add(issues, rows.filter((row) => /첫차|막차|운영\s*시간|24시간|\d{1,2}:\d{2}/.test(rowText(row))).length >= 2, 'airport_transport:operating_hours_required');
+  add(issues, rows.filter((row) => /첫차|첫\s*운행|막차|운영\s*시간|24시간|\d{1,2}:\d{2}/.test(rowText(row))).length >= 2, 'airport_transport:operating_hours_required');
   add(issues, /수하물|짐/.test(markdown) && /심야|야간|늦은/.test(markdown), 'airport_transport:luggage_late_conditions_required');
   add(issues, URL_RE.test(markdown), 'airport_transport:evidence_required');
 }
