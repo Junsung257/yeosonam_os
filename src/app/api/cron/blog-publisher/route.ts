@@ -4360,6 +4360,75 @@ async function processQueueItem(
           return { id: item.id, topic: item.topic, status: 'quarantined', reason: revalidationError };
         }
       }
+      if (blogType === 'info') {
+        const deferredBrief = buildQueueContentBrief(item);
+        const deferredResearch = evaluateBlogGenerationResearchReadiness({
+          meta: item.meta,
+          expectedContentKey: evidenceContentKey,
+          destination: item.destination,
+          intent: deferredBrief.intentType,
+          locale: deferredBrief.plan.locale,
+          sourcePolicy: deferredBrief.sourcePolicy,
+        });
+        if (
+          !deferredBrief.passed
+          || !deferredResearch.passed
+          || !deferredResearch.bundle
+          || !reviewClaimValidation.passed
+          || reviewClaimValidation.requiresHumanReview
+          || deferredBrief.plan.requiresHumanReview
+        ) {
+          const reason = 'deferred_information_review_ready_precondition_failed';
+          await handleFailure(item, reason, qa, true, {
+            content_creative_id: creativeId,
+            deferred_information_review_v4: {
+              brief_passed: deferredBrief.passed,
+              research_passed: deferredResearch.passed,
+              claim_validation_passed: reviewClaimValidation.passed,
+              claim_review_required: reviewClaimValidation.requiresHumanReview,
+              planned_human_review: deferredBrief.plan.requiresHumanReview,
+            },
+          });
+          return { id: item.id, topic: item.topic, status: 'quarantined', reason };
+        }
+        try {
+          generationMeta.deferred_information_review_v4 = {
+            status: 'ready',
+            synchronized_at: now,
+          };
+          const deferredReviewStore = createBlogInformationEvidenceWorkflowStore({
+            creativeId,
+            contentKey: reviewEvidenceContentKey,
+            tenantId: item.tenant_id ?? null,
+            generationMeta,
+          });
+          await deferredReviewStore.save({
+            plan: deferredBrief.plan,
+            research: {
+              ...deferredResearch.bundle,
+              contentKey: reviewEvidenceContentKey,
+              creativeId,
+              tenantId: item.tenant_id ?? deferredResearch.bundle.tenantId ?? null,
+            },
+            report: reviewClaimValidation,
+            state: 'ready',
+            contentFingerprint: createBlogInformationContentFingerprint({
+              blogHtml: generated.blog_html,
+              seoTitle: generated.seo_title,
+              seoDescription: generated.seo_description,
+              slug: String(rowPayload.slug ?? generated.slug),
+            }),
+          });
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          const reason = `deferred_information_review_ready_sync_failed:${detail}`;
+          await handleFailure(item, reason, qa, true, {
+            content_creative_id: creativeId,
+            deferred_information_review_v4: { status: 'failed', error: detail },
+          });
+          return { id: item.id, topic: item.topic, status: 'quarantined', reason };
+        }
+      }
       const scheduledPublishAt = nextBlogPublicationSlotKstV4(new Date(now));
       const approvalPersistenceError = await approveBlogGenerationRunForSlotV4({
         queueId: item.id,

@@ -97,4 +97,19 @@ describe('blog publisher V4 orchestration wiring', () => {
     expect(source).toContain('model_calls: 0');
     expect(source.match(/alignGuamAirportCanaryDescriptionV4\(/g)).toHaveLength(3);
   });
+
+  it('synchronizes a non-human informational review case before approving its deferred slot', () => {
+    const deferredApproval = source.slice(
+      source.indexOf("if (approvedForDeferredPublication)"),
+      source.indexOf("if (representativeIdentity && !requiresHumanReview)"),
+    );
+    expect(deferredApproval).toContain("state: 'ready'");
+    expect(deferredApproval).toContain('deferred_information_review_ready_precondition_failed');
+    expect(deferredApproval).toContain('deferred_information_review_ready_sync_failed:');
+    expect(deferredApproval.indexOf('deferredReviewStore.save({')).toBeLessThan(
+      deferredApproval.indexOf('approveBlogGenerationRunForSlotV4({'),
+    );
+    expect(deferredApproval).toContain('reviewClaimValidation.requiresHumanReview');
+    expect(deferredApproval).toContain('deferredBrief.plan.requiresHumanReview');
+  });
 });
