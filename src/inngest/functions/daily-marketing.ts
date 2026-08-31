@@ -1,5 +1,10 @@
-import { inngest } from '../client';
+import { inngest, marketingTenantRunEvent } from '../client';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import {
+  buildInngestEventId,
+  isInngestScheduleExecutionEnabled,
+  utcDayFromTimestamp,
+} from '@/inngest/runtime-policy';
 
 /**
  * 데일리 마케팅 파이프라인 오케스트레이터 (Inngest Cron)
@@ -13,11 +18,15 @@ export const dailyMarketingFn = inngest.createFunction(
     id: 'daily-marketing-orchestrator',
     name: '데일리 마케팅 오케스트레이터',
     concurrency: { limit: 1 },
-    cron: '20 0 * * *',
-  } as unknown as Parameters<typeof inngest.createFunction>[0],
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async ({ step }: any) => {
+    triggers: [{ cron: '20 0 * * *' }],
+  },
+  async ({ event, step }) => {
+    if (!isInngestScheduleExecutionEnabled()) {
+      return { skipped: true, reason: 'inngest_schedule_cutover_not_enabled' };
+    }
     if (!isSupabaseConfigured) return { skipped: true, reason: 'Supabase 미설정' };
+
+    const runDate = utcDayFromTimestamp(event.ts);
 
     const tenants = await step.run('get-active-tenants', async () => {
       const { data, error } = await supabaseAdmin
@@ -34,12 +43,12 @@ export const dailyMarketingFn = inngest.createFunction(
 
     await step.sendEvent(
       'fan-out-tenants',
-      tenants.map((t: { id: string; name: string }) => ({
-        name: 'marketing/tenant.run',
-        data: { tenantId: t.id, tenantName: t.name },
-      })),
+      tenants.map((t: { id: string; name: string }) => marketingTenantRunEvent.create(
+        { tenantId: t.id, tenantName: t.name, runDate },
+        { id: buildInngestEventId('marketing-tenant', t.id, runDate) },
+      )),
     );
 
-    return { tenants: tenants.length, fanned_out: true };
+    return { tenants: tenants.length, runDate, fanned_out: true };
   },
 );

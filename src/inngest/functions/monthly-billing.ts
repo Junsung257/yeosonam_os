@@ -1,5 +1,10 @@
-import { inngest } from '../client';
+import { billingChargeTenantEvent, inngest } from '../client';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import {
+  billingPeriodFromTimestamp,
+  buildInngestEventId,
+  isInngestBillingEnabled,
+} from '@/inngest/runtime-policy';
 
 /**
  * 월별 자동결제 (Sprint 4-B: TossPayments)
@@ -12,11 +17,15 @@ export const monthlyBillingFn = inngest.createFunction(
     name: '월별 자동결제',
     retries: 3,
     timeouts: { finish: '30m' },
-    cron: '0 0 1 * *',
-  } as unknown as Parameters<typeof inngest.createFunction>[0],
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async ({ step }: any) => {
+    triggers: [{ cron: '0 0 1 * *' }],
+  },
+  async ({ event, step }) => {
+    if (!isInngestBillingEnabled()) {
+      return { skipped: true, reason: 'inngest_billing_not_enabled' };
+    }
     if (!isSupabaseConfigured) return { skipped: true };
+
+    const billingPeriod = billingPeriodFromTimestamp(event.ts);
 
     const subscriptions = await step.run('get-active-subscriptions', async () => {
       const { data, error } = await supabaseAdmin
@@ -34,12 +43,15 @@ export const monthlyBillingFn = inngest.createFunction(
 
     await step.sendEvent(
       'fan-out-billing',
-      subscriptions.map((sub: { id: string; tenant_id: string; monthly_price_krw: number }) => ({
-        name: 'billing/charge.tenant',
-        data: { tenantId: sub.tenant_id, amount: sub.monthly_price_krw },
-      })),
+      subscriptions.map((sub: { id: string; tenant_id: string; monthly_price_krw: number }) => (
+        billingChargeTenantEvent.create({
+          tenantId: sub.tenant_id,
+          amount: sub.monthly_price_krw,
+          billingPeriod,
+        }, { id: buildInngestEventId('billing-tenant', sub.tenant_id, billingPeriod) })
+      )),
     );
 
-    return { charged: subscriptions.length };
+    return { charged: subscriptions.length, billingPeriod };
   },
 );
