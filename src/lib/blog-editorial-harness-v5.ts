@@ -804,7 +804,31 @@ export function parseBlogEditorialJudgeReportV1(raw: string): BlogEditorialJudge
     ? stripped.slice(firstBrace, lastBrace + 1)
     : stripped;
   const parsed = JSON.parse(text) as Record<string, unknown>;
-  const dimensions = parsed.dimensions as Record<string, unknown> | undefined;
+  const asRecord = (value: unknown): Record<string, unknown> | null => (
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : null
+  );
+  const candidates = [
+    parsed,
+    parsed.report,
+    parsed.result,
+    parsed.evaluation,
+    parsed.judgment,
+    parsed.judgement,
+  ].map(asRecord).filter((value): value is Record<string, unknown> => Boolean(value));
+  const report = candidates.find((candidate) => candidate.dimensions != null) ?? parsed;
+  const rawDimensions = report.dimensions;
+  const dimensions = Array.isArray(rawDimensions)
+    ? Object.fromEntries(rawDimensions.flatMap((value) => {
+      const dimension = asRecord(value);
+      const key = dimension
+        ? [dimension.key, dimension.id, dimension.name, dimension.dimension]
+          .find((candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0)
+        : null;
+      return dimension && key ? [[key, dimension]] : [];
+    }))
+    : asRecord(rawDimensions) ?? {};
   const keys = ['usefulness', 'naturalKorean', 'completeness', 'originality', 'sourceHonesty'] as const;
   const aliases: Record<(typeof keys)[number], string[]> = {
     usefulness: ['usefulness', 'answerUsefulness', 'answer_usefulness'],
@@ -813,34 +837,56 @@ export function parseBlogEditorialJudgeReportV1(raw: string): BlogEditorialJudge
     originality: ['originality'],
     sourceHonesty: ['sourceHonesty', 'source_honesty', 'sourceIntegrity', 'source_integrity'],
   };
+  const normalizedDimensionEntries = Object.entries(dimensions).map(([key, value]) => [
+    key.replace(/[^a-z0-9]/gi, '').toLowerCase(),
+    asRecord(value),
+  ] as const);
+  const strictBoolean = (value: unknown): boolean | null => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string' && /^(?:true|false)$/i.test(value.trim())) {
+      return value.trim().toLowerCase() === 'true';
+    }
+    return null;
+  };
   const normalized = Object.fromEntries(keys.map((key) => {
-    const dimension = aliases[key]
-      .map((alias) => dimensions?.[alias] as Record<string, unknown> | undefined)
-      .find(Boolean);
-    if (typeof dimension?.passed !== 'boolean') {
+    const aliasKeys = aliases[key].map((alias) => alias.replace(/[^a-z0-9]/gi, '').toLowerCase());
+    const dimension = normalizedDimensionEntries
+      .find(([dimensionKey, value]) => aliasKeys.includes(dimensionKey) && Boolean(value))?.[1] ?? null;
+    const passed = strictBoolean(dimension?.passed ?? dimension?.pass ?? dimension?.ok);
+    if (passed == null) {
       throw new Error(`blog_editorial_judge_invalid_dimension:${key}`);
     }
-    const rawReason = [dimension.reason, dimension.rationale, dimension.explanation]
+    const rawReason = [dimension?.reason, dimension?.rationale, dimension?.explanation]
       .find((value): value is string => typeof value === 'string' && value.trim().length > 0);
     // A failed dimension must always explain the failure. A true boolean is
     // sufficient for a passing dimension because the provider may legally
     // return an empty reason even in strict JSON mode.
-    if (!dimension.passed && !rawReason) {
+    if (!passed && !rawReason) {
       throw new Error(`blog_editorial_judge_invalid_dimension:${key}`);
     }
     return [key, {
-      passed: dimension.passed,
+      passed,
       reason: (rawReason ?? '통과').trim().slice(0, 500),
     }];
   })) as BlogEditorialJudgeReportV1['dimensions'];
   const failedKeys = keys.filter((key) => !normalized[key].passed);
-  const declaredPassed = parsed.passed === true;
-  if (declaredPassed !== (failedKeys.length === 0)) throw new Error('blog_editorial_judge_inconsistent_pass');
+  const declaredPassed = [
+    report.passed,
+    report.overallPassed,
+    report.overall_passed,
+    report.overallPass,
+    report.overall_pass,
+    report.publishable,
+  ].map(strictBoolean).find((value): value is boolean => value != null);
+  // Required dimension booleans are the primary contract. A declared false is
+  // still honored conservatively when every dimension says true; a declared
+  // true can never hide a failed dimension.
+  const overallDeclaredFailure = declaredPassed === false && failedKeys.length === 0;
   return {
     version: BLOG_EDITORIAL_JUDGE_VERSION,
-    passed: failedKeys.length === 0,
+    passed: failedKeys.length === 0 && !overallDeclaredFailure,
     dimensions: normalized,
-    failureReasons: failedKeys,
+    failureReasons: overallDeclaredFailure ? ['overall'] : failedKeys,
   };
 }
 

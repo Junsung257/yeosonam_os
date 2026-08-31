@@ -283,7 +283,7 @@ export async function reserveBlogEditorialJudgeBudgetBeforeCallV5(input: {
   attemptNumber: number;
   model: string;
   requestedUsd: number;
-  callKind?: 'editorial_judge' | 'editorial_judge_retry' | 'editorial_judge_structured_retry';
+  callKind?: 'editorial_judge' | 'editorial_judge_retry' | 'editorial_judge_structured_retry' | 'editorial_judge_normalized_retry';
   now?: Date;
   capUsd?: number;
 }): Promise<BlogAiBudgetReservationRecordV4> {
