@@ -22,12 +22,13 @@ describe('blog publisher V4 orchestration wiring', () => {
     expect(helper).toContain('receipt: error instanceof BlogAiResponseError ? error.receipt : null');
     expect(helper).toContain('blog_ai_budget_blocked');
     expect(judgeHelper.indexOf('reserveBlogEditorialJudgeBudgetBeforeCallV5({')).toBeLessThan(
-      judgeHelper.indexOf('generateBlogTextWithReceipt(buildBlogEditorialJudgePromptV1({'),
+      judgeHelper.indexOf('generateBlogJsonWithReceipt(buildBlogEditorialJudgePromptV1({'),
     );
     expect(judgeHelper).toContain('settleBlogAiBudgetReservationV4({');
     expect(judgeHelper).toContain('cascade: false');
     expect(judgeHelper).toContain("deepseekThinking: 'disabled'");
-    expect(source.match(/generateBlogTextWithReceipt\(/g)).toHaveLength(2);
+    expect(source.match(/generateBlogTextWithReceipt\(/g)).toHaveLength(1);
+    expect(source.match(/generateBlogJsonWithReceipt\(/g)).toHaveLength(1);
   });
 
   it('keeps every publication model stage DeepSeek-only', () => {

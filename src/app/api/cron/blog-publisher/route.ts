@@ -7,6 +7,7 @@ import { runQualityGates, type QualityGateReport } from '@/lib/blog-quality-gate
 import {
   BlogAiResponseError,
   classifyBlogAiProviderFailure,
+  generateBlogJsonWithReceipt,
   generateBlogTextWithReceipt,
   hasBlogApiKey,
   type BlogAiTextResult,
@@ -785,7 +786,11 @@ async function readPersistedBlogEditorialJudgeReportV5(input: {
     .eq('queue_id', input.queueId)
     .eq('attempt_number', input.attemptNumber)
     .eq('status', 'completed')
-    .in('call_kind', ['editorial_judge', 'editorial_judge_retry'])
+    .in('call_kind', [
+      'editorial_judge',
+      'editorial_judge_retry',
+      'editorial_judge_structured_retry',
+    ])
     .order('created_at', { ascending: false });
   for (const row of data ?? []) {
     const receipt = row.receipt as Record<string, unknown> | null;
@@ -856,6 +861,15 @@ async function evaluatePublisherEditorialHarnessV5(input: {
       callKind: 'editorial_judge_retry',
     });
   }
+  if (!reservation.allowed && reservation.reason === 'attempt_budget_already_reserved') {
+    reservation = await reserveBlogEditorialJudgeBudgetBeforeCallV5({
+      queueId: input.queueId,
+      attemptNumber: input.attemptNumber,
+      model: BLOG_DEEPSEEK_MODELS.rewrite,
+      requestedUsd,
+      callKind: 'editorial_judge_structured_retry',
+    });
+  }
   if (!reservation.allowed || !reservation.reservationId) {
     return {
       report: combineBlogEditorialHarnessV1({ deterministic, semantic: null }),
@@ -866,7 +880,7 @@ async function evaluatePublisherEditorialHarnessV5(input: {
   let receipt: BlogAiTextResult['receipt'] | null = null;
   try {
     const judge = await withPublisherTimeout(
-      generateBlogTextWithReceipt(buildBlogEditorialJudgePromptV1({
+      generateBlogJsonWithReceipt(buildBlogEditorialJudgePromptV1({
         title: input.title,
         primaryQuery: input.primaryQuery,
         primaryDecision: input.primaryDecision,

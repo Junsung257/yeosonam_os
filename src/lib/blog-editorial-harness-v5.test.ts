@@ -221,6 +221,32 @@ describe('blog editorial harness v5', () => {
       failureReasons: [],
     })}\n끝`);
     expect(tolerant.passed).toBe(true);
+
+    const emptyPassingReasons = parseBlogEditorialJudgeReportV1(JSON.stringify({
+      passed: true,
+      dimensions: {
+        answer_usefulness: { passed: true, reason: '' },
+        naturalness: { passed: true, rationale: '' },
+        promise_completeness: { passed: true },
+        originality: { passed: true, explanation: '' },
+        source_integrity: { passed: true, reason: '' },
+      },
+      failureReasons: [],
+    }));
+    expect(emptyPassingReasons.passed).toBe(true);
+    expect(emptyPassingReasons.dimensions.completeness.reason).toBe('통과');
+
+    expect(() => parseBlogEditorialJudgeReportV1(JSON.stringify({
+      passed: false,
+      dimensions: {
+        usefulness: { passed: false, reason: '' },
+        naturalKorean: { passed: true },
+        completeness: { passed: true },
+        originality: { passed: true },
+        sourceHonesty: { passed: true },
+      },
+      failureReasons: ['usefulness'],
+    }))).toThrow('blog_editorial_judge_invalid_dimension:usefulness');
   });
 
   it('builds and deterministically inserts an answer-first airport route decision', () => {

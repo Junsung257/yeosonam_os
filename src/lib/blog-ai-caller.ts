@@ -452,6 +452,21 @@ export async function generateBlogTextWithReceipt(
   return callModelDirectWithReceipt(opts.model, prompt, { ...opts, cascade: false }, false);
 }
 
+/**
+ * Receipt-bearing structured call for durable evaluators.
+ *
+ * Keeping this separate from article generation makes it impossible for a
+ * caller to accidentally turn every prose response into JSON mode. DeepSeek
+ * receives `response_format=json_object`, while the higher-level evaluator
+ * still validates the complete semantic contract before trusting the result.
+ */
+export async function generateBlogJsonWithReceipt(
+  prompt: string,
+  opts: BlogCallOptions & { model: string },
+): Promise<BlogAiTextResult> {
+  return callModelDirectWithReceipt(opts.model, prompt, { ...opts, cascade: false }, true);
+}
+
 // ── Internal: model name → direct call ──────────────────────
 
 async function callModelDirect(
