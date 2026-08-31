@@ -5231,7 +5231,7 @@ async function generateFromTopic(
       item.meta = {
         ...(item.meta || {}),
         auto_research_failure: {
-          version: 'reviewed-source-direct-fetch-v4',
+          version: 'reviewed-source-direct-fetch-v5',
           attempt_count: researchFailureAttempt,
           failed_at: new Date().toISOString(),
           model: autoResearch.model,
@@ -5262,7 +5262,7 @@ async function generateFromTopic(
       ...(item.meta || {}),
       [BLOG_INFORMATION_RESEARCH_META_KEY]: autoResearch.bundle,
       auto_research: {
-        version: 'reviewed-source-direct-fetch-v4',
+        version: 'reviewed-source-direct-fetch-v5',
         model: autoResearch.model,
         completed_at: new Date().toISOString(),
         grounding_source_count: autoResearch.groundingSourceCount,

@@ -664,7 +664,9 @@ describe('augmentGrtaAirportTransportPayload', () => {
         url: 'https://www.visitguam.com/planning/transportation/',
         title: 'Guam Visitors Bureau transportation',
         text: [
-          'All taxis have regulated meters. The standard flag rate is $2.40, $4.00 for the first mile, and $0.80 every ¼ mile thereafter.',
+          // Production registry snapshots preserve Visit Guam's Unicode fraction
+          // slash (U+2044), so this fixture must exercise the exact glyph.
+          'All taxis have regulated meters. The standard flag rate is $2.40, $4.00 for the first mile, and $0.80 every 1⁄4 mile thereafter.',
           'Transportation on the line includes most major shopping centers as well as the hotels in Tumon and Hagatna.',
         ].join(' '),
       },
@@ -733,6 +735,8 @@ describe('augmentGrtaAirportTransportPayload', () => {
     expect(payload.claims?.map((claim) => claim.claimText).join('\n')).toMatch(/캐리어/);
     expect(payload.claims?.map((claim) => claim.claimText).join('\n')).toMatch(/항공 지연/);
     expect(payload.claims?.map((claim) => claim.claimText).join('\n')).toMatch(/기본 호출 2\.40 USD/);
+    expect(payload.claims?.map((claim) => claim.claimText).join('\n')).toMatch(/최초 1마일 4\.00 USD/);
+    expect(payload.claims?.map((claim) => claim.claimText).join('\n')).toMatch(/0\.25마일마다 0\.80 USD/);
     expect(payload.claims?.map((claim) => claim.claimText).join('\n')).toMatch(/투몬 호텔/);
     expect(payload.claims?.map((claim) => claim.claimText).join('\n')).toMatch(/서쪽 도착 터미널/);
     expect(built.issues).toEqual([]);

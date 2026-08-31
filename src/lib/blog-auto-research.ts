@@ -3203,7 +3203,7 @@ export function augmentGrtaAirportTransportPayload(
   const hasReviewedTaxiMeterRates = /All taxis have regulated meters/i.test(visitGuamTransportText)
     && /standard flag rate is \$\s*2\.40/i.test(visitGuamTransportText)
     && /\$\s*4\.00 for the first mile/i.test(visitGuamTransportText)
-    && /\$\s*0\.80 every (?:¼|1\s*\/\s*4) mile thereafter/i.test(visitGuamTransportText);
+    && /\$\s*0\.80 every (?:¼|1\s*[\/⁄]\s*4) mile thereafter/i.test(visitGuamTransportText);
   const hasReviewedTumonTransitCoverage = /transportation on the line includes[\s\S]{0,180}hotels in Tumon/i
     .test(visitGuamTransportText);
 
