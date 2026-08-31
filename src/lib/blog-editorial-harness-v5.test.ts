@@ -201,13 +201,15 @@ describe('blog editorial harness v5', () => {
     });
     expect(base.renderedPromptHash).toMatch(/^[0-9a-f]{64}$/);
     expect(changed.renderedPromptHash).not.toBe(base.renderedPromptHash);
-    expect(() => parseBlogEditorialJudgeReportV1(JSON.stringify({
+    const contradictoryOverall = parseBlogEditorialJudgeReportV1(JSON.stringify({
       passed: true,
       dimensions: Object.fromEntries([
         'usefulness', 'naturalKorean', 'completeness', 'originality', 'sourceHonesty',
       ].map((key) => [key, { passed: key !== 'usefulness', reason: '판정 근거' }])),
       failureReasons: [],
-    }))).toThrow('blog_editorial_judge_inconsistent_pass');
+    }));
+    expect(contradictoryOverall.passed).toBe(false);
+    expect(contradictoryOverall.failureReasons).toEqual(['usefulness']);
 
     const tolerant = parseBlogEditorialJudgeReportV1(`판정 결과입니다.\n${JSON.stringify({
       passed: true,
@@ -235,6 +237,29 @@ describe('blog editorial harness v5', () => {
     }));
     expect(emptyPassingReasons.passed).toBe(true);
     expect(emptyPassingReasons.dimensions.completeness.reason).toBe('통과');
+
+    const nestedArray = parseBlogEditorialJudgeReportV1(JSON.stringify({
+      result: {
+        overall_passed: 'true',
+        dimensions: [
+          { name: 'answer_usefulness', pass: 'true', reason: '' },
+          { name: 'natural_korean', ok: true, reason: '' },
+          { name: 'promise_completeness', passed: true },
+          { name: 'originality', passed: true },
+          { name: 'source_integrity', passed: true },
+        ],
+      },
+    }));
+    expect(nestedArray.passed).toBe(true);
+
+    const conservativeOverall = parseBlogEditorialJudgeReportV1(JSON.stringify({
+      passed: false,
+      dimensions: Object.fromEntries([
+        'usefulness', 'naturalKorean', 'completeness', 'originality', 'sourceHonesty',
+      ].map((key) => [key, { passed: true }])),
+    }));
+    expect(conservativeOverall.passed).toBe(false);
+    expect(conservativeOverall.failureReasons).toEqual(['overall']);
 
     expect(() => parseBlogEditorialJudgeReportV1(JSON.stringify({
       passed: false,

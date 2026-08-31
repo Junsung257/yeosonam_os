@@ -237,6 +237,7 @@ import {
   buildBlogEditorialJudgePromptV1,
   buildBlogPromptTraceV1,
   combineBlogEditorialHarnessV1,
+  hashBlogPromptTraceValueV1,
   inspectBlogEditorialDeterministicallyV1,
   parseBlogEditorialJudgeReportV1,
   restrictBlogDecisionArtifactFactsV1,
@@ -790,6 +791,7 @@ async function readPersistedBlogEditorialJudgeReportV5(input: {
       'editorial_judge',
       'editorial_judge_retry',
       'editorial_judge_structured_retry',
+      'editorial_judge_normalized_retry',
     ])
     .order('created_at', { ascending: false });
   for (const row of data ?? []) {
@@ -870,6 +872,15 @@ async function evaluatePublisherEditorialHarnessV5(input: {
       callKind: 'editorial_judge_structured_retry',
     });
   }
+  if (!reservation.allowed && reservation.reason === 'attempt_budget_already_reserved') {
+    reservation = await reserveBlogEditorialJudgeBudgetBeforeCallV5({
+      queueId: input.queueId,
+      attemptNumber: input.attemptNumber,
+      model: BLOG_DEEPSEEK_MODELS.rewrite,
+      requestedUsd,
+      callKind: 'editorial_judge_normalized_retry',
+    });
+  }
   if (!reservation.allowed || !reservation.reservationId) {
     return {
       report: combineBlogEditorialHarnessV1({ deterministic, semantic: null }),
@@ -878,6 +889,7 @@ async function evaluatePublisherEditorialHarnessV5(input: {
   }
 
   let receipt: BlogAiTextResult['receipt'] | null = null;
+  let judgeText: string | null = null;
   try {
     const judge = await withPublisherTimeout(
       generateBlogJsonWithReceipt(buildBlogEditorialJudgePromptV1({
@@ -898,6 +910,7 @@ async function evaluatePublisherEditorialHarnessV5(input: {
       'blog_editorial_judge',
     );
     receipt = judge.receipt;
+    judgeText = judge.text;
     const semantic = parseBlogEditorialJudgeReportV1(judge.text);
     const settledReceipt = {
       ...receipt,
@@ -917,9 +930,22 @@ async function evaluatePublisherEditorialHarnessV5(input: {
       receipt,
     };
   } catch (error) {
+    const failureReceipt = error instanceof BlogAiResponseError ? error.receipt : receipt;
+    const parseFailureReceipt = failureReceipt ? {
+      ...failureReceipt,
+      audit: {
+        kind: 'blog_editorial_judge_parse_failure_v5',
+        error: (error instanceof Error ? error.message : String(error)).slice(0, 300),
+        responseHash: judgeText ? hashBlogPromptTraceValueV1(judgeText) : null,
+        // The judge sees only the intended public candidate and returns no
+        // credentials. Keep a bounded preview so schema drift is diagnosable.
+        responsePreview: judgeText?.replace(/\s+/g, ' ').trim().slice(0, 2_000) ?? null,
+        sourceAttemptNumber: input.attemptNumber,
+      },
+    } : null;
     await settleBlogAiBudgetReservationV4({
       reservationId: reservation.reservationId,
-      receipt: error instanceof BlogAiResponseError ? error.receipt : receipt,
+      receipt: parseFailureReceipt,
       status: 'failed',
     });
     return {
