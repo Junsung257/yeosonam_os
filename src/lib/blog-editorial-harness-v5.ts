@@ -807,20 +807,31 @@ export function parseBlogEditorialJudgeReportV1(raw: string): BlogEditorialJudge
   const dimensions = parsed.dimensions as Record<string, unknown> | undefined;
   const keys = ['usefulness', 'naturalKorean', 'completeness', 'originality', 'sourceHonesty'] as const;
   const aliases: Record<(typeof keys)[number], string[]> = {
-    usefulness: ['usefulness'],
-    naturalKorean: ['naturalKorean', 'natural_korean'],
-    completeness: ['completeness'],
+    usefulness: ['usefulness', 'answerUsefulness', 'answer_usefulness'],
+    naturalKorean: ['naturalKorean', 'natural_korean', 'naturalness'],
+    completeness: ['completeness', 'promiseCompleteness', 'promise_completeness'],
     originality: ['originality'],
-    sourceHonesty: ['sourceHonesty', 'source_honesty'],
+    sourceHonesty: ['sourceHonesty', 'source_honesty', 'sourceIntegrity', 'source_integrity'],
   };
   const normalized = Object.fromEntries(keys.map((key) => {
     const dimension = aliases[key]
       .map((alias) => dimensions?.[alias] as Record<string, unknown> | undefined)
       .find(Boolean);
-    if (typeof dimension?.passed !== 'boolean' || typeof dimension.reason !== 'string' || !dimension.reason.trim()) {
+    if (typeof dimension?.passed !== 'boolean') {
       throw new Error(`blog_editorial_judge_invalid_dimension:${key}`);
     }
-    return [key, { passed: dimension.passed, reason: dimension.reason.trim().slice(0, 500) }];
+    const rawReason = [dimension.reason, dimension.rationale, dimension.explanation]
+      .find((value): value is string => typeof value === 'string' && value.trim().length > 0);
+    // A failed dimension must always explain the failure. A true boolean is
+    // sufficient for a passing dimension because the provider may legally
+    // return an empty reason even in strict JSON mode.
+    if (!dimension.passed && !rawReason) {
+      throw new Error(`blog_editorial_judge_invalid_dimension:${key}`);
+    }
+    return [key, {
+      passed: dimension.passed,
+      reason: (rawReason ?? '통과').trim().slice(0, 500),
+    }];
   })) as BlogEditorialJudgeReportV1['dimensions'];
   const failedKeys = keys.filter((key) => !normalized[key].passed);
   const declaredPassed = parsed.passed === true;
