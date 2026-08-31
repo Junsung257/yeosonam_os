@@ -202,6 +202,7 @@ const SOURCE_LABELS: Record<string, string> = {
   qa_chat: '고객 QA 작업',
   cron: '예약 작업',
   manual: '수동 작업',
+  research_node: '외부 조사 신호',
 };
 
 function asTaskStatus(value: string): AgentOfficeTaskStatus {

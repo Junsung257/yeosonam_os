@@ -269,6 +269,8 @@ const PUBLIC_EXACT = new Set([
   '/api/cron/daily-marketing',
   // Inngest webhook (서버-to-서버, 자체 서명 검증)
   '/api/inngest',
+  // 외부 조사 노드 intake (전용 Bearer token을 route에서 timing-safe 검증)
+  '/api/internal/research/signals',
   // Naver OAuth (Sprint 2-A)
   '/api/auth/naver-oauth-start',
   '/api/auth/naver-callback',

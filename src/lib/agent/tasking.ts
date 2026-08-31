@@ -28,6 +28,35 @@ export async function createAgentTask(envelope: AgentTaskEnvelope) {
   return data;
 }
 
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && String((error as { code?: unknown }).code) === '23505';
+}
+
+export async function createAgentTaskIdempotently(envelope: AgentTaskEnvelope) {
+  if (!envelope.idempotencyKey) {
+    throw new Error('idempotency key is required');
+  }
+
+  try {
+    const created = await createAgentTask(envelope);
+    return { ...created, duplicate: false };
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
+
+    const { data, error: readError } = await supabaseAdmin
+      .from('agent_tasks')
+      .select('id, status')
+      .eq('idempotency_key', envelope.idempotencyKey)
+      .maybeSingle();
+    if (readError) throw readError;
+    if (!data) throw error;
+    return { ...data, duplicate: true };
+  }
+}
+
 export async function transitionAgentTask(
   taskId: string,
   from: AgentTaskStatus,
