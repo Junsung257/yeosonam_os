@@ -283,6 +283,7 @@ export async function reserveBlogEditorialJudgeBudgetBeforeCallV5(input: {
   attemptNumber: number;
   model: string;
   requestedUsd: number;
+  callKind?: 'editorial_judge' | 'editorial_judge_retry';
   now?: Date;
   capUsd?: number;
 }): Promise<BlogAiBudgetReservationRecordV4> {
@@ -304,7 +305,7 @@ export async function reserveBlogEditorialJudgeBudgetBeforeCallV5(input: {
     p_requested_usd: input.requestedUsd,
     p_cap_usd: capUsd,
     p_budget_day_kst: budgetDayKst,
-    p_call_kind: 'editorial_judge',
+    p_call_kind: input.callKind ?? 'editorial_judge',
   }).maybeSingle();
   if (error || !data) {
     return {

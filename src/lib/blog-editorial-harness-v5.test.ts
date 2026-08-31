@@ -208,6 +208,19 @@ describe('blog editorial harness v5', () => {
       ].map((key) => [key, { passed: key !== 'usefulness', reason: '판정 근거' }])),
       failureReasons: [],
     }))).toThrow('blog_editorial_judge_inconsistent_pass');
+
+    const tolerant = parseBlogEditorialJudgeReportV1(`판정 결과입니다.\n${JSON.stringify({
+      passed: true,
+      dimensions: {
+        usefulness: { passed: true, reason: '검색 질문에 답함' },
+        natural_korean: { passed: true, reason: '자연스러운 문장' },
+        completeness: { passed: true, reason: '제목 약속 이행' },
+        originality: { passed: true, reason: '반복 없음' },
+        source_honesty: { passed: true, reason: '출처 표현 정직' },
+      },
+      failureReasons: [],
+    })}\n끝`);
+    expect(tolerant.passed).toBe(true);
   });
 
   it('builds and deterministically inserts an answer-first airport route decision', () => {
