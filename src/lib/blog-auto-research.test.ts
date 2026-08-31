@@ -37,6 +37,7 @@ import { selectDecisionRelevantRewriteClaimsV4 } from '@/lib/blog-deepseek-orche
 import { validateBlogInformationStructure } from '@/lib/blog-information-structure';
 import { inspectPublicBlogCustomerQuality } from '@/lib/blog-public-customer-quality';
 import { computeReadability } from '@/lib/blog-readability';
+import { checkAiReadability } from '@/lib/blog-quality-gate';
 
 describe('normalizeAutoResearchStructuredValue', () => {
   it.each([
@@ -788,7 +789,7 @@ describe('augmentGrtaAirportTransportPayload', () => {
     });
     expect(writerOutput.markdown.trimStart()).toMatch(/^<!-- blog_decision_artifact:route_decision:v1 -->/);
     expect(writerOutput.markdown).not.toMatch(/24시간|15~30분/);
-    expect(writerOutput.markdown).toContain('실제 숙소까지의 소요시간은 승인된 근거에서 확인되지 않음');
+    expect(writerOutput.markdown).toContain('공항에서 숙소까지의 실제 소요시간은 현재 승인된 근거에서 확인되지 않아');
     const firstBody = writerOutput.markdown.slice(writerOutput.markdown.indexOf('\n\n') + 2, 500);
     expect(firstBody).toMatch(/1\.50 USD/);
     expect(firstBody).toMatch(/2\.40 USD/);
@@ -798,6 +799,7 @@ describe('augmentGrtaAirportTransportPayload', () => {
       expect(writerOutput.markdown.split(fact.claimText)).toHaveLength(2);
     }
     expect(computeReadability(writerOutput.markdown).issues.join('\n')).not.toContain('도배 어절');
+    expect(checkAiReadability(writerOutput.markdown, 'info', true).passed).toBe(true);
     const rendered = marked.parse(writerOutput.markdown) as string;
     const publicCustomer = inspectPublicBlogCustomerQuality({
       expectedType: 'info',

@@ -567,8 +567,8 @@ function routeDecisionFact(
 }
 
 function routeDecisionSourceLabel(url: string, fallback: string): string {
-  if (/grta_bus_pass_sales_information_sheet/i.test(url)) return 'GRTA 요금표 원문';
-  if (/master_-_fixed_route_schedule/i.test(url)) return 'GRTA Route 14 시간표 원문';
+  if (/grta_bus_pass_sales_information_sheet/i.test(url)) return '공식 GRTA 요금표 원문';
+  if (/master_-_fixed_route_schedule/i.test(url)) return '공식 GRTA Route 14 시간표 원문';
   if (/guamairport\.com/i.test(url)) return '괌 공항 교통 안내 원문';
   if (/visitguam\.com/i.test(url)) return '괌 관광청 교통 안내 원문';
   if (/kakaomobility\.com/i.test(url)) return '카카오 T 괌택시 FAQ 원문';
@@ -582,12 +582,7 @@ function routeDecisionFactMarkdown(fact: BlogDecisionPublicFactV1): string {
 }
 
 function routeDecisionTableCell(facts: BlogDecisionPublicFactV1[]): string {
-  const claims = facts.map((fact) => fact.claimText);
-  const citations = [...new Map(facts.flatMap((fact) => fact.sourceUrls.map((url) => [
-    url,
-    `[${routeDecisionSourceLabel(url, fact.citationLabel)}](${url})`,
-  ] as const))).values()];
-  return [...claims, ...citations].join('<br>').replace(/\|/g, '\\|');
+  return facts.map((fact) => fact.claimText).join('<br>').replace(/\|/g, '\\|');
 }
 
 function deterministicRouteDecisionArticle(
@@ -631,12 +626,24 @@ function deterministicRouteDecisionArticle(
       '',
       '## 교통수단별 공식 확인 결과',
       '',
-      '| 수단·구간 | 공식 요금 | 확인된 소요시간·운행 | 공항 승차·이용 조건 |',
-      '| --- | --- | --- | --- |',
-      `| GRTA Route 14 · 공항→Kmart | ${routeDecisionTableCell(fareFacts)} | ${routeDecisionTableCell([firstDeparture!, kmartDuration!])} | 정확한 공항 승차 위치는 공식 채널에서 출발 전에 재확인 |`,
-      `| GRTA Route 14 · 공항→GTA Upper Tumon | 위 GRTA 요금표와 동일 | 첫차 운행 기준<br>${routeDecisionTableCell([upperTumonDuration!])} | ${routeDecisionTableCell([tumonTransit!])} |`,
-      `| 현지 미터택시 | ${routeDecisionTableCell([taxiMeter!])} | 실제 숙소까지의 소요시간은 승인된 근거에서 확인되지 않음 | ${routeDecisionTableCell([taxiPickup!])} |`,
-      '| 카카오 T 괌택시 | 예약 화면에서 최종 요금 확인 | 비행편 도착 조건은 아래 공식 안내 확인 | 수하물과 항공 지연 조건을 예약 전에 확인 |',
+      '### GRTA 요금',
+      '',
+      '| 수단 | 공식 요금 |',
+      '| --- | --- |',
+      `| GRTA Route 14 | ${routeDecisionTableCell(fareFacts)} |`,
+      '',
+      '### GRTA 첫 운행 기준',
+      '',
+      '| 구간 | 확인된 소요시간·운행 | 이용 조건 |',
+      '| --- | --- | --- |',
+      `| 공항→Kmart | ${routeDecisionTableCell([firstDeparture!, kmartDuration!])} | 정확한 공항 승차 위치는 출발 전에 재확인 |`,
+      `| 공항→GTA Upper Tumon | 첫차 운행 기준<br>${routeDecisionTableCell([upperTumonDuration!])} | ${routeDecisionTableCell([tumonTransit!])} |`,
+      '',
+      '### 현지 미터택시',
+      '',
+      '| 수단 | 공식 요금 | 공항 승차 위치 |',
+      '| --- | --- | --- |',
+      `| 현지 미터택시 | ${routeDecisionTableCell([taxiMeter!])} | ${routeDecisionTableCell([taxiPickup!])} |`,
       '',
       '대중교통은 공식 시간표와 요금을 먼저 맞춰 보고, 택시는 미터요금·공항 카운터 위치·수하물 조건을 함께 확인하면 됩니다. 확인되지 않은 택시 소요시간을 임의로 예상값으로 바꾸지 않았습니다.',
       '',

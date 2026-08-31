@@ -106,10 +106,8 @@ export function isEligibleBlogGenerationAttemptRevalidationV4(input: {
   if (input.reason === 'route_template_dedup_v2') {
     const expectedFailures = [
       'publish_gate:ai_readability',
-      'publish_gate:public_customer_quality',
-      'public_customer:duplicate_public_section',
-      'editorial_harness_v5:semantic_usefulness',
-      'editorial_harness_v5:semantic_completeness',
+      'editorial_harness_v5:deterministic_internal_label_leak',
+      'editorial_harness_v5:semantic_judge_missing',
     ];
     const sameFailures = failureReasons.length === expectedFailures.length
       && expectedFailures.every((failure) => failureReasons.includes(failure));
@@ -126,7 +124,7 @@ export function isEligibleBlogGenerationAttemptRevalidationV4(input: {
         '일반 1일권 요금은 4.00 USD',
         '서쪽 도착 터미널 건물 밖',
       ].every((requiredText) => input.output.markdown.includes(requiredText));
-    return input.expectedAttemptNumber === 3
+    return input.expectedAttemptNumber === 4
       && sameFailures
       && oldQuality?.passed === true
       && oldClaimValidation?.passed === true
