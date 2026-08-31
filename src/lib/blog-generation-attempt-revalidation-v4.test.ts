@@ -48,4 +48,69 @@ describe('deterministic blog generation attempt revalidation v4', () => {
       output: { ...output, markdown: `${output.markdown}\n\n새 문장` },
     })).toBe(false);
   });
+
+  it('allows only the exact third-attempt route-template failure to receive a deterministic repair', () => {
+    const routeOutput = {
+      ...output,
+      title: '괌 공항 택시 카운터 미터요금 GRTA 요금: GRTA·택시 요금과 공항 택시 승차·수하물 안내',
+      slug: 'guam-airport-taxi-counter-grta-fares',
+      markdown: '<!-- blog_decision_artifact:route_decision:v1 -->\n# 기존 제목\n\n기존 표',
+      audit: {
+        claim_validation: { passed: true },
+        publish_quality: { passed: false },
+        quality_evaluation_v3: { passed: true, failureReasons: [] },
+      },
+    };
+    const repairedOutput = {
+      ...routeOutput,
+      title: '괌 공항 교통: 택시 위치·미터요금과 GRTA 요금 비교',
+      markdown: [
+        '<!-- blog_decision_artifact:route_decision:v1 -->',
+        '# 새 제목',
+        '기본 호출 2.40 USD, 최초 1마일 4.00 USD, 0.25마일마다 0.80 USD',
+        '일반 1회 탑승 요금은 1.50 USD, 일반 1일권 요금은 4.00 USD',
+        '서쪽 도착 터미널 건물 밖',
+      ].join('\n\n'),
+    };
+    const failureReasons = [
+      'publish_gate:ai_readability',
+      'publish_gate:public_customer_quality',
+      'public_customer:duplicate_public_section',
+      'editorial_harness_v5:semantic_usefulness',
+      'editorial_harness_v5:semantic_completeness',
+    ];
+    const eligible = (reasons = failureReasons, attemptNumber = 3) =>
+      isEligibleBlogGenerationAttemptRevalidationV4({
+        snapshot: {
+          attemptNumber,
+          status: 'completed',
+          route: 'quarantine',
+          qualityScore: 0,
+          hardBlockers: [],
+          failureReasons: reasons,
+          output: routeOutput,
+        },
+        expectedAttemptNumber: attemptNumber,
+        output: repairedOutput,
+        reason: 'route_template_dedup_v2',
+      });
+
+    expect(eligible()).toBe(true);
+    expect(eligible([...failureReasons, 'unsupported_number_present'])).toBe(false);
+    expect(eligible(failureReasons, 2)).toBe(false);
+    expect(isEligibleBlogGenerationAttemptRevalidationV4({
+      snapshot: {
+        attemptNumber: 3,
+        status: 'completed',
+        route: 'quarantine',
+        qualityScore: 0,
+        hardBlockers: [],
+        failureReasons,
+        output: routeOutput,
+      },
+      expectedAttemptNumber: 3,
+      output: { ...repairedOutput, markdown: '<!-- blog_decision_artifact:route_decision:v1 -->\n임의 변경' },
+      reason: 'route_template_dedup_v2',
+    })).toBe(false);
+  });
 });

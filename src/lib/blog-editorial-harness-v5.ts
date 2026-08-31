@@ -355,17 +355,24 @@ function buildRouteDecisionAnswer(
     /GRTA|버스|대중교통|transit|bus/i.test(fact.claimText)
     && /승차\s*(?:장소|위치)|타는\s*곳|정류장|승강장|platform|stop/i.test(fact.claimText));
 
-  const directAnswer = hasGrta && hasKakaoTaxi
-    ? '대중교통 요금을 확인하려면 GRTA 항목을, 현지 택시 요금·공항 승차 위치와 카카오 T 괌택시의 수하물·항공 지연 대응을 확인하려면 택시 항목을 보면 됩니다.'
+  const fullRouteDecision = hasGrta && hasKakaoTaxi && hasFare && hasTaxiBaseFare
+    && hasTaxiPickupLocation && hasLuggage && hasFlightDelay && hasTransitToTumon;
+  const directAnswer = fullRouteDecision
+    ? '현지 미터택시는 서쪽 도착 터미널 건물 밖 카운터에서 확인할 수 있고, 표준요금은 기본 호출 2.40 USD·최초 1마일 4.00 USD·이후 0.25마일마다 0.80 USD입니다. GRTA는 일반 1회 1.50 USD, 1일권 4.00 USD이며 Route 14 첫차는 공항에서 5:55에 출발합니다.'
+    : hasGrta && hasKakaoTaxi
+      ? '대중교통 요금을 확인하려면 GRTA 항목을, 현지 택시 요금·공항 승차 위치와 카카오 T 괌택시의 수하물·항공 지연 대응을 확인하려면 택시 항목을 보면 됩니다.'
     : '대중교통과 택시에서 확인할 항목을 나누어 보면 됩니다.';
   const colonPrefix = originalTitle.split(':')[0]?.trim() || originalTitle.trim();
   const directionalPrefix = colonPrefix.match(/^(.+?\s*공항)(?:에서)?\s*(.+?)(?:까지)?\s*(?:교통(?:수단)?|이동(?:수단|방법)?)$/u);
   const titlePrefix = directionalPrefix
     ? `${directionalPrefix[1]} ${directionalPrefix[2]} 교통`.replace(/\s+/g, ' ').trim()
     : colonPrefix;
-  const resolvedTitle = hasGrta && hasKakaoTaxi && hasFare && hasTaxiBaseFare
-    && hasTaxiPickupLocation && hasLuggage && hasFlightDelay && hasTransitToTumon
-    ? `${titlePrefix}: GRTA·택시 요금과 공항 택시 승차·수하물 안내`
+  const airportDestination = titlePrefix.match(/^(.+?)\s*공항/u)?.[1]?.trim();
+  const conciseTitlePrefix = airportDestination && /택시|GRTA|요금/i.test(titlePrefix)
+    ? `${airportDestination} 공항 교통`
+    : titlePrefix;
+  const resolvedTitle = fullRouteDecision
+    ? `${conciseTitlePrefix}: 택시 위치·미터요금과 GRTA 요금 비교`
     : hasGrta && hasKakaoTaxi && hasFare && hasLuggage && hasFlightDelay
       ? `${titlePrefix}: GRTA 요금과 괌택시 수하물·지연 대응`
     : `${titlePrefix}: 공식 근거와 예약 전 확인 항목`;
@@ -559,14 +566,28 @@ function routeDecisionFact(
   return facts.find((fact) => (!claimType || fact.claimType === claimType) && pattern.test(fact.claimText)) ?? null;
 }
 
+function routeDecisionSourceLabel(url: string, fallback: string): string {
+  if (/grta_bus_pass_sales_information_sheet/i.test(url)) return 'GRTA 요금표 원문';
+  if (/master_-_fixed_route_schedule/i.test(url)) return 'GRTA Route 14 시간표 원문';
+  if (/guamairport\.com/i.test(url)) return '괌 공항 교통 안내 원문';
+  if (/visitguam\.com/i.test(url)) return '괌 관광청 교통 안내 원문';
+  if (/kakaomobility\.com/i.test(url)) return '카카오 T 괌택시 FAQ 원문';
+  return fallback;
+}
+
 function routeDecisionFactMarkdown(fact: BlogDecisionPublicFactV1): string {
   const url = fact.sourceUrls[0] ?? '';
-  const citation = url ? ` [${fact.citationLabel}](${url})` : '';
+  const citation = url ? ` [${routeDecisionSourceLabel(url, fact.citationLabel)}](${url})` : '';
   return `${fact.claimText}${citation}`;
 }
 
 function routeDecisionTableCell(facts: BlogDecisionPublicFactV1[]): string {
-  return facts.map(routeDecisionFactMarkdown).join('<br>').replace(/\|/g, '\\|');
+  const claims = facts.map((fact) => fact.claimText);
+  const citations = [...new Map(facts.flatMap((fact) => fact.sourceUrls.map((url) => [
+    url,
+    `[${routeDecisionSourceLabel(url, fact.citationLabel)}](${url})`,
+  ] as const))).values()];
+  return [...claims, ...citations].join('<br>').replace(/\|/g, '\\|');
 }
 
 function deterministicRouteDecisionArticle(
@@ -594,7 +615,7 @@ function deterministicRouteDecisionArticle(
     : ['- 출발일의 최신 운행·요금 조건은 각 공식 링크에서 다시 확인하세요.'];
   const sourceLines = [...new Map(selectedFacts.flatMap((fact) => fact.sourceUrls.map((url) => [
     url,
-    `- [${fact.citationLabel}](${url})`,
+    `- [${routeDecisionSourceLabel(url, fact.citationLabel)}](${url})`,
   ] as const))).values()];
   const fareFacts = [oneRide!, oneDay!];
 
@@ -606,8 +627,6 @@ function deterministicRouteDecisionArticle(
       '',
       artifact.directAnswer,
       '',
-      '공식 확인값은 GRTA 1회 1.50 USD·1일권 4.00 USD, 현지 미터택시 기본 호출 2.40 USD입니다.',
-      '',
       '공식 근거가 확인된 범위만 표에 넣었습니다. 택시의 실제 숙소 도착 시간과 공항의 정확한 GRTA 승차 위치처럼 확인되지 않은 항목은 별도로 표시합니다.',
       '',
       '## 교통수단별 공식 확인 결과',
@@ -615,7 +634,7 @@ function deterministicRouteDecisionArticle(
       '| 수단·구간 | 공식 요금 | 확인된 소요시간·운행 | 공항 승차·이용 조건 |',
       '| --- | --- | --- | --- |',
       `| GRTA Route 14 · 공항→Kmart | ${routeDecisionTableCell(fareFacts)} | ${routeDecisionTableCell([firstDeparture!, kmartDuration!])} | 정확한 공항 승차 위치는 공식 채널에서 출발 전에 재확인 |`,
-      `| GRTA Route 14 · 공항→GTA Upper Tumon | ${routeDecisionTableCell(fareFacts)} | ${routeDecisionTableCell([firstDeparture!, upperTumonDuration!])} | ${routeDecisionTableCell([tumonTransit!])} |`,
+      `| GRTA Route 14 · 공항→GTA Upper Tumon | 위 GRTA 요금표와 동일 | 첫차 운행 기준<br>${routeDecisionTableCell([upperTumonDuration!])} | ${routeDecisionTableCell([tumonTransit!])} |`,
       `| 현지 미터택시 | ${routeDecisionTableCell([taxiMeter!])} | 실제 숙소까지의 소요시간은 승인된 근거에서 확인되지 않음 | ${routeDecisionTableCell([taxiPickup!])} |`,
       '| 카카오 T 괌택시 | 예약 화면에서 최종 요금 확인 | 비행편 도착 조건은 아래 공식 안내 확인 | 수하물과 항공 지연 조건을 예약 전에 확인 |',
       '',
