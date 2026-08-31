@@ -74,12 +74,10 @@ describe('deterministic blog generation attempt revalidation v4', () => {
     };
     const failureReasons = [
       'publish_gate:ai_readability',
-      'publish_gate:public_customer_quality',
-      'public_customer:duplicate_public_section',
-      'editorial_harness_v5:semantic_usefulness',
-      'editorial_harness_v5:semantic_completeness',
+      'editorial_harness_v5:deterministic_internal_label_leak',
+      'editorial_harness_v5:semantic_judge_missing',
     ];
-    const eligible = (reasons = failureReasons, attemptNumber = 3) =>
+    const eligible = (reasons = failureReasons, attemptNumber = 4) =>
       isEligibleBlogGenerationAttemptRevalidationV4({
         snapshot: {
           attemptNumber,
@@ -97,10 +95,10 @@ describe('deterministic blog generation attempt revalidation v4', () => {
 
     expect(eligible()).toBe(true);
     expect(eligible([...failureReasons, 'unsupported_number_present'])).toBe(false);
-    expect(eligible(failureReasons, 2)).toBe(false);
+    expect(eligible(failureReasons, 3)).toBe(false);
     expect(isEligibleBlogGenerationAttemptRevalidationV4({
       snapshot: {
-        attemptNumber: 3,
+        attemptNumber: 4,
         status: 'completed',
         route: 'quarantine',
         qualityScore: 0,
@@ -108,7 +106,7 @@ describe('deterministic blog generation attempt revalidation v4', () => {
         failureReasons,
         output: routeOutput,
       },
-      expectedAttemptNumber: 3,
+      expectedAttemptNumber: 4,
       output: { ...repairedOutput, markdown: '<!-- blog_decision_artifact:route_decision:v1 -->\n임의 변경' },
       reason: 'route_template_dedup_v2',
     })).toBe(false);

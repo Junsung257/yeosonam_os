@@ -2479,15 +2479,20 @@ function readBlogAttemptRevalidationRequestV4(item: any): BlogAttemptRevalidatio
   const request = item?.meta?.deterministic_attempt_revalidation_v4;
   if (!request || typeof request !== 'object' || Array.isArray(request)) return null;
   const attemptId = typeof request.attempt_id === 'string' ? request.attempt_id.trim() : '';
+  const attemptCount = Number(item?.attempts || 0);
+  const reason = request.reason as BlogAttemptRevalidationRequestV4['reason'];
+  const attemptCountAllowed = reason === 'opening_heading_exclusion_v1'
+    ? attemptCount === BLOG_QUALITY_MAX_ATTEMPTS_V4
+    : reason === 'route_template_dedup_v2' && attemptCount === 4;
   if (item?.meta?.controlled_publish_canary !== true
     || item?.source !== 'user_seed'
-    || Number(item?.attempts || 0) !== BLOG_QUALITY_MAX_ATTEMPTS_V4
+    || !attemptCountAllowed
     || request.mode !== 'deterministic_quality_revalidation'
     || !['opening_heading_exclusion_v1', 'route_template_dedup_v2'].includes(request.reason)
     || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(attemptId)) {
     return null;
   }
-  return { attemptId, reason: request.reason as BlogAttemptRevalidationRequestV4['reason'] };
+  return { attemptId, reason };
 }
 
 async function processQueueItem(
