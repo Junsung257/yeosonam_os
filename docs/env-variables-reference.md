@@ -104,6 +104,16 @@ V6는 기본적으로 레거시 호환 또는 그림자 처리만 합니다. 운
 
 LLM trace는 원문 prompt/response를 속성에 저장하지 않고 `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`, token usage와 여소남 task/phase만 기록합니다. Sentry 전송 전에는 전화·이메일·여권·계좌·주민번호와 credential key를 재귀적으로 마스킹합니다.
 
+## 조사 노드·Inngest 전환 안전 스위치 (2026-08-31)
+
+| 변수 | 안전한 기본값 | 용도 |
+|---|---:|---|
+| `RESEARCH_NODE_INGEST_TOKEN` | 미설정 | 조사 노드가 `POST /api/internal/research/signals`에만 쓰는 32자 이상의 전용 bearer token. Production과 전용 조사 PC에만 설정하며 Supabase 키로 대체하지 않음 |
+| `INNGEST_SCHEDULES_ENABLED` | `false` | 정기 Inngest 함수의 부작용 허용. 기존 Vercel Cron 소유권을 같은 배포에서 제거하고 Inngest 서명·이벤트 키를 검증한 뒤에만 `true` |
+| `INNGEST_BILLING_ENABLED` | `false` | 월간 결제 작업의 별도 이중 승인. `INNGEST_SCHEDULES_ENABLED=true`와 안정적 order ID·결제 재시도 검증이 모두 필요 |
+
+조사 PC에는 `RESEARCH_NODE_INGEST_TOKEN`과 intake URL 외의 Production 키를 주지 않습니다. 현재 Production에 Inngest 키가 없으므로 일일 마케팅을 포함한 정기 작업의 소유자는 Vercel Cron입니다.
+
 ## ⚠️ 시크릿 관리 정책 (중요)
 
 1. **실제 시크릿 값은 Vercel Environment Variables에서만 관리합니다.**

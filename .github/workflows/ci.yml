@@ -38,6 +38,19 @@ jobs:
       - name: Verify CI actions are immutable
         run: npm run verify:ci-action-pins
 
+      - name: Audit automation runtime ownership
+        run: npm run audit:automation-runtime:ci
+
+      - name: Block new untraced direct LLM calls
+        run: npm run audit:llm-telemetry:ci
+
+      - name: Verify isolated research node package
+        working-directory: tools/research-node
+        run: |
+          npm ci --ignore-scripts
+          npm audit --audit-level=high
+          npm test
+
       - name: Verify external API contract artifacts
         run: npm run verify:openapi:v1
 
