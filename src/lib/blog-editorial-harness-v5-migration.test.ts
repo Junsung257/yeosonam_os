@@ -11,7 +11,7 @@ const retryMigration = readFileSync(
   'utf8',
 );
 const structuredRetryMigration = readFileSync(
-  resolve(process.cwd(), 'supabase/migrations/20260831140000_blog_editorial_judge_structured_retry_v1.sql'),
+  resolve(process.cwd(), 'supabase/migrations/20260831015300_blog_editorial_judge_structured_retry_v1.sql'),
   'utf8',
 );
 const recorder = readFileSync(resolve(process.cwd(), 'src/lib/blog-generation-run-v4.ts'), 'utf8');
