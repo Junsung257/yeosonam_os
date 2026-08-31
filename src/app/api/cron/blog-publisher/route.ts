@@ -4822,6 +4822,22 @@ interface GeneratedBlog {
   slide_image_urls?: string[];
 }
 
+function alignGuamAirportCanaryDescriptionV4(input: {
+  contentBrief: { metadata: { description: string } };
+  decisionArtifact: { promiseType: string; publicFacts: Array<{ claimText: string }> };
+  destination?: string | null;
+}): void {
+  const routeFactText = input.decisionArtifact.publicFacts.map((fact) => fact.claimText).join('\n');
+  const hasGuamCanaryEvidence = input.decisionArtifact.promiseType === 'route_decision'
+    && /GRTA/i.test(routeFactText)
+    && /카카오\s*T|Kakao\s*T/i.test(routeFactText)
+    && /택시\s*카운터|taxi\s*counter/i.test(routeFactText)
+    && /택시\s*미터|미터\s*요금|taxi\s*meter/i.test(routeFactText);
+  if (!hasGuamCanaryEvidence) return;
+  const destinationLabel = String(input.destination || '').trim();
+  input.contentBrief.metadata.description = `${destinationLabel ? `${destinationLabel} ` : ''}공항 교통을 준비할 때 확인할 GRTA 요금·운행 근거, 공항 택시 카운터와 현지 택시 미터요금, 카카오 T 괌택시 수하물·항공 지연 대응을 공식 출처별로 정리했습니다.`;
+}
+
 async function loadBlogAttemptRevalidationCandidateV4(
   item: any,
   request: BlogAttemptRevalidationRequestV4,
@@ -4923,6 +4939,11 @@ async function loadBlogAttemptRevalidationCandidateV4(
     contentBriefV3.title = decisionArtifact.resolvedTitle;
     contentBriefV3.metadata.title = decisionArtifact.resolvedTitle;
     contentBriefV3.metadata.ogTitle = decisionArtifact.resolvedTitle;
+    alignGuamAirportCanaryDescriptionV4({
+      contentBrief: contentBriefV3,
+      decisionArtifact,
+      destination: item.destination,
+    });
     const repaired = applyBlogDecisionArtifactToWriterOutputV1({
       artifact: decisionArtifact,
       output: {
@@ -5476,16 +5497,11 @@ async function generateFromTopic(
       primary: true,
     }];
   }
-  const routeFactText = decisionArtifact.publicFacts.map((fact) => fact.claimText).join('\n');
-  const hasGuamCanaryEvidence = decisionArtifact.promiseType === 'route_decision'
-    && /GRTA/i.test(routeFactText)
-    && /카카오\s*T|Kakao\s*T/i.test(routeFactText)
-    && /택시\s*카운터|taxi\s*counter/i.test(routeFactText)
-    && /택시\s*미터|미터\s*요금|taxi\s*meter/i.test(routeFactText);
-  if (hasGuamCanaryEvidence) {
-    const destinationLabel = String(item.destination || '').trim();
-    contentBriefV3.metadata.description = `${destinationLabel ? `${destinationLabel} ` : ''}공항 교통을 준비할 때 확인할 GRTA 요금·운행 근거, 공항 택시 카운터와 현지 택시 미터요금, 카카오 T 괌택시 수하물·항공 지연 대응을 공식 출처별로 정리했습니다.`;
-  }
+  alignGuamAirportCanaryDescriptionV4({
+    contentBrief: contentBriefV3,
+    decisionArtifact,
+    destination: item.destination,
+  });
   const artifactResearchBundle = withBlogDecisionArtifactClaimsV1(
     researchReadiness.bundle,
     decisionArtifact,
