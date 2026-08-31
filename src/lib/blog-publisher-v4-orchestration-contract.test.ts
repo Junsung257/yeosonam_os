@@ -96,6 +96,8 @@ describe('blog publisher V4 orchestration wiring', () => {
     expect(source).toContain('revalidateBlogGenerationAttemptV4({');
     expect(source).toContain('model_calls: 0');
     expect(source.match(/alignGuamAirportCanaryDescriptionV4\(/g)).toHaveLength(3);
+    expect(source).toContain('const alreadyRevalidatedAttempt =');
+    expect(source).toContain('existingRevalidation?.source_attempt_id === request.attemptId');
   });
 
   it('synchronizes a non-human informational review case before approving its deferred slot', () => {

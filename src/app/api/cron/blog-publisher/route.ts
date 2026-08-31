@@ -4944,24 +4944,41 @@ async function loadBlogAttemptRevalidationCandidateV4(
     markdown: String(output.markdown || ''),
     audit: output.audit || {},
   };
+  const existingRevalidation = normalizedOutput.audit.deterministic_revalidation_v4 as
+    | Record<string, unknown>
+    | undefined;
+  const alreadyRevalidatedAttempt = attempt.status === 'completed'
+    && attempt.route === 'approved_for_slot'
+    && Number(attempt.attempt_number || 0) === Number(item.attempts || 0)
+    && Number(attempt.quality_score_after || 0) >= 90
+    && Array.isArray(attempt.hard_blockers)
+    && attempt.hard_blockers.length === 0
+    && Array.isArray(attempt.failure_reasons)
+    && attempt.failure_reasons.length === 0
+    && existingRevalidation?.reason === request.reason
+    && existingRevalidation?.source_attempt_id === request.attemptId
+    && existingRevalidation?.model_calls === 0;
   const eligible = attempt.run_id === run.id
     && run.status === 'quarantine'
     && Number(run.attempt_count || 0) === Number(item.attempts || 0)
     && run.selected_attempt_id === null
-    && isEligibleBlogGenerationAttemptRevalidationV4({
-      snapshot: {
-        attemptNumber: Number(attempt.attempt_number || 0),
-        status: String(attempt.status || ''),
-        route: String(attempt.route || ''),
-        qualityScore: Number(attempt.quality_score_after || 0),
-        hardBlockers: attempt.hard_blockers,
-        failureReasons: attempt.failure_reasons,
+    && (
+      alreadyRevalidatedAttempt
+      || isEligibleBlogGenerationAttemptRevalidationV4({
+        snapshot: {
+          attemptNumber: Number(attempt.attempt_number || 0),
+          status: String(attempt.status || ''),
+          route: String(attempt.route || ''),
+          qualityScore: Number(attempt.quality_score_after || 0),
+          hardBlockers: attempt.hard_blockers,
+          failureReasons: attempt.failure_reasons,
+          output: normalizedOutput,
+        },
+        expectedAttemptNumber: Number(item.attempts || 0),
         output: normalizedOutput,
-      },
-      expectedAttemptNumber: Number(item.attempts || 0),
-      output: normalizedOutput,
-      reason: request.reason,
-    });
+        reason: request.reason,
+      })
+    );
   if (!eligible) throw new Error('generation_attempt_revalidation_candidate_not_eligible');
 
   const contentBrief = buildQueueContentBrief(item);
