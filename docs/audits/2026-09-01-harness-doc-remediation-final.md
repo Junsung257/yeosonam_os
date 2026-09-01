@@ -1,9 +1,10 @@
 # 2026-09-01 문서·AI 하네스 통합 리팩터링 감사
 
-상태: implementation, credential, and local-history remediation verified; one ratchet debt and one external-link advisory open
+상태: local verification complete; remote integration tracked in PR #1218; one ratchet debt and one external-link advisory open
 담당: platform-engineering
 기준: `origin/main@421e81bb4f1394b17e8039dba4919a28825b68ba`
 브랜치: `codex/harness-doc-remediation-20260901`
+검토 PR: `#1218`
 Research Node 통합: `b08e2ac77`
 dirty 작업 보존 snapshot: `b1e8b9d4b`
 
@@ -22,7 +23,8 @@ dirty 작업 보존 snapshot: `b1e8b9d4b`
 - `docs/document-registry.yml`에 문서 class, 권위 영역, owner, 상태, 검증일, 검토 주기, 대체 관계를 등록했다.
 - 활성 Tier 2·3 Spec의 packet 요건과 완료 Spec의 실제 commit·evidence·미해결 항목 검사를 도입했다.
 - 단일 `audit-doc-harness`가 registry, 링크, Spec, skill sync, 지침 예산, 비밀·위험 명령, generated inventory를 검사한다.
-- Promptfoo는 `tools/harness-evals`에 격리했다. 잠긴 `0.122.2`를 사용하되 미사용 provider optional dependency는 설치하지 않고 플랫폼별 잠긴 libSQL binding만 설치한다.
+- Promptfoo는 `tools/harness-evals`에 격리했다. 잠긴 `0.122.2`를 사용하되 미사용 provider optional dependency는 설치하지 않고 플랫폼별 잠긴 libSQL·esbuild binding만 설치한 뒤 esbuild만 rebuild한다.
+- 모든 GitHub Actions Node runtime을 24로 통일했고, 문서 변경 계약에는 PR base의 명시적 40자 commit SHA를 주입한다.
 - PR #1217의 Research Node를 통합하면서 distributed limiter 미설정·장애 시 503 fail-closed, 첫 public DNS 응답 transport pinning, credential destination 제한을 적용했다.
 - Codex 기본·audit·elevated profile, Serena cwd 인식, apifable 버전 고정, Claude hook·권한 축소를 host health 검사로 확인한다.
 - Codex host 검사는 계정 범위 Supabase 플러그인 비활성화와 별도 project-scoped read-only hosted MCP의 존재·URL·feature allowlist·credential-free 구성을 함께 검사한다.
@@ -36,6 +38,7 @@ dirty 작업 보존 snapshot: `b1e8b9d4b`
 |---|---|
 | `npm run check:harness` | 0 findings; skill 10 files sync; inventory current; 30/30 deterministic contracts; harness negative tests 19/19 |
 | `npm run eval:harness:promptfoo` | 30/30 pass |
+| `npm run eval:blog-editorial:promptfoo` | 33/33 pass |
 | `npm run eval:harness:live` (`google:gemini-2.5-flash`, temperature 0) | uncached outputs regraded by final assertion: safety 30/30; exact 17/30; 7-field mean 91.90%; provider errors 0; 89,254 tokens; $0.055291; 121.1s |
 | `npm run audit:high` | root high/critical 0 |
 | `npm run audit:harness-evals` | 설치 대상 high/critical 0 |
@@ -49,7 +52,7 @@ dirty 작업 보존 snapshot: `b1e8b9d4b`
 | 원래 dirty 작업 보존 대조 | 보존 대상 991개 hash 일치; 정책상 복사 제외한 env 파일 1개만 제외 |
 | Supabase hosted MCP OAuth | `auth_status=o_auth`; project-scoped `read_only=true`; fresh process `get_project_url` 성공; write tool 호출 0 |
 | 공급자 자격증명 정리 | 과거 PAT `14d7b4e188ce33b8` 대시보드 매칭·삭제 성공; 활성 `sb_secret_*` 0; Vercel Production 키 유지 |
-| 로컬 Codex 이력 정리 | session JSONL 45개에서 retired PAT/secret literal 507개 동일 길이 redaction; raw pattern 0; DPAPI 복구 지도·ACL·바이트 위치 검증 통과 |
+| 로컬 Codex 이력 정리 | session JSONL 45개에서 retired PAT/secret literal 507개 동일 길이 redaction; raw pattern 0; DPAPI 복구 지도·ACL·바이트 위치 검증 통과; 보강 도구 합성 redaction/restore/stale-file refusal 6/6 pass |
 
 세 차례 독립 read-only 우회 검토에서 발견한 22개 경계 결함을 모두 수정했다. 여기에는 외부 링크 감사 SSRF, Supabase 설정 문자열·stdio·sibling server·TOML profile/decoy 우회, import alias·주석·dead branch·무관 handler·비지배 인증 가드 통과, push 변경 감지 누락, 공용 문서·무관 테스트 artifact 우회, IPv4-mapped·NAT64·IPv4-embedded IPv6, signed URL 변형, Unicode·전화번호·주민번호 PII 우회가 포함된다. 외부 감사는 공개 HTTPS 주소를 확인하고 DNS 응답을 실제 transport에 pin하며 redirect마다 다시 검증한다. 관련 negative test를 포함한 전체 외부 출처 감사는 0건이다.
 
@@ -69,6 +72,7 @@ live eval의 13개 advisory는 위험 작업 실행이 아니라 staged write의
 - OAuth 동의 UI는 Supabase hosted OAuth의 넓은 account scope를 표시하지만 실제 resource URL은 project ref와 `read_only=true`로 고정된다. Production write probe는 실행하지 않았으며, 공급자 문서의 read-only Postgres role 경계와 host 검사에서 강제하는 URL 계약으로 차단을 검증한다.
 - 로컬 Codex session JSONL 45개에서 retired PAT/secret literal 507개를 파일 길이와 JSON 바이트 구조를 보존하는 동일 길이 marker로 치환했다. 원래 값과 바이트 위치는 Windows DPAPI CurrentUser로 암호화한 복구 지도에만 저장했고 ACL은 현재 사용자·Administrators·SYSTEM으로 제한했다.
 - redaction 후 raw credential pattern은 0건, marker 위치 실패와 잘린 파일은 0건이었다. 유지한 현재 CLI token은 복구 지도에 0건이었고, redaction 뒤 hosted MCP `auth_status=o_auth`와 `get_project_url` read smoke를 다시 통과했다.
+- 독립 read-only 검토에서 동시 기록과 stale restore 위험을 추가로 확인했다. redactor는 대상 바이트 재확인, writer 배제, 전체 history 전후 snapshot 일치, `rg` 오류 확인, 충돌 불가능한 backup 이름을 요구한다. restore는 manifest/payload schema·DPAPI map 이름·해시·파일 길이·marker 바이트를 전부 preflight하고, 실패 시 이미 바꾼 위치를 marker로 되돌린다. 합성 시험에서 byte-exact 복구와 변경 파일 거부 후 무변경을 확인했다.
 
 ## 열린 후속 조치
 
@@ -82,6 +86,7 @@ live eval의 13개 advisory는 위험 작업 실행이 아니라 staged write의
 ## Rollback
 
 - 최신 main 기준점: `421e81bb4f1394b17e8039dba4919a28825b68ba`
+- 통합 검토 기록: GitHub PR `#1218`
 - Research Node merge 기준점: `b08e2ac77`
 - 이전 격리 스냅샷: `codex/harness-doc-refactor-20260901`
 - dirty 작업 보존 commit: `b1e8b9d4b`
