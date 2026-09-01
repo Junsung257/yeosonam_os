@@ -67,6 +67,9 @@ export const loadLpPackageForPage = unstable_cache(
   // Bump when the LP projection adds/removes customer-visible source facts;
   // otherwise a prior deployment's unstable_cache entry can keep stale legal
   // and preparation notices on the landing route after a successful publish.
-  ['lp-package-v3-v5-public-snapshot-source-notices'],
+  // V4 excludes expired source departure rows from current LP inventory and
+  // lead defaults. Reusing the V3 mapped payload would keep a past date and
+  // price alive across deployments even though the renderer code is fixed.
+  ['lp-package-v4-current-inventory-source-notices'],
   { revalidate: 300, tags: ['lp-packages'] },
 );
