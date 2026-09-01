@@ -23,6 +23,20 @@ import {
   resolveEffectiveBlogPublicationRollout,
 } from '@/lib/blog-publication-rollout';
 import { loadBlogPublicationRolloutState } from '@/lib/blog-publication-rollout-repository';
+import { getBlogPublishingPolicy } from '@/lib/blog-scheduler';
+import {
+  createBlogPreviewContentHash,
+  readBlogBrowserPreviewEvidenceV4,
+} from '@/lib/blog-browser-preview-v4';
+import {
+  BLOG_RUNTIME_RESOURCES_V3,
+  probeBlogRuntimeSchemaWithSupabaseV3,
+} from '@/lib/blog-runtime-readiness-v3';
+import { enqueueBlogSearchFollowupsV4 } from '@/lib/blog-search-followup-v4';
+import {
+  buildBlogQualityDecisionV4,
+  isBlogQualityDecisionPublishableV4,
+} from '@/lib/blog-autopilot-v4-contract';
 
 export const runtime = 'nodejs';
 export const maxDuration = 180;
@@ -38,6 +52,21 @@ async function runBlogPublicationController(request: NextRequest) {
   if (!isCronOrVercelAuthorized(request)) return cronUnauthorizedResponse();
   if (!isSupabaseConfigured) return { skipped: true, reason: 'supabase_not_configured' };
 
+  const schemaReadiness = await probeBlogRuntimeSchemaWithSupabaseV3(
+    supabaseAdmin,
+    new Date(),
+    BLOG_RUNTIME_RESOURCES_V3.filter((resource) => (
+      resource.scope === 'publish' || resource.scope === 'delivery'
+    )),
+  );
+  if (!schemaReadiness.publishReady || !schemaReadiness.deliveryReady) {
+    return {
+      skipped: true,
+      reason: 'blog_autopilot_v4_runtime_schema_not_ready',
+      schemaReadiness,
+    };
+  }
+
   const policy = readBlogAutopublishPolicyV3();
   if (policy.mode !== 'live') {
     return { skipped: true, reason: `autopublish_mode_${policy.mode}`, policy };
@@ -52,8 +81,22 @@ async function runBlogPublicationController(request: NextRequest) {
     environmentStageCeiling: policy.publicationRampStage,
     environmentDailyCap: policy.requestedDailyPublishCap,
   });
-  if (rollout.frozen || rollout.dailyCap <= 0) {
+  if (rollout.frozen) {
     return { skipped: true, reason: 'publication_rollout_frozen', policy, rollout };
+  }
+  const publishingPolicy = await getBlogPublishingPolicy('global');
+  // V4 volume SSOT: only publishing_policies controls daily volume and slots.
+  // The durable legacy rollout ledger still provides an emergency freeze, but
+  // its historical 3/10/30 stage caps must not affect publication volume.
+  const effectiveDailyTarget = publishingPolicy.posts_per_day;
+  if (effectiveDailyTarget <= 0) {
+    return {
+      skipped: true,
+      reason: 'publishing_policy_disabled_or_unavailable',
+      policy,
+      rollout,
+      publishingPolicy,
+    };
   }
 
   const now = new Date();
@@ -70,12 +113,12 @@ async function runBlogPublicationController(request: NextRequest) {
 
   const quota = calculateBlogPublishSlotQuota({
     now,
-    dailyTarget: rollout.dailyCap,
+    dailyTarget: effectiveDailyTarget,
     alreadyPublished: Number(publishedToday ?? 0),
-    rolloutStage: rollout.stage,
-    cumulativeTargets: rollout.cumulativeSlotCaps,
+    slotTimes: publishingPolicy.slot_times,
+    rolloutStage: null,
   });
-  const remainingDailyCapacity = Math.max(0, rollout.dailyCap - Number(publishedToday ?? 0));
+  const remainingDailyCapacity = Math.max(0, effectiveDailyTarget - Number(publishedToday ?? 0));
   if (remainingDailyCapacity <= 0) return { skipped: true, reason: 'daily_publish_cap_reached', quota };
   if (!forceTargetedRun && quota.remainingDueNow <= 0) {
     return { skipped: true, reason: 'publication_slot_not_due', quota };
@@ -122,7 +165,7 @@ async function runBlogPublicationController(request: NextRequest) {
     try {
       const { data: attempt, error: attemptError } = await supabaseAdmin
         .from('blog_generation_attempts')
-        .select('hard_blockers,failure_reasons,route,quality_score_after,output_document')
+        .select('hard_blockers,failure_reasons,route,quality_score_after,output_document,claim_fingerprint,model,prompt_template_version')
         .eq('id', selectedAttemptId)
         .eq('run_id', run.id)
         .single();
@@ -154,6 +197,52 @@ async function runBlogPublicationController(request: NextRequest) {
         && String(selectedOutput.markdown ?? '') === String(creative.blog_html ?? '');
       if (!selectedOutputMatchesDraft) throw new Error('selected_attempt_output_mismatch');
       const generationMeta = (creative.generation_meta || {}) as Record<string, unknown>;
+      const browserPreview = readBlogBrowserPreviewEvidenceV4(generationMeta);
+      const currentPreviewContentHash = createBlogPreviewContentHash({
+        slug: String(creative.slug || ''),
+        title: creative.seo_title,
+        description: creative.seo_description,
+        markdown: creative.blog_html,
+      });
+      if (!browserPreview
+        || !browserPreview.passed
+        || browserPreview.score < 95
+        || browserPreview.mobileScore < 95
+        || browserPreview.desktopScore < 95
+        || browserPreview.contentHash !== currentPreviewContentHash) {
+        throw new Error('browser_preview_gate_pending_or_stale');
+      }
+      const qualityEvaluation = generationMeta.quality_evaluation_v3 as Record<string, unknown> | undefined;
+      const claimValidation = generationMeta.information_claim_validation as Record<string, unknown> | undefined;
+      const editorialHarness = generationMeta.editorial_harness_v5 as Record<string, unknown> | null | undefined;
+      const orchestrationMeta = generationMeta.ai_orchestration_v4 as Record<string, unknown> | undefined;
+      const claimHash = String(attempt.claim_fingerprint || '');
+      const qualityDecisionV4 = buildBlogQualityDecisionV4({
+        modelVersion: String(attempt.model || 'unknown'),
+        promptVersion: String(attempt.prompt_template_version || 'unknown'),
+        claimHashBefore: claimHash,
+        claimHashAfter: claimHash,
+        deterministicPassed: qualityEvaluation?.passed === true,
+        evidencePassed: claimValidation?.passed === true,
+        stylePassed: creative.product_id ? true : editorialHarness?.passed === true,
+        seoPassed: orchestrationMeta?.publish_quality_passed === true,
+        publicRenderPassed: Number(generationMeta.public_render_score || 0) === 100,
+        browserPreviewScore: browserPreview.score,
+        browserPreviewPassed: browserPreview.passed,
+        issues: { browserPreview: browserPreview.issues },
+      });
+      if (!isBlogQualityDecisionPublishableV4(qualityDecisionV4)) {
+        throw new Error('blog_quality_decision_v4_not_publishable');
+      }
+      const { data: decisionStored, error: decisionStoreError } = await supabaseAdmin
+        .from('content_creatives')
+        .update({ generation_meta: { ...generationMeta, quality_decision_v4: qualityDecisionV4 } })
+        .eq('id', creativeId)
+        .eq('status', 'draft')
+        .select('id')
+        .maybeSingle();
+      if (decisionStoreError || !decisionStored) throw new Error('blog_quality_decision_v4_persist_failed');
+      creative.generation_meta = { ...generationMeta, quality_decision_v4: qualityDecisionV4 };
       const orchestration = generationMeta.ai_orchestration_v4 as Record<string, unknown> | undefined;
       const selectedScore = Number(attempt.quality_score_after ?? 0);
       if (orchestration?.route !== 'approved_for_slot'
@@ -239,6 +328,19 @@ async function runBlogPublicationController(request: NextRequest) {
         if (!enqueue.ok) throw new Error(`indexing_enqueue_failed_after_public_commit:${enqueue.error}`);
       }
 
+      if (!publishedCreativeId || !publishedSlug) {
+        throw new Error('published_identity_missing_before_search_followups');
+      }
+      const searchFollowups = await enqueueBlogSearchFollowupsV4({
+        contentCreativeId: publishedCreativeId,
+        slug: publishedSlug,
+        url: `${baseUrl}/blog/${encodeURIComponent(publishedSlug)}`,
+        publishedAt: now,
+      });
+      if (!searchFollowups.ok) {
+        throw new Error(`search_followup_enqueue_failed_after_public_commit:${searchFollowups.error}`);
+      }
+
       const [runSync, queueSync] = await Promise.all([
         supabaseAdmin.from('blog_generation_runs').update({
           status: 'published', disposition: 'published', published_at: now.toISOString(),
@@ -275,6 +377,18 @@ async function runBlogPublicationController(request: NextRequest) {
         results.push({ runId: run.id, creativeId: publishedCreativeId, status: 'published_state_sync_error', reason });
         continue;
       }
+      if (reason === 'browser_preview_gate_pending_or_stale') {
+        await supabaseAdmin.from('blog_generation_runs').update({
+          status: 'approved_for_slot',
+          disposition: 'browser_preview_pending',
+          last_error: reason,
+          lease_owner: null,
+          lease_expires_at: null,
+          updated_at: new Date().toISOString(),
+        }).eq('id', run.id).eq('status', 'publishing');
+        results.push({ runId: run.id, creativeId, status: 'preview_pending', reason });
+        continue;
+      }
       await supabaseAdmin.from('blog_generation_runs').update({
         status: 'quarantine', disposition: 'controller_publish_failed', quarantined_at: new Date().toISOString(),
         last_error: reason, lease_owner: null, lease_expires_at: null, updated_at: new Date().toISOString(),
@@ -296,6 +410,11 @@ async function runBlogPublicationController(request: NextRequest) {
     published,
     quota,
     rollout,
+    publishingPolicy: {
+      scope: publishingPolicy.scope,
+      postsPerDay: publishingPolicy.posts_per_day,
+      slotTimes: publishingPolicy.slot_times,
+    },
     targetedRunId: forceTargetedRun ? targetedRunId : null,
     results,
     modelCalls: 0,

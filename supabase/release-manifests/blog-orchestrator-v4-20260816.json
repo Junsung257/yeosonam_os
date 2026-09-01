@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "release": "blog-orchestrator-v4-20260816",
+  "release": "blog-autopilot-v4-20260902",
   "apply_mode": "supabase-db-push-include-all-after-exact-dry-run",
   "migrations": [
     {
@@ -67,10 +67,20 @@
       "version": "20260817121500",
       "file": "supabase/migrations/20260817121500_add_danang_itinerary_decision_sources.sql",
       "sha256": "1803b708fad6b3f5636d8ed6cd75afe3c185892a96132d0e28740b6ecaa57f3a"
+    },
+    {
+      "version": "20260901114420",
+      "file": "supabase/migrations/20260901114420_blog_autopilot_v4_truth_and_lifecycle.sql",
+      "sha256": "f6273013b2ba7b863d72f36e263fa0bf1eb5a9a21842f09b650872bf8b3732ed"
+    },
+    {
+      "version": "20260901155821",
+      "file": "supabase/migrations/20260901155821_blog_autopilot_v4_seo_completion.sql",
+      "sha256": "6847afcd6d37ec901434c99b68cca32849a232c5eabee72d4f0efcfb0e026434"
     }
   ],
   "rollback": {
     "file": "supabase/rollbacks/blog-orchestrator-v4-release-rollback.sql",
-    "sha256": "f5c80cb36c07ed50fa036e5af20ef7c78ce503ff389aea4c448e6674d2c74bc9"
+    "sha256": "f4d387733dfb9929253bf915df6fca4a997b5a4cb7844a7ac999fd50c1d690d9"
   }
 }

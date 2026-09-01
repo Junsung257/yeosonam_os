@@ -166,6 +166,7 @@ const PUBLIC_EXACT = new Set([
   '/api/cron/blog-publisher',
   '/api/cron/blog-generate',
   '/api/cron/blog-publication-controller',
+  '/api/cron/blog-seo-weekly-audit',
   '/api/cron/blog-ai-model-canary',
   '/api/cron/blog-analytics-canary',
   '/api/cron/blog-indexing-worker',

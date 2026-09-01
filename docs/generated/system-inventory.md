@@ -6,11 +6,11 @@ This file is generated from the repository. Do not edit it directly.
 
 | Kind | Count |
 |---|---:|
-| API routes | 724 |
+| API routes | 728 |
 | App pages | 212 |
-| Supabase migrations | 560 |
-| GitHub workflows | 34 |
-| Repository scripts | 315 |
+| Supabase migrations | 562 |
+| GitHub workflows | 35 |
+| Repository scripts | 318 |
 
 ## API routes
 
@@ -434,6 +434,8 @@ This file is generated from the repository. Do not edit it directly.
 - src/app/api/cron/blog-publisher/route.ts
 - src/app/api/cron/blog-regenerate-zero-click/route.ts
 - src/app/api/cron/blog-scheduler/route.ts
+- src/app/api/cron/blog-search-lifecycle/route.ts
+- src/app/api/cron/blog-seo-weekly-audit/route.ts
 - src/app/api/cron/booking-attribution-audit/route.ts
 - src/app/api/cron/booking-tasks-runner/route.ts
 - src/app/api/cron/bootstrap-assembler/route.ts
@@ -568,6 +570,8 @@ This file is generated from the repository. Do not edit it directly.
 - src/app/api/influencer/promo-codes/route.ts
 - src/app/api/influencer/track/route.ts
 - src/app/api/inngest/route.ts
+- src/app/api/internal/blog-preview/[creativeId]/route.ts
+- src/app/api/internal/blog-preview/pending/route.ts
 - src/app/api/internal/media/codex/jobs/[id]/complete/route.ts
 - src/app/api/internal/media/codex/jobs/[id]/fail/route.ts
 - src/app/api/internal/media/codex/jobs/[id]/route.ts
@@ -745,6 +749,7 @@ This file is generated from the repository. Do not edit it directly.
 - .github/workflows/api-contract.yml
 - .github/workflows/api-security.yml
 - .github/workflows/attractions-ssot-guard.yml
+- .github/workflows/blog-browser-preview-v4.yml
 - .github/workflows/blog-editorial-harness-v5.yml
 - .github/workflows/blog-external-cron.yml
 - .github/workflows/blog-mobile-proof-refresh.yml
@@ -778,8 +783,6 @@ This file is generated from the repository. Do not edit it directly.
 
 ## Recent migrations
 
-- supabase/migrations/20260818084354_product_registration_degraded_revision_promotion.sql
-- supabase/migrations/20260823235147_correct_clobe_refund_outflow_600500.sql
 - supabase/migrations/20260823235214_clobe_cash_settlement_commands.sql
 - supabase/migrations/20260824033911_clobe_mixed_outflow_allocations.sql
 - supabase/migrations/20260824052738_restrict_bank_transaction_allocation_rpc.sql
@@ -808,5 +811,7 @@ This file is generated from the repository. Do not edit it directly.
 - supabase/migrations/20260901082833_product_registration_customer_read_boundary.sql
 - supabase/migrations/20260901091853_retire_broken_expire_products_cron.sql
 - supabase/migrations/20260901092023_deactivate_orphaned_cron_policies.sql
+- supabase/migrations/20260901114420_blog_autopilot_v4_truth_and_lifecycle.sql
+- supabase/migrations/20260901155821_blog_autopilot_v4_seo_completion.sql
 
 The complete deterministic inventory is stored in docs/generated/system-inventory.json.

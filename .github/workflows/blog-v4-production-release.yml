@@ -96,6 +96,8 @@ jobs:
           test "$(git rev-parse origin/main)" = "${{ inputs.release_commit }}"
           npm ci
           npm run verify:blog-release-bundle-v4
+          npm run test:blog-autopilot-v4
+          npm run eval:blog-editorial:offline
           npm run type-check
           npx vitest run \
             src/lib/blog-ai-caller.test.ts \
@@ -132,6 +134,11 @@ jobs:
           set -euo pipefail
           npx supabase db push --workdir .tmp/blog-v4-supabase-release --linked --include-all --skip-vault --yes --password "$SUPABASE_DB_PASSWORD"
 
+      - name: Persist passing Korean semantic benchmark
+        if: inputs.apply_migrations
+        shell: bash
+        run: npm run benchmark:blog-korean-semantic-v4 -- --apply
+
       - name: Record reviewed blocked-URL dispositions
         if: inputs.apply_dispositions
         shell: bash
@@ -167,9 +174,9 @@ jobs:
           detail_sha="$(node -p "require('./public/blog-snapshots/v3/manifest.json').detail.sha256")"
           update_env BLOG_AUTOPUBLISH_MODE draft_only
           update_env BLOG_GENERATION_CRON_ENABLED false
-          update_env BLOG_DAILY_PUBLISH_CAP 30
-          update_env BLOG_PUBLICATION_RAMP_STAGE max_30
-          update_env BLOG_AUTO_RAMP_ENABLED true
+          update_env INNGEST_BLOG_AUTOPILOT_ENABLED true
+          update_env BLOG_PUBLICATION_RAMP_STAGE pilot_3
+          update_env BLOG_AUTO_RAMP_ENABLED false
           update_env BLOG_AUTO_ROLLBACK_ENABLED true
           update_env BLOG_DAILY_AI_COST_CAP_USD 2
           update_env DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS 1
@@ -207,6 +214,7 @@ jobs:
           call_cron blog-analytics-canary | tee .tmp/blog-v4-release/analytics-canary.json
           call_cron rank-tracking | tee .tmp/blog-v4-release/rank-tracking.json
           call_cron blog-data-readiness | tee .tmp/blog-v4-release/data-readiness.json
+          call_cron 'blog-seo-weekly-audit?scope=release' | tee .tmp/blog-v4-release/seo-weekly-audit.json
           npm run verify:blog-release-candidate-responses-v4 -- \
             --ai-model-canary=.tmp/blog-v4-release/ai-model-canary.json \
             --analytics-canary=.tmp/blog-v4-release/analytics-canary.json \
@@ -245,7 +253,8 @@ jobs:
         run: |
           set -euo pipefail
           npx vercel env update BLOG_AUTOPUBLISH_MODE production --value live --yes --token "$VERCEL_TOKEN"
-          npx vercel env update BLOG_GENERATION_CRON_ENABLED production --value true --yes --token "$VERCEL_TOKEN"
+          npx vercel env update BLOG_GENERATION_CRON_ENABLED production --value false --yes --token "$VERCEL_TOKEN"
+          npx vercel env update INNGEST_BLOG_AUTOPILOT_ENABLED production --value true --yes --token "$VERCEL_TOKEN"
           live_url="$(npx vercel deploy --prod --skip-domain --yes --token "$VERCEL_TOKEN")"
           echo "url=${live_url}" >> "$GITHUB_OUTPUT"
           curl --fail --silent --show-error --location \
@@ -288,6 +297,7 @@ jobs:
         run: |
           npx vercel env update BLOG_AUTOPUBLISH_MODE production --value draft_only --yes --token "$VERCEL_TOKEN"
           npx vercel env update BLOG_GENERATION_CRON_ENABLED production --value false --yes --token "$VERCEL_TOKEN"
+          npx vercel env update INNGEST_BLOG_AUTOPILOT_ENABLED production --value false --yes --token "$VERCEL_TOKEN"
           safe_url="$(npx vercel deploy --prod --skip-domain --yes --token "$VERCEL_TOKEN")"
           npx vercel promote "$safe_url" --yes --token "$VERCEL_TOKEN"
 

@@ -120,7 +120,7 @@ curl -H "Authorization: Bearer $CRON_SECRET" https://www.yeosonam.com/api/cron/b
    - 색인 누락된 글 있으면 `/api/blog/reindex` 또는 `/api/blog/bulk-reindex`로 재전송
    - 일반 블로그는 Google Indexing API 직접 호출보다 Search Console Sitemap API + URL Inspection을 기본으로 본다
      - 이유: Google 공식 지원 범위상 Indexing API는 JobPosting/BroadcastEvent 중심
-     - 예외적으로 직접 호출까지 테스트하려면 `GOOGLE_INDEXING_API_FOR_BLOGS=true` 설정
+     - `GOOGLE_INDEXING_API_FOR_BLOGS`는 retired이며 값과 무관하게 일반 `/blog` URL은 Google Indexing API를 호출하지 않는다.
 
 4. **리뷰 수집률**
    ```sql
