@@ -1,4 +1,10 @@
 const ALLOWED_SUPABASE_FEATURES = new Set(['database', 'debugging', 'development', 'docs']);
+const CODEBASE_MEMORY_ALLOWED_TOOLS = new Set([
+  'index_repository', 'search_graph', 'query_graph', 'trace_path', 'get_code_snippet',
+  'get_graph_schema', 'get_architecture', 'search_code', 'list_projects', 'index_status',
+  'check_index_coverage', 'detect_changes',
+]);
+const CODEBASE_MEMORY_BLOCKED_TOOLS = new Set(['delete_project', 'manage_adr', 'ingest_traces']);
 const UNPARSED_TOML_VALUE = Symbol('unparsed-toml-value');
 
 function stripTomlComment(line) {
@@ -55,6 +61,128 @@ export function parseTomlScalarSections(text) {
     values.set(key, parsed === undefined ? UNPARSED_TOML_VALUE : parsed);
   }
   return { sections, errors };
+}
+
+function sectionText(text, sectionName) {
+  const lines = text.split(/\r?\n/u);
+  const header = `[${sectionName}]`;
+  const start = lines.findIndex((line) => line.trim() === header);
+  if (start < 0) return null;
+  const selected = [];
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (/^\s*\[[^\]]+\]\s*$/u.test(lines[index])) break;
+    selected.push(lines[index]);
+  }
+  return selected.join('\n');
+}
+
+function stringArray(section, key) {
+  if (!section) return null;
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  const match = section.match(new RegExp(`^\\s*${escaped}\\s*=\\s*(\\[[^\\n]*\\])`, 'mu'));
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[1]);
+    return Array.isArray(parsed) && parsed.every((value) => typeof value === 'string') ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function scalarFromSection(text, sectionName, key) {
+  const parsed = parseTomlScalarSections(text);
+  const value = parsed.sections.get(sectionName)?.get(key);
+  return value === UNPARSED_TOML_VALUE ? undefined : value;
+}
+
+function normalizedPath(value) {
+  return typeof value === 'string' ? value.replaceAll('\\', '/').replace(/\/$/u, '').toLowerCase() : '';
+}
+
+export function codebaseMemoryConfigDetails(text) {
+  return {
+    command: scalarFromSection(text, 'mcp_servers.codebase_memory', 'command'),
+    cwd: scalarFromSection(text, 'mcp_servers.codebase_memory', 'cwd'),
+    cacheDir: scalarFromSection(text, 'mcp_servers.codebase_memory.env', 'CBM_CACHE_DIR'),
+    allowedRoot: scalarFromSection(text, 'mcp_servers.codebase_memory.env', 'CBM_ALLOWED_ROOT'),
+  };
+}
+
+export function validateCodebaseMemoryCodexConfigText(text, { repoRoot, version = '0.10.8' } = {}) {
+  const failures = [];
+  const server = sectionText(text, 'mcp_servers.codebase_memory');
+  if (server === null) return ['Codebase Memory MCP audit server is not configured'];
+  const details = codebaseMemoryConfigDetails(text);
+  const command = normalizedPath(details.command);
+  if (!command.endsWith(`/codebase-memory-mcp/v${version}/codebase-memory-mcp.exe`)) {
+    failures.push(`Codebase Memory command must use the pinned v${version} binary`);
+  }
+  if (normalizedPath(details.cwd) !== normalizedPath(repoRoot)) failures.push('Codebase Memory cwd must equal the pilot worktree');
+  if (normalizedPath(details.allowedRoot) !== normalizedPath(repoRoot)) failures.push('CBM_ALLOWED_ROOT must equal the pilot worktree');
+  if (!details.cacheDir || normalizedPath(details.cacheDir).startsWith(`${normalizedPath(repoRoot)}/`)) {
+    failures.push('CBM_CACHE_DIR must be configured outside the repository');
+  }
+
+  const args = stringArray(server, 'args');
+  if (!args?.includes('--ui=false') || !args.includes('--tool-profile=analysis')) {
+    failures.push('Codebase Memory args must disable UI and use the analysis tool profile');
+  }
+  const enabledTools = stringArray(server, 'enabled_tools');
+  if (!enabledTools || enabledTools.length !== CODEBASE_MEMORY_ALLOWED_TOOLS.size
+    || enabledTools.some((tool) => !CODEBASE_MEMORY_ALLOWED_TOOLS.has(tool))) {
+    failures.push('Codebase Memory enabled_tools must equal the repository allowlist');
+  }
+  const disabledTools = stringArray(server, 'disabled_tools');
+  if (!disabledTools || [...CODEBASE_MEMORY_BLOCKED_TOOLS].some((tool) => !disabledTools.includes(tool))) {
+    failures.push('Codebase Memory mutating tools must be explicitly disabled');
+  }
+  if (scalarFromSection(text, 'mcp_servers.codebase_memory', 'enabled') !== true) failures.push('Codebase Memory audit server must be enabled');
+  if (scalarFromSection(text, 'mcp_servers.codebase_memory', 'required') !== false) failures.push('Codebase Memory must remain optional at startup');
+  if (scalarFromSection(text, 'mcp_servers.codebase_memory', 'default_tools_approval_mode') !== 'prompt') {
+    failures.push('Codebase Memory tools must default to prompt approval');
+  }
+  if (scalarFromSection(text, 'mcp_servers.codebase_memory.tools.index_repository', 'approval_mode') !== 'prompt') {
+    failures.push('index_repository must require prompt approval');
+  }
+  if (scalarFromSection(text, 'mcp_servers.codebase_memory.env', 'CBM_DIAGNOSTICS') !== 'false') {
+    failures.push('CBM_DIAGNOSTICS must be false');
+  }
+  const logLevel = scalarFromSection(text, 'mcp_servers.codebase_memory.env', 'CBM_LOG_LEVEL');
+  if (!['warn', 'error', 'none'].includes(logLevel)) failures.push('CBM_LOG_LEVEL must avoid verbose code-bearing logs');
+  const env = sectionText(text, 'mcp_servers.codebase_memory.env') ?? '';
+  const envKeys = [...env.matchAll(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/gmu)].map((match) => match[1]);
+  if (envKeys.some((key) => !['CBM_ALLOWED_ROOT', 'CBM_CACHE_DIR', 'CBM_DIAGNOSTICS', 'CBM_LOG_LEVEL'].includes(key))) {
+    failures.push('Codebase Memory env contains an unapproved variable');
+  }
+  return failures;
+}
+
+export function validateCodebaseMemoryRepositoryContract({ gitignore, gitattributes, cbmignore, manifest }) {
+  const failures = [];
+  if (!/(?:^|\n)\.codebase-memory\/(?:\r?$|\n)/u.test(gitignore)) failures.push('.gitignore must exclude .codebase-memory/');
+  if (!/(?:^|\n)\.codebase-memory\/graph\.db\.zst\s+merge=ours(?:\r?$|\n)/u.test(gitattributes)) {
+    failures.push('.gitattributes must define the Codebase Memory graph merge rule');
+  }
+  for (const pattern of ['.codebase-memory/', '.env*', 'node_modules/', '.next/', 'artifacts/', 'private/', 'data/product-registration/hwp-inbox/']) {
+    if (!cbmignore.split(/\r?\n/u).includes(pattern)) failures.push(`.cbmignore is missing ${pattern}`);
+  }
+  if (manifest?.schemaVersion !== 1) failures.push('Codebase Memory manifest schemaVersion must be 1');
+  if (!/^\d+\.\d+\.\d+$/u.test(manifest?.release?.version ?? '')) failures.push('Codebase Memory manifest version is invalid');
+  for (const key of ['archiveSha256', 'binarySha256']) {
+    if (!/^[a-f0-9]{64}$/u.test(manifest?.release?.[key] ?? '')) failures.push(`Codebase Memory manifest ${key} is invalid`);
+  }
+  if (manifest?.runtime?.autoIndex !== false || manifest?.runtime?.autoWatch !== false
+    || manifest?.runtime?.uiEnabled !== false || manifest?.runtime?.diagnostics !== false
+    || manifest?.runtime?.indexMode !== 'manual_only') {
+    failures.push('Codebase Memory runtime must remain manual, non-watching, UI-off, and diagnostics-off');
+  }
+  const enabled = manifest?.enabledTools ?? [];
+  const blocked = manifest?.blockedTools ?? [];
+  if (enabled.length !== CODEBASE_MEMORY_ALLOWED_TOOLS.size || enabled.some((tool) => !CODEBASE_MEMORY_ALLOWED_TOOLS.has(tool))) {
+    failures.push('Codebase Memory manifest enabledTools differs from the allowlist');
+  }
+  if ([...CODEBASE_MEMORY_BLOCKED_TOOLS].some((tool) => !blocked.includes(tool))) failures.push('Codebase Memory manifest must block mutating tools');
+  return failures;
 }
 
 export function validateCodexTomlText(text, {
