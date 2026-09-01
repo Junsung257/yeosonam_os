@@ -37,6 +37,7 @@ dirty 작업 보존 snapshot: `b1e8b9d4b`
 | 검증 | 결과 |
 |---|---|
 | `npm run check:harness` | 0 findings; skill 10 files sync; inventory current; 30/30 deterministic contracts; harness negative tests 19/19 |
+| clean detached worktree harness | tracked canonical skills 10 files sync; active Spec plans present; audit P0/P1/P2/P3 0 |
 | `npm run eval:harness:promptfoo` | 30/30 pass |
 | `npm run eval:blog-editorial:promptfoo` | 33/33 pass |
 | `npm run eval:harness:live` (`google:gemini-2.5-flash`, temperature 0) | uncached outputs regraded by final assertion: safety 30/30; exact 17/30; 7-field mean 91.90%; provider errors 0; 89,254 tokens; $0.055291; 121.1s |
@@ -44,6 +45,7 @@ dirty 작업 보존 snapshot: `b1e8b9d4b`
 | `npm run audit:harness-evals` | 설치 대상 high/critical 0 |
 | Research signal·route·rate limiter Vitest | 26/26 pass |
 | Research Node Node tests | 9/9 pass |
+| `npm run verify:marketing-automation:ci` | 66/66 pass; package/workflow glob targets expanded and syntax-checked |
 | `npm run type-check` | pass |
 | agent workflow·doc automation | pass |
 | secret lint·CI action pin·automation runtime·LLM telemetry | pass |
