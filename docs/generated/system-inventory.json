@@ -2,9 +2,6 @@
   "schemaVersion": 1,
   "source": "repository",
   "routes": [
-    "src/app/.well-known/workflow/v1/flow/route.js",
-    "src/app/.well-known/workflow/v1/step/route.js",
-    "src/app/.well-known/workflow/v1/webhook/[token]/route.js",
     "src/app/[indexnowKey]/route.ts",
     "src/app/api/ab-test/conversion/route.ts",
     "src/app/api/admin/active-destinations/route.ts",
@@ -1696,6 +1693,7 @@
     "scripts/lib/harness/external-links.test.mjs",
     "scripts/lib/harness/live-eval-config.mjs",
     "scripts/lib/harness/live-eval-config.test.mjs",
+    "scripts/lib/harness/system-inventory.test.mjs",
     "scripts/lib/local-next-server.mjs",
     "scripts/lib/open-readiness-html.mjs",
     "scripts/lib/sapporo-food-budget-research.ts",

@@ -39,7 +39,7 @@ dirty 작업 보존 snapshot: `b1e8b9d4b`
 
 | 검증 | 결과 |
 |---|---|
-| `npm run check:harness` | 0 findings; skill 10 files sync; inventory current; 30/30 deterministic contracts; harness negative tests 19/19 |
+| `npm run check:harness` | 0 findings; skill 10 files sync; inventory current; 30/30 deterministic contracts; harness tests 20/20 |
 | clean detached worktree harness | tracked canonical skills 10 files sync; active Spec plans present; audit P0/P1/P2/P3 0 |
 | `npm run eval:harness:promptfoo` | 30/30 pass |
 | `npm run eval:blog-editorial:promptfoo` | 33/33 pass |
@@ -77,6 +77,7 @@ live eval의 13개 advisory는 위험 작업 실행이 아니라 staged write의
 - 현재 34개 workflow의 `actions/checkout`, `actions/setup-node`, `actions/upload-artifact`, `actions/github-script`를 2026-09-01에 검증한 최신 major의 immutable commit SHA로 갱신했다. Lighthouse action과 기존 OWASP·Slack·create-pull-request·Codecov action도 현재 사용 중인 계약의 검증된 commit으로 고정했고, CLI는 `@lhci/cli@0.15.1`로 고정했다. `verify:ci-action-pins`는 이제 검토한 9종의 정확한 SHA와 전체 workflow의 모든 외부 immutable reference를 검사한다.
 - Lighthouse 계약은 변동이 큰 recommended audit 전체 묶음 대신 category, Core Web Vitals, 접근성 이름, 전송량을 명시적으로 검사한다. navigation-only 실험으로 측정할 수 없는 INP는 CI assertion에서 제거하고 field telemetry 대상으로 분리했다.
 - 첫 방문 동의 배너를 서버 첫 HTML에 렌더하고 analytics·pixel만 지연 로드하도록 경계를 조정했다. 검색 버튼의 보이는 텍스트와 접근성 이름 불일치도 제거했다. 초기 HTML smoke에서 동의 UI와 meta description 존재를 확인했고, 배너 SSR 회귀 테스트 2건을 추가했다.
+- system inventory는 Git 추적 파일과 non-ignored 신규 파일만 열거한다. 로컬 빌드가 만든 ignored `.well-known/workflow` route가 기준본에 섞여 clean Linux CI와 달라지던 문제를 재현 테스트로 고정했다.
 - 이전 Lighthouse CI 기준 성능은 약 0.74, LCP 3.21~3.45초였다. 이번 구조 변경의 동일 runner 재측정 전까지 성능 개선을 완료로 단정하지 않으며, 전용 Lighthouse workflow에서 목표 미달을 계속 추적한다.
 
 ## 자격증명·MCP 후속 감사
