@@ -27,6 +27,17 @@ describe('blog V4 protected production release workflow', () => {
     expect(source).toContain('verify:blog-supabase-dry-run-v4');
   });
 
+  it('uses protected project variables and keeps the database password optional', () => {
+    expect(source).toContain('secrets.VERCEL_ORG_ID || vars.VERCEL_ORG_ID');
+    expect(source).toContain('secrets.VERCEL_PROJECT_ID || vars.VERCEL_PROJECT_ID');
+    expect(source).toContain('secrets.SUPABASE_PROJECT_REF || vars.SUPABASE_PROJECT_REF');
+    expect(source).toContain('secrets.SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL');
+    expect(source).toContain('if [ -n "${SUPABASE_DB_PASSWORD:-}" ]; then');
+    expect(source).not.toContain(
+      'SUPABASE_PROJECT_REF SUPABASE_DB_PASSWORD SUPABASE_ACCESS_TOKEN',
+    );
+  });
+
   it('verifies protected candidate URLs and fails closed around live promotion', () => {
     expect(source).toContain('VERCEL_AUTOMATION_BYPASS_SECRET');
     expect(source).toContain('SUPABASE_ACCESS_TOKEN');
