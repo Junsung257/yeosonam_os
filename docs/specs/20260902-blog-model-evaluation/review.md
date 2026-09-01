@@ -14,6 +14,7 @@
 - Targeted ESLint and Node syntax checks pass for the changed execution files.
 - LLM telemetry coverage and the all-files direct-secret audit pass.
 - Full repository harness passes with 0 document findings, 30/30 deterministic contracts, and 20/20 harness tests.
+- The root override and lockfile pin `browserslist` 4.28.7; the high/critical dependency audit passes.
 - The live runner exits before any provider call without the exact cost confirmation, and summary promotion rejects a run directory outside the private evidence root.
 
 ## External evidence

@@ -17,6 +17,7 @@
         "docs/specs/20260902-blog-model-evaluation/**",
         "evals/blog-model/latest-summary.json",
         "package.json",
+        "package-lock.json",
         "promptfoo/blog-editorial-live.yaml",
         "promptfoo/assertions/blog-model-eval-live.cjs",
         "promptfoo/load-blog-editorial-live-tests.cjs",
