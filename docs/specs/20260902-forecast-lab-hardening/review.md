@@ -3,6 +3,7 @@
 ## Evidence
 
 - [x] Existing tables confirmed: `demand_forecast`, `demand_forecasts`, `demand_forecast_v2`; no migration added.
+- [x] Marketing SSOT records the observed-data and downstream-mutation boundary changed by predictive marketing hardening.
 - [x] Forecast and predictive safety tests pass 9/9.
 - [x] Policy checker rejects random series, fixed confidence, legacy writers, downstream auto-queue, and unblocked TimesFM-3.
 - [x] Forecast core passes a standalone strict TypeScript check and all changed TypeScript files pass targeted ESLint.

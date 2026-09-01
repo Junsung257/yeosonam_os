@@ -19,13 +19,15 @@
         "scripts/run-forecast-lab.ts",
         "scripts/check-forecast-lab-contract.mjs",
         "docs/forecasting-current-ssot.md",
+        "docs/marketing-current-ssot.md",
         "docs/document-registry.yml",
         "docs/generated/system-inventory.md",
         "docs/generated/system-inventory.json",
         "docs/specs/20260902-forecast-lab-hardening/**",
-        "package.json"
+        "package.json",
+        "package-lock.json"
       ],
-      "readOnly": ["docs/marketing-current-ssot.md", "docs/ai-ops-current-ssot.md", "supabase/migrations/**"],
+      "readOnly": ["docs/ai-ops-current-ssot.md", "supabase/migrations/**"],
       "forbidden": ["supabase/migrations/**", ".github/**"]
     }
   ]
