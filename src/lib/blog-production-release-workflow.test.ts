@@ -37,6 +37,12 @@ describe('blog V4 protected production release workflow', () => {
     expect(source).not.toContain(
       'SUPABASE_PROJECT_REF SUPABASE_DB_PASSWORD SUPABASE_ACCESS_TOKEN',
     );
+    const vercelCommands = source
+      .split('\n')
+      .filter((line) => line.includes('npx vercel'));
+    expect(source).toContain('npx vercel project inspect "$VERCEL_PROJECT_ID"');
+    expect(source.match(/--scope "\$VERCEL_ORG_ID"/g)?.length ?? 0)
+      .toBeGreaterThanOrEqual(vercelCommands.length);
   });
 
   it('installs and audits the pinned evaluator before the editorial release gate', () => {
