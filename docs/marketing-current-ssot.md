@@ -1,6 +1,6 @@
 # Marketing Current SSOT
 
-Last updated: 2026-07-25
+Last updated: 2026-09-01
 
 This is the current operating contract for marketing automation, Ad OS, campaign actions, card-news distribution, external ad-platform writes, and marketing performance dashboards. Strategy research and campaign plans are not the source of truth for current execution behavior.
 
@@ -44,6 +44,8 @@ Repeated failures belong in `docs/errors/marketing.md`.
 - Control-tower Ad OS status must show current evidence gaps separately from the 95+ ready fixture; a reachable fixture is not proof that live current execution is ready.
 - GA4 customer acquisition data must exclude admin, localhost, and preview traffic. Production measurement remains disabled until a valid `NEXT_PUBLIC_GA4_ID` is configured.
 - Campaign links must use lowercase, stable `utm_source`, `utm_medium`, and `utm_campaign` values. Do not compare channel performance using untagged social, email, or affiliate links.
+- Preview deployment success must not run the strict `www.yeosonam.com` data-health gate or receive Production readiness failures.
+- A Production deployment may enter the secret-bearing public readiness job only after a secret-free guard verifies a successful Production environment signal and proves that the deployed SHA belongs to the repository default-branch history. Provider-specific `production_environment` metadata is supporting evidence, not the sole authority, because Vercel can report `environment=Production` with that flag false.
 
 ## External Write Boundary
 
