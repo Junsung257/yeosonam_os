@@ -221,8 +221,7 @@ jobs:
             exit 1
           fi
 
-          npm install -g @lhci/cli@latest
-          if ! lhci autorun; then
+          if ! npx --yes @lhci/cli@0.15.1 autorun; then
             echo "::warning::Lighthouse CI reported performance findings. This workflow treats them as advisory; release gates are covered by build, test, and readiness jobs."
           fi
 

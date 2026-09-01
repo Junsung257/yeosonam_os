@@ -21,7 +21,26 @@ import {
   getNextDepartureFromDates,
   getLowestPriceDisclosure,
   getPriceBoundDeparture,
+  getUpcomingPriceDates,
 } from './price-dates';
+
+describe('getUpcomingPriceDates — 고객 선택 가능 출발일', () => {
+  it('지난 원문 가격은 보존하되 고객 선택 목록에서는 제외한다', () => {
+    expect(getUpcomingPriceDates([
+      { date: '2026-08-31', price: 499_000, confirmed: false },
+      { date: '2026-09-10', price: 599_000, confirmed: true },
+    ], '2026-09-01')).toEqual([
+      { date: '2026-09-10', price: 599_000, confirmed: true },
+    ]);
+  });
+
+  it('잘못된 날짜와 지난 날짜만 있으면 빈 목록으로 닫힌다', () => {
+    expect(getUpcomingPriceDates([
+      { date: '2026-02-30', price: 499_000, confirmed: false },
+      { date: '2026-08-25', price: 539_000, confirmed: false },
+    ], '2026-09-01')).toEqual([]);
+  });
+});
 
 describe('getPriceBoundDeparture — 대표가격과 출발일 결속', () => {
   const dates: PriceDate[] = [

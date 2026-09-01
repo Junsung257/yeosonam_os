@@ -111,29 +111,34 @@ export async function resolveQualifiedSupplierLayoutProfile(input: {
   if (!supplierKey) {
     return { supplierKey: null, documentFamily: input.documentFamily, profile: null, reason: 'supplier_unresolved' };
   }
-  const internal = input.supabase.schema('internal_product_registration');
-  const { data: profiles, error: profileError } = await internal
-    .from('supplier_layout_profiles')
-    .select('id,supplier_key,document_family,profile_version,profile_hash,segmentation_rules,activated_at')
-    .eq('tenant_id', input.tenantId)
-    .eq('supplier_key', supplierKey)
-    .eq('document_family', input.documentFamily)
-    .eq('activation_state', 'active')
-    .order('activated_at', { ascending: false })
-    .limit(1);
-  if (profileError) throw profileError;
-  const profile = profiles?.[0];
+  const { data, error: profileError } = await input.supabase.rpc(
+    'get_qualified_product_registration_supplier_profile',
+    {
+      p_tenant_id: input.tenantId,
+      p_supplier_key: supplierKey,
+      p_document_family: input.documentFamily,
+    },
+  );
+  if (profileError) {
+    const code = typeof profileError.code === 'string' ? profileError.code : '';
+    // The profile is an optional, benchmark-qualified optimization. During a
+    // staged code/migration rollout, a missing RPC must fall back to the
+    // deterministic generic parser instead of failing an otherwise valid
+    // source. Other database failures remain visible and fail closed.
+    if (code === 'PGRST202' || code === '42883') {
+      return { supplierKey, documentFamily: input.documentFamily, profile: null, reason: 'profile_not_found' };
+    }
+    throw profileError;
+  }
+  const profile = object(data);
   if (!profile) {
     return { supplierKey, documentFamily: input.documentFamily, profile: null, reason: 'profile_not_found' };
   }
-  const { data: runs, error: runError } = await internal
-    .from('profile_benchmark_runs')
-    .select('metrics,critical_false_publish_count,exact_match_rate,passed,created_at')
-    .eq('supplier_layout_profile_id', profile.id)
-    .order('created_at', { ascending: false })
-    .limit(1);
-  if (runError) throw runError;
-  const run = runs?.[0];
+  if (String(profile.supplier_key ?? '') !== supplierKey
+    || String(profile.document_family ?? '') !== input.documentFamily) {
+    throw new Error('SUPPLIER_PROFILE_RPC_IDENTITY_MISMATCH');
+  }
+  const run = object(profile.benchmark);
   if (!run) {
     return { supplierKey, documentFamily: input.documentFamily, profile: null, reason: 'profile_benchmark_missing' };
   }

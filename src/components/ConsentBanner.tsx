@@ -9,20 +9,31 @@ import {
   setConsentPreferences,
 } from '@/lib/analytics/consent';
 
-export default function ConsentBanner() {
+export interface InitialConsentPreferences {
+  decided: boolean;
+  analytics: boolean;
+  advertising: boolean;
+}
+
+export default function ConsentBanner({
+  initialConsent,
+}: {
+  initialConsent: InitialConsentPreferences;
+}) {
   const pathname = usePathname();
-  const [visible, setVisible] = useState(false);
+  const [visible, setVisible] = useState(!initialConsent.decided);
   const [customizing, setCustomizing] = useState(false);
-  const [analytics, setAnalytics] = useState(false);
-  const [advertising, setAdvertising] = useState(false);
+  const [analytics, setAnalytics] = useState(initialConsent.analytics);
+  const [advertising, setAdvertising] = useState(initialConsent.advertising);
 
   useEffect(() => {
     const state = readConsentState();
+    if (!state.decided && initialConsent.decided) return;
     const preferences = consentStateToPreferences(state);
     setAnalytics(preferences.analytics);
     setAdvertising(preferences.advertising);
     setVisible(!state.decided);
-  }, []);
+  }, [initialConsent.decided]);
 
   if (pathname?.startsWith('/admin') || pathname?.startsWith('/m/admin')) return null;
 

@@ -1,6 +1,8 @@
 # Audit Archive Index
 
-Last updated: 2026-08-30
+Last updated: 2026-09-01
+- 2026-09-01 — Product source-to-mobile convergence V2: production service-only customer read boundary, pointer invariant, 200/410/404 route matrix, 390×844 detail/LP/CTA proof, deployment safety, OSS selection, and remaining 100-source gate: `2026-09-01-product-source-mobile-convergence-v2/report.md`
+- 2026-09-01 — Product registration OSS adoption selection: HWP/HWPX dual parser, document metrics, property fuzz, DB contracts, annotation and cohort-specific PDF/OCR candidates: `2026-09-01-product-source-mobile-convergence-v2/oss-adoption.md`
 - 2026-08-30 — Blog People-First Editorial Harness V5: Guam failure regression, deterministic calculations, source honesty, semantic judge, prompt trace, 33-case Promptfoo gate: `2026-08-30-blog-editorial-harness-v5.md`
 - 2026-08-30 — Exact Guam editorial-incident quarantine preview (one creative, no replacement target, reviewer/PITR fields intentionally blank): `2026-08-30-blog-editorial-v5-quarantine-preview.csv`
 - 2026-08-27 — GitHub OSS adoption audit: 41 active repositories, codebase-fit decisions, six bounded adoption batches, and explicit defer/reject triggers: `oss-adoption-audit-2026-08-27.md`
@@ -54,6 +56,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-09-01 | `2026-09-01-product-source-mobile-convergence-v2/report.md` | Production service-only read boundary, pointer invariant, 200/410/404 routes, 390×844 detail/LP/CTA proof, deployment evidence, OSS decision, and remaining 100-source gate. |
 | 2026-08-17 | `2026-08-17-product-registration-real-hwp-mobile-proof.md` | Real Phu Quoc HWP production workflow, source-backed revision/snapshot, exact-hash 390×844 package and LP proof, customer-fact corrections, proof-analytics isolation, DB advisor hardening, and remaining corpus launch gate. |
 | 2026-08-16 | `2026-08-16-product-registration-v138-guide-commercial-scope.md` | V138 actual-source replay, guide-fee commercial/heading/clause scoping, genuine contradiction preservation, zero comparable regression, 5,626-test verification, and remaining launch gates. |
 | 2026-08-16 | `2026-08-16-product-registration-v95-grade-duration-customer-facts.md` | V95 actual-source replay, Xian grade/duration product identity, customer-fact isolation, year/deadline corrections, contradiction gates, 5,590-test verification, and remaining launch gates. |

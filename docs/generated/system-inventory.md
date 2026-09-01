@@ -8,9 +8,9 @@ This file is generated from the repository. Do not edit it directly.
 |---|---:|
 | API routes | 724 |
 | App pages | 212 |
-| Supabase migrations | 558 |
+| Supabase migrations | 560 |
 | GitHub workflows | 34 |
-| Repository scripts | 314 |
+| Repository scripts | 315 |
 
 ## API routes
 
@@ -778,8 +778,7 @@ This file is generated from the repository. Do not edit it directly.
 
 ## Recent migrations
 
-- supabase/migrations/20260817121500_add_danang_itinerary_decision_sources.sql
-- supabase/migrations/20260818080000_blog_deepseek_auto_repair_budget_v1.sql
+- supabase/migrations/20260818084354_product_registration_degraded_revision_promotion.sql
 - supabase/migrations/20260823235147_correct_clobe_refund_outflow_600500.sql
 - supabase/migrations/20260823235214_clobe_cash_settlement_commands.sql
 - supabase/migrations/20260824033911_clobe_mixed_outflow_allocations.sql
@@ -806,6 +805,7 @@ This file is generated from the repository. Do not edit it directly.
 - supabase/migrations/20260831120000_add_kakao_guam_taxi_faq_research_source.sql
 - supabase/migrations/20260831123000_add_visit_guam_transportation_research_source.sql
 - supabase/migrations/20260831131500_add_guam_transport_reviewed_source_snapshots.sql
+- supabase/migrations/20260901082833_product_registration_customer_read_boundary.sql
 - supabase/migrations/20260901091853_retire_broken_expire_products_cron.sql
 - supabase/migrations/20260901092023_deactivate_orphaned_cron_policies.sql
 

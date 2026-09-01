@@ -76,12 +76,38 @@ function parseStored(value: string | null): AnalyticsConsentState | null {
   }
 }
 
+function readConsentCookie(): AnalyticsConsentState | null {
+  if (typeof document === 'undefined' || typeof document.cookie !== 'string') return null;
+  try {
+    const prefix = `${CONSENT_COOKIE_KEY}=`;
+    const encoded = document.cookie
+      .split(';')
+      .map(part => part.trim())
+      .find(part => part.startsWith(prefix))
+      ?.slice(prefix.length);
+    if (!encoded || !/^[a-][m-]$/.test(encoded)) return null;
+    return preferencesToConsentState({
+      analytics: encoded.startsWith('a'),
+      advertising: encoded.endsWith('m'),
+    });
+  } catch {
+    return null;
+  }
+}
+
 export function readConsentState(): AnalyticsConsentState {
   if (typeof window === 'undefined') return deniedState;
   try {
     const stored = parseStored(window.localStorage.getItem(CONSENT_STORAGE_KEY));
     if (stored) return stored;
+  } catch {
+    // Cookie fallback remains available when browser storage is blocked.
+  }
 
+  const cookieState = readConsentCookie();
+  if (cookieState) return cookieState;
+
+  try {
     const legacyAnalytics = window.localStorage.getItem(LEGACY_ANALYTICS_KEY);
     const legacyMarketing = window.localStorage.getItem(LEGACY_MARKETING_KEY);
     if (legacyAnalytics !== null || legacyMarketing !== null) {

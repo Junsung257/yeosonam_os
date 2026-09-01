@@ -7,10 +7,14 @@ const mocks = vi.hoisted(() => ({
   publicationPointerRow: null as Record<string, unknown> | null,
   scores: [] as Record<string, unknown>[],
   mappedInput: null as Record<string, unknown> | null,
+  cacheKeys: [] as string[],
 }));
 
 vi.mock('next/cache', () => ({
-  unstable_cache: (fn: unknown) => fn,
+  unstable_cache: (fn: unknown, cacheKeys: string[]) => {
+    mocks.cacheKeys = cacheKeys;
+    return fn;
+  },
 }));
 
 vi.mock('@/lib/supabase', () => ({
@@ -279,6 +283,10 @@ describe('fetchLpPackageUncached', () => {
     mocks.packageError = null;
     mocks.scores = [];
     mocks.mappedInput = null;
+  });
+
+  it('uses the current-inventory cache contract', () => {
+    expect(mocks.cacheKeys).toEqual(['lp-package-v4-current-inventory-source-notices']);
   });
 
   it('returns landing data only through the approved public snapshot', async () => {

@@ -547,6 +547,20 @@ function staticChecks() {
     'Marketing automation readiness',
     'npm run verify:marketing-automation:ci',
   ]);
+  for (const workflowPath of [
+    '.github/workflows/semantic-release.yml',
+    '.github/workflows/slack-notifications.yml',
+  ]) {
+    requireIncludes(`ci:slack-v4-immutable:${workflowPath}`, workflowPath, [
+      'slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d',
+      'webhook: ${{ env.SLACK_WEBHOOK }}',
+      'webhook-type: incoming-webhook',
+    ]);
+    requireExcludes(`ci:slack-v4-no-legacy-input:${workflowPath}`, workflowPath, [
+      'slack-github-action@v1',
+      'webhook-url:',
+    ]);
+  }
   requireIncludes('ci:open-readiness-deployment-wired', '.github/workflows/open-readiness.yml', [
     'deployment_status:',
     'production-deployment-guard:',
@@ -600,7 +614,7 @@ function staticChecks() {
     '--operational-node-vercel-script=.tmp/operational-readiness-vercel-env.mjs',
     'GITHUB_STEP_SUMMARY',
     'issues: write',
-    'actions/github-script@v7',
+    'actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3',
     'Track open readiness attention items',
     'open-readiness-issue-meta.json',
     'open-readiness-issue-body.md',
@@ -612,7 +626,7 @@ function staticChecks() {
     'meta.hasBlockers',
     'meta.hasWarnings',
     'meta.hasAttentionItems',
-    'actions/upload-artifact@v4',
+    'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
     'OPEN_CHECK_BLOG_AUDIT_LIMIT',
     'OPEN_CHECK_BLOG_AUDIT_HARD_TIMEOUT_MS',
     'OPEN_CHECK_PUBLIC_AUDIT_HARD_TIMEOUT_MS',
@@ -655,7 +669,7 @@ function staticChecks() {
     '--operational-node-vercel-script=.tmp/local-release-operational-inputs-vercel-env.mjs',
     'GITHUB_STEP_SUMMARY',
     'issues: write',
-    'actions/github-script@v7',
+    'actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3',
     'Track local release readiness attention items',
     'local-release-readiness-issue-meta.json',
     'local-release-readiness-issue-body.md',
@@ -673,7 +687,7 @@ function staticChecks() {
     'local-release-operational-inputs-vercel-env.sh',
     'local-release-operational-inputs-apply.mjs',
     'local-release-operational-inputs-vercel-env.mjs',
-    'actions/upload-artifact@v4',
+    'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
     'LOCAL_RELEASE_OPEN_READY_TIMEOUT_MS',
   ]);
   requireExcludes('ci:local-release-readiness-unscheduled', '.github/workflows/local-release-readiness.yml', [
@@ -702,7 +716,7 @@ function staticChecks() {
     '--operational-env-file=.tmp/marketing-release-operational-inputs-discovered.env',
     'GITHUB_STEP_SUMMARY',
     'issues: write',
-    'actions/github-script@v7',
+    'actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3',
     'Track marketing release readiness attention items',
     'marketing-release-readiness-issue-meta.json',
     'marketing-release-readiness-issue-body.md',
@@ -721,7 +735,7 @@ function staticChecks() {
     'marketing-release-operational-inputs-vercel-env.sh',
     'marketing-release-operational-inputs-apply.mjs',
     'marketing-release-operational-inputs-vercel-env.mjs',
-    'actions/upload-artifact@v4',
+    'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
     'MARKETING_RELEASE_RUNTIME_READY_TIMEOUT_MS',
     'MARKETING_RELEASE_RUNTIME_TIMEOUT_MS',
     'MARKETING_AUTOMATION_TIMEOUT_MS',

@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { X, ChevronLeft, Users, Calendar, Check, ChevronDown, ChevronUp } from 'lucide-react';
 import type { LeadFormData } from '@/lib/submitPipeline';
-import type { PriceDate } from '@/lib/price-dates';
+import { getUpcomingPriceDates, type PriceDate } from '@/lib/price-dates';
 import DepartureCalendar from '@/components/customer/DepartureCalendar';
+import { formatKstDate, isUpcomingKstDate } from '@/lib/kst-date';
 
 interface Props {
   open: boolean;
@@ -17,6 +18,19 @@ interface Props {
 }
 
 const TOTAL_STEPS = 3;
+
+export function resolveLeadDefaultDate(
+  defaultDate: string | undefined,
+  priceDates: PriceDate[] | undefined,
+  today: string = formatKstDate(),
+): string {
+  const normalizedDefault = defaultDate?.trim() ?? '';
+  const selectableDates = getUpcomingPriceDates(priceDates, today);
+  if ((priceDates?.length ?? 0) > 0) {
+    return selectableDates.some(item => item.date === normalizedDefault) ? normalizedDefault : '';
+  }
+  return isUpcomingKstDate(normalizedDefault, today) ? normalizedDefault : '';
+}
 
 function formatPhone(raw: string): string {
   const digits = raw.replace(/\D/g, '').slice(0, 11);
@@ -34,8 +48,14 @@ export default function LeadBottomSheet({
   hasSpecialTerms = false,
   termsSummary,
 }: Props) {
+  const today = formatKstDate();
+  const selectablePriceDates = useMemo(
+    () => getUpcomingPriceDates(priceDates, today),
+    [priceDates, today],
+  );
+  const initialDesiredDate = resolveLeadDefaultDate(defaultDate, priceDates, today);
   const [step, setStep] = useState(0);
-  const [desiredDate, setDesiredDate] = useState(defaultDate);
+  const [desiredDate, setDesiredDate] = useState(initialDesiredDate);
   const [adults, setAdults] = useState(2);
   const [children, setChildren] = useState(0);
   const [name, setName] = useState('');
@@ -49,7 +69,7 @@ export default function LeadBottomSheet({
   useEffect(() => {
     if (!open) return;
     setStep(0);
-    setDesiredDate(defaultDate);
+    setDesiredDate(initialDesiredDate);
     setAdults(2);
     setChildren(0);
     setName('');
@@ -59,7 +79,7 @@ export default function LeadBottomSheet({
     setTermsExpanded(false);
     setSubmitting(false);
     setSuccess(false);
-  }, [open, defaultDate]);
+  }, [open, initialDesiredDate]);
 
   useEffect(() => {
     if (!open) return;
@@ -169,11 +189,15 @@ export default function LeadBottomSheet({
                 <StepIcon icon={<Calendar size={28} className="text-yellow-500" />} />
                 <h2 className="text-center text-lg font-bold text-gray-900">희망 출발일을 선택해 주세요</h2>
                 <p className="text-center text-sm text-gray-500">
-                  {priceDates && priceDates.length > 0 ? '예약 가능한 출발일에서 선택하세요.' : '일정 조율을 위해 필요해요.'}
+                  {selectablePriceDates.length > 0
+                    ? '예약 가능한 출발일에서 선택하세요.'
+                    : priceDates && priceDates.length > 0
+                      ? '원문 출발일이 모두 지나 희망 날짜를 남겨주세요.'
+                      : '일정 조율을 위해 필요해요.'}
                 </p>
-                {priceDates && priceDates.length > 0 ? (
+                {selectablePriceDates.length > 0 ? (
                   <DepartureCalendar
-                    priceDates={priceDates}
+                    priceDates={selectablePriceDates}
                     selectedDate={desiredDate}
                     onSelect={setDesiredDate}
                   />
@@ -182,7 +206,7 @@ export default function LeadBottomSheet({
                     type="date"
                     value={desiredDate}
                     onChange={event => setDesiredDate(event.target.value)}
-                    min={new Date().toISOString().slice(0, 10)}
+                    min={today}
                     className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 text-center text-base transition focus:border-yellow-400 focus:outline-none"
                   />
                 )}

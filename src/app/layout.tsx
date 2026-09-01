@@ -137,12 +137,25 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     expectedHostname,
   };
   const storedConsent = cookieStore.get('ys_consent_v2')?.value ?? '';
+  const initialConsent = {
+    decided: /^[a-][m-]$/.test(storedConsent),
+    analytics: storedConsent.startsWith('a'),
+    advertising: storedConsent.endsWith('m'),
+  };
   const noscriptEnabled = analytics.runtimeEnabled
-    && (storedConsent.includes('a') || storedConsent.includes('m'));
+    && initialConsent.decided
+    && (initialConsent.analytics || initialConsent.advertising);
   return (
     <html lang="ko">
       <head>
         <meta name="facebook-domain-verification" content="6b5xtc0m174vrt9fz1gtlmj2uaab0t" />
+        <link
+          rel="preload"
+          href="/fonts/Pretendard-Regular.otf"
+          as="font"
+          type="font/otf"
+          crossOrigin="anonymous"
+        />
         <link rel="alternate" type="application/rss+xml" title="여소남 블로그 RSS" href="/api/rss" />
         <link rel="preconnect" href="https://images.pexels.com" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://images.pexels.com" />
@@ -193,7 +206,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <PartytownInit />
         <AffiliateAttributionBanner />
         {children}
-        <LayoutClientWidgets analytics={analytics} />
+        <LayoutClientWidgets analytics={analytics} initialConsent={initialConsent} />
         {ENABLE_SPEED_INSIGHTS ? <SpeedInsights /> : null}
       </body>
     </html>
