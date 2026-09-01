@@ -5,6 +5,14 @@ import { notifyIndexingBatch } from '@/lib/indexing';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
+import {
+  BLOG_AUTOPILOT_PIPELINE_VERSION,
+  BLOG_AUTOPILOT_SCHEMA_MIGRATION_VERSION,
+  BLOG_SEARCH_CLASSIFICATION_VERSION,
+  readBlogDeploymentCommitShaV4,
+  resolveBlogSearchLifecycleStatus,
+  resolveProviderReceiptStatus,
+} from '@/lib/blog-autopilot-v4-contract';
 
 type BulkReindexBody = {
   batchSize?: number;
@@ -86,16 +94,35 @@ export async function POST(request: NextRequest) {
 
     const urls = posts.map((post) => `${baseUrl}/blog/${post.slug}`);
     const reports = await notifyIndexingBatch(urls, baseUrl);
-    const reportRows = reports.map((report, idx) => ({
-      url: report.url,
-      content_creative_id: posts[idx]?.id ?? null,
-      google_status: report.google,
-      google_error: report.google_error ?? null,
-      indexnow_status: report.indexnow,
-      indexnow_error: report.indexnow_error ?? null,
-      sitemap_pings: report.sitemap_pings,
-      duration_ms: report.duration_ms,
-    }));
+    const reportRows = reports.map((report, idx) => {
+      const providerAccepted = report.google === 'success'
+        || report.indexnow === 'success'
+        || report.sitemap_pings.some((ping) => ping.ok);
+      const providerReceiptStatus = resolveProviderReceiptStatus({
+        requestStatus: 'requested',
+        providerOk: providerAccepted,
+      });
+      return {
+        url: report.url,
+        content_creative_id: posts[idx]?.id ?? null,
+        google_status: report.google,
+        google_error: report.google_error ?? null,
+        indexnow_status: report.indexnow,
+        indexnow_error: report.indexnow_error ?? null,
+        sitemap_pings: report.sitemap_pings,
+        duration_ms: report.duration_ms,
+        search_lifecycle_status: resolveBlogSearchLifecycleStatus({
+          requestStatus: 'requested',
+          providerReceiptStatus,
+        }),
+        provider_receipt_status: providerReceiptStatus,
+        classification_version: BLOG_SEARCH_CLASSIFICATION_VERSION,
+        provider_raw_response: report,
+        pipeline_version: BLOG_AUTOPILOT_PIPELINE_VERSION,
+        deployment_commit_sha: readBlogDeploymentCommitShaV4(),
+        schema_migration_version: BLOG_AUTOPILOT_SCHEMA_MIGRATION_VERSION,
+      };
+    });
     const { error: reportError } = await supabaseAdmin
       .from('indexing_reports')
       .insert(reportRows);

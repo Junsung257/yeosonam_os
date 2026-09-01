@@ -1,5 +1,7 @@
 # Blog Ops Runbook
 
+> 2026-09-01 Autopilot V4 override: DB `publishing_policies` 5건·09/12/15/18/21시만 운영 발행 기준이다. `/admin/blog`과 `/api/admin/blog/ops-summary`는 동일한 계산기로 연구 완료 60, 발행 준비 15, 단계별 재시도/격리, V4 품질, Playwright 95점, 제출/발견/실제 색인을 분리 표시한다. 발행 준비 0건이거나 최근 품질·브라우저 실패가 있으면 `healthy`로 판정하지 않는다.
+
 > 2026-08-30 V5 override: 신규 정보성 후보는 `decision_artifact_v1`과 `editorial_harness_v5`가 모두 있어야 자동발행할 수 있다. 일일 운영자는 `npm run eval:blog-editorial:promptfoo`의 33/33, 새 승인 attempt의 prompt trace 완전성, queue-only 편집 평가 저장, generation/editorial_judge 비용 원장을 함께 확인한다. 심사 실패를 평균 품질 점수로 상쇄하거나 수동으로 `approved_for_slot`으로 바꾸지 않는다.
 
 > 2026-08-16 release override: DeepSeek-only 연구 구조화·초안·재작성, 비용 예약, `pilot_3→ramp_10→max_30` 자동 승격/강등, immutable snapshot, 90일 GSC 보강, 분석 canary, 배포·롤백 순서는 `docs/runbooks/blog-orchestrator-v4-production-rollout.md`와 `docs/runbooks/blog-deepseek-orchestrator-v4.md`가 우선한다.
@@ -8,7 +10,7 @@
 
 > 2026-08-13 V3 override: `backfill:blog-quality:write` was removed. The legacy backfill creates article text, so `--write` and `--apply` now fail before any database mutation. Commands below that include the old write flag are historical verification records only.
 
-Last updated: 2026-08-30
+Last updated: 2026-09-01
 
 This runbook defines how operators decide whether the Yeosonam blog automation is healthy. The durable publish contract remains `docs/blog-autopublish-contract.md`; this file explains the daily operating workflow shown in `/admin/blog`.
 
@@ -16,12 +18,22 @@ Information Engine V2 CTA setup, high-risk approval, fixture evaluation, existin
 
 ## People-First V5 daily checks
 
-1. `npm run eval:blog-editorial:promptfoo`가 33/33인지 확인한다.
+1. `npm run eval:blog-editorial:promptfoo`가 100/100인지 확인한다. 72 safe, 12 product, 16 failure-edge 구성이 달라지면 중단한다.
 2. `blog_generation_attempts`의 새 `approved_for_slot` 행에서 `prompt_hash`, `brief_hash`, `claim_packet_hash`, `prompt_template_version`, `git_commit_sha`가 모두 존재하는지 확인한다.
 3. `blog_quality_evaluations.evaluator_version='blog-editorial-harness-v5.0.0'`의 최신 행이 `passed=true`이고 다섯 semantic dimension이 모두 true인지 확인한다.
 4. `blog_ai_budget_reservations`를 `call_kind`로 나눠 generation과 editorial_judge 모두 사전 예약·정산됐는지 확인한다.
 5. `source_label_misleading`, `reader_task_unanswered`, `commodity_source_stitching`, `semantic_judge_missing`, `evaluation_persistence_failed`는 재작성 1회 뒤에도 남으면 quarantine이 정상이다.
 6. HIGH risk는 편집 심사 통과 여부와 무관하게 사람 승인을 유지한다.
+7. `blog_search_followup_jobs`의 D+1/3/7 누락이 0인지, D+3 Sitemap 재제출이 1회 이하인지, D+7 미색인이 `blog_search_correction_queue`로 종료되었는지 확인한다.
+8. `indexing_reports.provider_raw_response`는 수정하지 않고, 오판정 교정은 `blog_indexing_classification_revisions`에 새 버전으로만 추가한다.
+
+## Autopilot V4 출시 순서
+
+1. 스테이징에 `20260901114420_blog_autopilot_v4_truth_and_lifecycle.sql`을 적용한다.
+2. 스테이징 DB에서 Supabase 타입을 재생성하고, 동일 commit·migration·pipeline 버전의 애플리케이션을 배포한다. 스키마 probe가 실패하면 자동발행은 차단된 상태가 정상이다.
+3. `draft_only`+비공개 shadow로 7일/35건을 검증하고 치명 오류 0, 브라우저 95점 이상을 확인한다.
+4. 3일/15건 공개 canary에서 중복·PII·근거 유실·색인 오판정 1건이라도 발생하면 즉시 frozen/안전정지한다.
+5. 14일/70개 슬롯을 관찰한 뒤 DB 5건/일 정상 운영을 승인한다. 이전에는 GitHub 백업 스케줄을 삭제하지 않고, 전환 후 중복 실행이 없음을 증명한 뒤 비활성화한다.
 
 기존 공개 글 격리는 `docs/runbooks/blog-stale-content-and-removal.md`를 따른다. CSV의 정확한 creative ID·canonical·reason을 두 사람이 검토하고 PITR를 확인하기 전에는 `--apply`를 실행하지 않는다. 교정본이 공개 가능해진 뒤에만 색인 outbox를 enqueue한다.
 

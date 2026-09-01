@@ -5,6 +5,24 @@
 
 ---
 
+## 🔐 블로그 오토파읿 V4 운영 필드
+
+블로그 생성·검수·색인 원장은 모두 고객 미노출 `service_role` 전용이다. 원본 공급자 응답은 덮어쓰지 않고, 파생 판정만 추가한다.
+
+| 테이블/필드 | 의미 | 허용 | 금지 |
+|---|---|---|---|
+| `blog_generation_runs.pipeline_version` | 파이프라인 계약 버전 | 고정 버전 ID | 사용자 입력 |
+| `blog_generation_runs.deployment_commit_sha` | 실행 배포 SHA | Vercel/Git SHA | 프롬프트·토큰 |
+| `blog_generation_runs.schema_migration_version` | 요구 DB 버전 | migration timestamp | 임의 라벨 |
+| `indexing_reports.provider_raw_response` | 검색 공급자 원본 결과 | 비밀값 제거 JSON | 수정·삭제·자격증명 |
+| `search_lifecycle_status` | 파생 생명주기 | queued→ranking 중 한 단계 | 제출 성공을 indexed로 기록 |
+| `provider_receipt_status` | 제출 수신 결과 | unknown/pending/accepted/rejected/not_applicable | 색인 여부 대체 |
+| `blog_indexing_classification_revisions` | append-only 정정 원장 | 추가·조회 | update/delete |
+| `blog_search_followup_jobs` | D+1/3/7 유한 추적 | 상태·재시도·원본 증거 | 7일 후 무한 재제출 |
+| `blog_search_correction_queue` | D+7 기술/콘텐츠 보정 | 유한 검토 상태 | 자동 프롬프트 변경 |
+
+---
+
 ## 🔒 고객 노출 필드 (Customer-Facing)
 
 **절대 내부 운영 메모 넣지 말 것.** A4 포스터 / 모바일 랜딩에 그대로 노출됨.

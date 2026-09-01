@@ -33,6 +33,7 @@ import {
 } from '@/lib/blog-generation-research';
 import { inspectBlogInformationClaimTypeCompatibility } from '@/lib/blog-information-claim-validator';
 import { matchesBlogResearchDestinationScope } from '@/lib/blog-research-destination-scope';
+import { classifyBlogResearchSourceFormatV4 } from '@/lib/blog-research-source-adapters-v4';
 import { supabaseAdmin } from '@/lib/supabase';
 
 const AUTO_RESEARCH_MODEL = BLOG_DEEPSEEK_MODELS.rewrite;
@@ -401,14 +402,10 @@ async function fetchReviewedDirectPage(input: {
     if (!response.ok) throw new Error(`http_${response.status}:${input.entry.hostname}`);
 
     const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
-    const isPdf = contentType.includes('application/pdf');
-    const isStructuredText = contentType.includes('application/json')
-      || contentType.includes('application/xml')
-      || contentType.includes('text/xml');
-    if (!contentType.includes('text/html')
-      && !contentType.includes('text/plain')
-      && !isStructuredText
-      && !isPdf) {
+    const sourceFormat = classifyBlogResearchSourceFormatV4({ contentType, url: currentUrl });
+    const isPdf = sourceFormat === 'pdf';
+    const isStructuredText = sourceFormat === 'structured_text';
+    if (!['html', 'structured_text', 'pdf'].includes(sourceFormat)) {
       throw new Error(`unsupported_content_type:${input.entry.hostname}`);
     }
     const contentLength = Number(response.headers.get('content-length') ?? 0);

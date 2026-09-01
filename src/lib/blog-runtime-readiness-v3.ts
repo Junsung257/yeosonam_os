@@ -55,7 +55,7 @@ export const BLOG_RUNTIME_RESOURCES_V3: readonly BlogRuntimeResourceV3[] = [
   {
     key: 'generation_runs_v4',
     table: 'blog_generation_runs',
-    columns: 'id,queue_id,status,attempt_count,latest_quality_score,selected_attempt_id,scheduled_publish_at',
+    columns: 'id,queue_id,status,attempt_count,latest_quality_score,selected_attempt_id,scheduled_publish_at,pipeline_version,deployment_commit_sha,schema_migration_version',
     scope: 'publish',
   },
   {
@@ -107,6 +107,12 @@ export const BLOG_RUNTIME_RESOURCES_V3: readonly BlogRuntimeResourceV3[] = [
     scope: 'publish',
   },
   { key: 'content_signatures', table: 'blog_content_signatures', columns: 'id', scope: 'publish' },
+  {
+    key: 'publishing_policy_v4',
+    table: 'publishing_policies',
+    columns: 'scope,enabled,posts_per_day,slot_times',
+    scope: 'publish',
+  },
   { key: 'claim_ledger', table: 'blog_information_claim_ledger_v3', columns: 'claim_id', scope: 'publish' },
   { key: 'author_profiles', table: 'blog_author_profiles', columns: 'id', scope: 'delivery' },
   { key: 'media_assets', table: 'blog_media_assets', columns: 'id', scope: 'delivery' },
@@ -114,6 +120,36 @@ export const BLOG_RUNTIME_RESOURCES_V3: readonly BlogRuntimeResourceV3[] = [
   { key: 'public_snapshots', table: 'blog_public_snapshots', columns: 'creative_id,is_current', scope: 'delivery' },
   { key: 'public_snapshot_history', table: 'blog_public_snapshot_history', columns: 'id', scope: 'delivery' },
   { key: 'public_catalog_facets', table: 'blog_public_catalog_facets', columns: 'facet_type,facet_key', scope: 'delivery' },
+  {
+    key: 'indexing_reports_lifecycle_v4',
+    table: 'indexing_reports',
+    columns: 'id,url,search_lifecycle_status,provider_receipt_status,classification_version,provider_raw_response,pipeline_version,deployment_commit_sha,schema_migration_version',
+    scope: 'delivery',
+  },
+  {
+    key: 'visibility_lifecycle_v4',
+    table: 'blog_visibility_snapshots',
+    columns: 'id,content_creative_id,search_lifecycle_status,provider_receipt_status,classification_version,pipeline_version,deployment_commit_sha,schema_migration_version',
+    scope: 'delivery',
+  },
+  {
+    key: 'classification_revisions_v4',
+    table: 'blog_indexing_classification_revisions',
+    columns: 'id,indexing_report_id,search_lifecycle_status,provider_receipt_status,classification_version',
+    scope: 'delivery',
+  },
+  {
+    key: 'search_followups_v4',
+    table: 'blog_search_followup_jobs',
+    columns: 'id,content_creative_id,milestone_days,due_at,status,attempt_count,next_attempt_at,result',
+    scope: 'delivery',
+  },
+  {
+    key: 'search_correction_queue_v4',
+    table: 'blog_search_correction_queue',
+    columns: 'id,content_creative_id,followup_job_id,correction_type,status',
+    scope: 'delivery',
+  },
   { key: 'search_performance', table: 'blog_search_performance', columns: 'id', scope: 'measurement' },
   { key: 'analytics_outbox', table: 'analytics_server_event_outbox', columns: 'id,status', scope: 'measurement' },
   {

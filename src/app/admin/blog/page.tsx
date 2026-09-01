@@ -6,7 +6,7 @@ import BlogDataFetcher from './BlogDataFetcher';
 import Button from '@/components/ui/Button';
 import { buildBlogOpsSummary, type BlogOpsLevel } from '@/lib/blog-ops-summary';
 import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
-import { Activity, AlertTriangle, Archive, BarChart3, CheckCircle2, Clock, FileText, ListChecks, Search, Settings } from 'lucide-react';
+import { Activity, AlertTriangle, BarChart3, CheckCircle2, Clock, FileText, ListChecks, Search, Settings, ShieldCheck } from 'lucide-react';
 
 // Next 15: route segment config 는 정적 평가만 가능. 항상 'auto' (60초 캐시).
 export const dynamic = 'auto';
@@ -63,6 +63,8 @@ const CHECK_LABELS: Record<string, string> = {
   canary_candidates_unavailable: 'Canary 후보 부족',
   current_day_publisher_failure: '오늘 발행자 실패',
   google_url_unknown: '구글 미인지 URL 존재',
+  v4_quality_or_browser_gate: 'V4 품질 또는 브라우저 검사 차단',
+  publish_ready_candidates_zero: '발행 준비 후보 없음',
 };
 
 function checkLabel(check: string) {
@@ -78,18 +80,29 @@ function levelBadge(level: BlogOpsLevel) {
   );
 }
 
-function metricCard(label: string, value: string | number, hint: string, icon: ElementType, tone: 'neutral' | 'good' | 'bad' = 'neutral') {
+function metricCard(input: {
+  label: string;
+  value: string | number;
+  hint: string;
+  icon: ElementType;
+  href: string;
+  tone?: 'neutral' | 'good' | 'bad';
+}) {
+  const { label, value, hint, icon, href, tone = 'neutral' } = input;
   const Icon = icon;
   const toneCls = tone === 'good' ? 'text-success' : tone === 'bad' ? 'text-danger' : 'text-admin-text';
   return (
-    <div className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-4 shadow-admin-xs">
+    <Link
+      href={href}
+      className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-4 shadow-admin-xs transition-colors hover:border-admin-border-strong hover:bg-admin-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+    >
       <div className="flex items-start justify-between gap-3">
         <p className="text-admin-xs font-semibold uppercase tracking-wider text-admin-muted">{label}</p>
         <Icon size={15} className="shrink-0 text-admin-muted-2" />
       </div>
       <p className={`mt-2 text-admin-display font-bold admin-num ${toneCls}`}>{value}</p>
       <p className="mt-1 text-admin-xs leading-5 text-admin-muted">{hint}</p>
-    </div>
+    </Link>
   );
 }
 
@@ -141,43 +154,55 @@ export default async function BlogAdminPage(
 
       {ops && (
         <>
-          <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-            {metricCard(
-              '오늘 발행',
-              `${ops.publish.published_today}/${ops.publish.daily_target}`,
-              ops.publish.remaining_today > 0 ? `남은 목표 ${ops.publish.remaining_today}편` : '오늘 목표 달성',
-              Clock,
-              ops.publish.remaining_today > 0 ? 'bad' : 'good',
-            )}
-            {metricCard(
-              '운영 큐',
-              ops.queue.active_count.toLocaleString('ko-KR'),
-              `실패 ${ops.queue.counts.failed || 0} · 지연 ${ops.queue.overdue_queued}`,
-              ListChecks,
-              (ops.queue.counts.failed || 0) > 0 ? 'bad' : 'neutral',
-            )}
-            {metricCard(
-              '색인 작업',
-              (ops.indexing.google_unknown_urls || ops.indexing.active_jobs).toLocaleString('ko-KR'),
-              ops.indexing.google_unknown_urls
-                ? `구글 미인지 ${ops.indexing.google_unknown_urls}건`
-                : ops.indexing.indexnow_success_rate == null ? '네이버 수집 알림 집계 대기' : `네이버 수집 성공 ${ops.indexing.indexnow_success_rate}%`,
-              Search,
-              ops.indexing.google_unknown_urls || ops.indexing.active_jobs > 0 ? 'bad' : 'good',
-            )}
-            {metricCard(
-              '크론 이상',
-              ops.cron.unhealthy_count.toLocaleString('ko-KR'),
-              ops.cron.unhealthy_count ? '시스템 탭에서 원인 확인' : '핵심 크론 정상',
-              Activity,
-              ops.cron.unhealthy_count ? 'bad' : 'good',
-            )}
-            {metricCard(
-              '숨긴 과거 큐',
-              ops.queue.hidden_history.toLocaleString('ko-KR'),
-              '발행/스킵 이력은 큐 기본 화면에서 제외',
-              Archive,
-            )}
+          <section className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+            {metricCard({
+              label: '오늘 발행',
+              value: `${ops.publish.published_today}/${ops.publish.daily_target}`,
+              hint: ops.publish.remaining_today > 0 ? `남은 목표 ${ops.publish.remaining_today}편` : '오늘 목표 달성',
+              icon: Clock,
+              href: '/admin/blog/policy',
+              tone: ops.publish.remaining_today > 0 ? 'bad' : 'good',
+            })}
+            {metricCard({
+              label: '발행 준비',
+              value: `${ops.autopilot.publish_ready_candidates}/${ops.autopilot.publish_ready_target}`,
+              hint: `연구 완료 ${ops.autopilot.research_completed_candidates}/${ops.autopilot.research_target}`,
+              icon: ListChecks,
+              href: '/admin/blog/queue',
+              tone: ops.autopilot.publish_ready_candidates === 0 ? 'bad' : 'neutral',
+            })}
+            {metricCard({
+              label: '품질 / 브라우저',
+              value: `${ops.autopilot.quality.pass_rate ?? '-'}%`,
+              hint: `공개 전 ${ops.autopilot.browser_preview.pass_rate ?? '-'}% · 공개 후 ${ops.autopilot.browser_public.pass_rate ?? '-'}%`,
+              icon: ShieldCheck,
+              href: '/admin/blog/system',
+              tone: ops.autopilot.quality.failed > 0 || ops.autopilot.browser_preview.failed > 0 || ops.autopilot.browser_public.failed > 0 || ops.autopilot.preview_pending_count > 0 ? 'bad' : 'good',
+            })}
+            {metricCard({
+              label: '실제 색인',
+              value: ops.indexing.actual_index_rate == null ? '-' : `${ops.indexing.actual_index_rate}%`,
+              hint: `발견 ${ops.indexing.discovery_rate ?? '-'}% · 제출 ${ops.indexing.submission_rate ?? '-'}%`,
+              icon: Search,
+              href: '/admin/blog/rankings',
+              tone: ops.indexing.level === 'risk' ? 'bad' : 'neutral',
+            })}
+            {metricCard({
+              label: '파이프라인 예외',
+              value: (ops.autopilot.retry_count + ops.autopilot.quarantine_count).toLocaleString('ko-KR'),
+              hint: `재시도 ${ops.autopilot.retry_count} · 격리 ${ops.autopilot.quarantine_count}`,
+              icon: AlertTriangle,
+              href: '/admin/blog/system',
+              tone: ops.autopilot.retry_count + ops.autopilot.quarantine_count > 0 ? 'bad' : 'good',
+            })}
+            {metricCard({
+              label: '크론 이상',
+              value: ops.cron.unhealthy_count.toLocaleString('ko-KR'),
+              hint: ops.cron.unhealthy_count ? '시스템 탭에서 원인 확인' : '핵심 크론 정상',
+              icon: Activity,
+              href: '/admin/blog/system',
+              tone: ops.cron.unhealthy_count ? 'bad' : 'good',
+            })}
           </section>
 
           <section className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">

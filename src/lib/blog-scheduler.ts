@@ -683,7 +683,9 @@ export const DAILY_PUBLISH_SLOTS = ['09:00', '12:00', '15:00', '18:00', '21:00']
 
 export const MIN_POSTS_PER_DAY = 0;
 export const MAX_POSTS_PER_DAY = 5;
-export const DEFAULT_POSTS_PER_DAY = 1;
+// Missing/disabled DB policy must pause scheduling instead of silently
+// publishing with a code fallback.
+export const DEFAULT_POSTS_PER_DAY = 0;
 export const PRODUCT_RATIO = 0.4; // 40% — multi-angle drip 도입으로 상품 비중 상향
 export const SCHEDULE_OCCUPYING_QUEUE_STATUSES = ['queued', 'generating'] as const;
 

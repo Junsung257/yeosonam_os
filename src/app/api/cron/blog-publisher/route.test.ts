@@ -23,6 +23,15 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain("status: researchRetryQueued ? 'research_retry_queued' : 'error'");
   });
 
+  it('accepts an exact Inngest queue target without weakening the manual canary contract', () => {
+    const source = routeSource();
+
+    expect(source).toContain("searchParams.get('pipelineQueueId')");
+    expect(source).toContain('isInngestBlogAutopilotEnabled()');
+    expect(source).toContain('!durablePipelineQueueId && (item.product_id');
+    expect(source).toContain('durablePipeline: Boolean(durablePipelineQueueId)');
+  });
+
   it('keeps attempting replacement candidates until the currently due slot quota is filled or time is unsafe', () => {
     const source = routeSource();
 

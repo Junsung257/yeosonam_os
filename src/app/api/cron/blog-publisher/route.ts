@@ -104,6 +104,8 @@ import {
 import { researchBlogInformationAutomatically } from '@/lib/blog-auto-research';
 import { buildBlogIntentPromptContract, classifyBlogIntent } from '@/lib/blog-content-intent';
 import { ensureDailyPublishableQueue, getBlogPublishingPolicy, MIN_PUBLISHABLE_BUFFER_DAYS, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
+import { BLOG_AUTOPILOT_PIPELINE_VERSION } from '@/lib/blog-autopilot-v4-contract';
+import { isInngestBlogAutopilotEnabled } from '@/inngest/runtime-policy';
 import {
   classifyBlogQueueFailure,
   isBlogDuplicateQueueFailure,
@@ -1910,8 +1912,21 @@ async function runBlogPublisher(request: NextRequest) {
       };
     }
 
-    const targetQueueId = request.nextUrl.searchParams.get('targetQueueId')?.trim();
+    const durablePipelineQueueId = request.nextUrl.searchParams.get('pipelineQueueId')?.trim();
+    const targetQueueId = durablePipelineQueueId
+      || request.nextUrl.searchParams.get('targetQueueId')?.trim();
     if (targetQueueId) {
+      if (durablePipelineQueueId && !isInngestBlogAutopilotEnabled()) {
+        return {
+          ok: false,
+          processed: 0,
+          published: 0,
+          durablePipeline: true,
+          reason: 'inngest_blog_autopilot_not_enabled',
+          results,
+          errors,
+        };
+      }
       const { data: item, error: itemError } = await supabaseAdmin
         .from('blog_topic_queue')
         .select('*')
@@ -1932,7 +1947,7 @@ async function runBlogPublisher(request: NextRequest) {
           errors,
         };
       }
-      if (item.product_id || targetMeta.controlled_publish_canary !== true) {
+      if (!durablePipelineQueueId && (item.product_id || targetMeta.controlled_publish_canary !== true)) {
         return {
           ok: false,
           processed: 0,
@@ -1956,7 +1971,8 @@ async function runBlogPublisher(request: NextRequest) {
         ok: targetedSucceeded,
         processed: 1,
         published,
-        targetedCanaryPublication: true,
+        targetedCanaryPublication: !durablePipelineQueueId,
+        durablePipeline: Boolean(durablePipelineQueueId),
         queueId: targetQueueId,
         results,
         errors: targetedSucceeded
@@ -1993,7 +2009,7 @@ async function runBlogPublisher(request: NextRequest) {
       ? BLOG_DAILY_CANDIDATE_CAP
       : Math.min(
           BLOG_AUTOPUBLISH_POLICY_V3.dailyPublishCap,
-          normalizeDailyPostTarget(publishPolicy?.posts_per_day ?? process.env.BLOG_DAILY_PUBLISH_TARGET),
+          normalizeDailyPostTarget(publishPolicy?.posts_per_day),
         );
     const todayQuota = await getTodayBlogPublishCount();
     const slotQuota = calculateBlogPublishSlotQuota({
@@ -3397,6 +3413,7 @@ async function processQueueItem(
         details: seoScore.details,
       },
       engine_version: 'blog-quality-v3',
+      public_render_score: publishQuality.renderedSeoQuality?.passed === false ? 0 : 100,
       content_brief_v3: contentBriefV3,
       writer: typeof generated.generation_meta?.writer === 'string'
         ? generated.generation_meta.writer
@@ -3741,10 +3758,10 @@ async function processQueueItem(
         failureReasons: orchestrationFailureReasons,
         researchFingerprint: typeof item.meta?.information_research_fingerprint === 'string'
           ? item.meta.information_research_fingerprint
-          : null,
+          : (generationMeta.prompt_trace_v1 as BlogPromptTraceV1 | undefined)?.briefHash ?? null,
         claimFingerprint: typeof item.meta?.claim_fingerprint === 'string'
           ? item.meta.claim_fingerprint
-          : null,
+          : (generationMeta.prompt_trace_v1 as BlogPromptTraceV1 | undefined)?.claimPacketHash ?? null,
         promptTrace: generationMeta.prompt_trace_v1 as BlogPromptTraceV1 | undefined,
         receipt: generationReceipt,
       });
@@ -5094,6 +5111,11 @@ async function loadBlogAttemptRevalidationCandidateV4(
           editorial_variation: item.meta?.editorial_variation ?? null,
         },
         content_brief_v3: contentBriefV3,
+        autopilot_v4: {
+          pipeline_version: BLOG_AUTOPILOT_PIPELINE_VERSION,
+          stage: 'quality',
+          brief_persisted_before_generation: true,
+        },
         writer_claim_ledger: {
           version: 'v1',
           claims: revalidatedWriterClaimLedger,
@@ -5597,6 +5619,14 @@ async function generateFromTopic(
     ...(item.meta || {}),
     [BLOG_INFORMATION_RESEARCH_META_KEY]: artifactResearchBundle,
     decision_artifact_v1: decisionArtifact,
+    content_brief_v3: contentBriefV3,
+    autopilot_v4: {
+      pipeline_version: BLOG_AUTOPILOT_PIPELINE_VERSION,
+      stage: 'brief',
+      brief_persisted_at: new Date().toISOString(),
+      research_content_key: artifactResearchBundle.contentKey,
+      prompt_version: BLOG_INFORMATION_PROMPT_VERSION,
+    },
   };
   const { error: artifactQueuePersistError } = await supabaseAdmin
     .from('blog_topic_queue')
@@ -5904,6 +5934,11 @@ async function generateFromTopic(
       editorial_variation: item.meta?.editorial_variation ?? null,
     },
     content_brief_v3: contentBriefV3,
+    autopilot_v4: {
+      pipeline_version: BLOG_AUTOPILOT_PIPELINE_VERSION,
+      stage: 'quality',
+      brief_persisted_before_generation: true,
+    },
     writer_claim_ledger: {
       version: 'v1',
       claims: writerOutput.claimLedger,

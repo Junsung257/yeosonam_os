@@ -167,9 +167,9 @@ jobs:
           detail_sha="$(node -p "require('./public/blog-snapshots/v3/manifest.json').detail.sha256")"
           update_env BLOG_AUTOPUBLISH_MODE draft_only
           update_env BLOG_GENERATION_CRON_ENABLED false
-          update_env BLOG_DAILY_PUBLISH_CAP 30
-          update_env BLOG_PUBLICATION_RAMP_STAGE max_30
-          update_env BLOG_AUTO_RAMP_ENABLED true
+          update_env INNGEST_BLOG_AUTOPILOT_ENABLED false
+          update_env BLOG_PUBLICATION_RAMP_STAGE pilot_3
+          update_env BLOG_AUTO_RAMP_ENABLED false
           update_env BLOG_AUTO_ROLLBACK_ENABLED true
           update_env BLOG_DAILY_AI_COST_CAP_USD 2
           update_env DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS 1

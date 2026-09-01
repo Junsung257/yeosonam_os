@@ -6,9 +6,9 @@
 |---|---:|---|
 | `BLOG_AUTOPUBLISH_MODE` | `draft_only` | `draft_only`, `reviewed_only`, `live`; 누락/오타는 fail-closed |
 | `BLOG_PRODUCTION_ALLOWED_GIT_REF` | `main` | Vercel production 자동발행을 허용할 유일한 Git ref. production에서 ref/SHA 증거가 없거나 다르면 자동으로 `draft_only` |
-| `BLOG_DAILY_PUBLISH_CAP` | `1` | Asia/Seoul 일일 공개 상한 |
-| `BLOG_PUBLICATION_RAMP_STAGE` | `pilot_3` | 환경 상한: `pilot_3`, `ramp_10`, `max_30`. 실효 단계는 환경 상한과 DB rollout 상태 중 더 낮은 단계 |
-| `BLOG_AUTO_RAMP_ENABLED` | `false` | `true`일 때만 완전한 일일 관측 7회와 단계별 누적 발행량을 만족하면 `pilot_3→ramp_10→max_30` 자동 승격 |
+| `BLOG_DAILY_PUBLISH_CAP` | retired | V4에서 무시. 발행량은 DB `publishing_policies.posts_per_day`(운영 5)만 사용 |
+| `BLOG_PUBLICATION_RAMP_STAGE` | `pilot_3` | 내구성 원장 호환/복구 메타데이터. V4 발행량을 낮추거나 높이지 않음 |
+| `BLOG_AUTO_RAMP_ENABLED` | `false` | 기존 단계 원장 평가 호환용. V4에서는 DB 발행량 SSOT를 변경하지 않음 |
 | `BLOG_AUTO_ROLLBACK_ENABLED` | `true` | 심각 사고는 즉시 동결·pilot 복귀, 일반 불건전 관측 2회 연속은 한 단계 강등 |
 | `BLOG_DAILY_CANDIDATE_CAP` | `30` | KST 야간에 생성·검증할 후보 상한. 공개 상한이 아니며 최대 30 |
 | `BLOG_DAILY_AI_COST_CAP_USD` | `2` | KST 일일 AI 비용 상한. 공급자 호출 전에 DB 원자 예약이 실패하거나 상한을 넘으면 호출 금지 |
@@ -17,6 +17,9 @@
 | `BLOG_REQUIRE_DEMAND_SIGNAL` | `true` | 관측·검증 demand signal 필수 |
 | `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS` | 없음 | `1`일 때만 DB 절전 모드에서도 블로그 핵심 체인(`rank-tracking`, `blog-data-readiness`, `blog-generate`, `blog-publication-controller`, `blog-indexing-worker`, `blog-ai-model-canary`, `blog-analytics-canary`, `analytics-delivery`) 실행. 누락 시 전체 체인은 fail-closed |
 | `BLOG_GENERATION_CRON_ENABLED` | 없음 (`false`) | `true`/`1`일 때만 야간 `blog-generate` cron이 모델 호출을 수행. 누락·오타는 pause이며, 승인된 수동 `force=true` 검증만 예외 |
+| `INNGEST_BLOG_AUTOPILOT_ENABLED` | 없음 (`false`) | `true`/`1`일 때만 `blog_topic_queue` 이벤트를 Inngest V4 함수로 전환. 전환 전 기존 cron은 호환 진입점 |
+| `BLOG_PREVIEW_SECRET` | `CRON_SECRET` fallback | 15분 이하 `noindex` 초안 미리보기 HMAC. 반드시 server-only |
+| `BLOG_AUTOPILOT_INTERNAL_ORIGIN` | `NEXT_PUBLIC_SITE_URL` fallback | Inngest가 공통 cron 진입점을 호출할 HTTPS 원점. 로컬만 localhost HTTP 허용 |
 | `BLOG_CORPUS_APPLY_CONFIRM` | 없음 | corpus quarantine apply 이중 확인; 평소 설정 금지 |
 | `BLOG_SEARCH_IMPORT_APPLY_CONFIRM` | 없음 | 관측 검색성과 import apply 이중 확인; 평소 설정 금지 |
 | `BLOG_SNAPSHOT_APPLY_CONFIRM` | 없음 | public snapshot DB refresh 이중 확인; 평소 설정 금지 |
@@ -272,7 +275,7 @@ LLM trace는 원문 prompt/response를 속성에 저장하지 않고 `gen_ai.ope
 | `GSC_URL_INSPECTION_MAX_PER_10M` | URL Inspection 최근 10분 최대 검사 수. 기본 `100` |
 | `GSC_URL_INSPECTION_MAX_PER_DAY` | URL Inspection 최근 24시간 최대 검사 수. 기본 `1500` |
 | `GSC_URL_INSPECTION_RETRY_AFTER_MINUTES` | Google 쿼터·속도 제한 감지 시 재시도 안내 분. 기본 `15` |
-| `GOOGLE_INDEXING_API_FOR_BLOGS` | `true`일 때만 일반 블로그에도 Google Indexing API 직접 호출을 허용. 기본은 미사용(공식 지원 범위가 JobPosting/BroadcastEvent 중심) |
+| `GOOGLE_INDEXING_API_FOR_BLOGS` | retired/무시. 일반 `/blog` URL은 값과 무관하게 Google Indexing API를 호출하지 않음 |
 | `SLACK_WEBHOOK_URL` | Slack 범용 웹훅 (폴백·운영 알림 등) |
 | `SLACK_SIGNING_SECRET` | Slack 앱의 Signing Secret. `/api/slack-webhook` raw-body HMAC 검증에 필수 |
 | `SLACK_ALERT_WEBHOOK_URL` | 운영 경고 (`slack-alert`, payment-heartbeat 등) |
