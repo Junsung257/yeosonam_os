@@ -1,6 +1,6 @@
 # 2026-09-01 문서·AI 하네스 통합 리팩터링 감사
 
-상태: implementation verified, two runtime follow-ups open
+상태: implementation verified, three operational follow-ups open
 담당: platform-engineering
 기준: `origin/main@421e81bb4f1394b17e8039dba4919a28825b68ba`
 브랜치: `codex/harness-doc-remediation-20260901`
@@ -51,6 +51,7 @@ dirty 작업 보존 snapshot: `b1e8b9d4b`
 
 | 항목 | 영향 | 담당 | 다음 확인일 |
 |---|---|---|---|
+| 과거 평문 PAT·서비스 역할 키의 공급자 측 폐기·회전 증빙 없음 | 저장 설정과 저장소에서는 제거됐지만 과거 자격증명의 효력 소멸은 로컬 감사만으로 입증할 수 없음 | credential owner | 즉시 |
 | 현재 실행 중인 Codex 세션은 설정 변경 전 Supabase tool catalog를 유지함 | 이 세션에서는 최소 권한 완료를 입증할 수 없음. 새 세션에서 project-scoped read-only 연결만 노출되는지 재검증 필요 | local operator | 2026-09-02 |
 | 실제 모델 provider를 쓰는 30개 live policy eval 미실행 | 정적 계약과 Promptfoo deterministic 회귀는 통과했으나 모델별 행동 비교 결과는 없음 | ai-platform | provider 승인 시 |
 | 기존 P2 risk baseline 2,679건 | 신규 위반은 차단되지만 기존 부채는 점진 감축 필요 | 각 domain owner | 매 PR·주간 감사 |
