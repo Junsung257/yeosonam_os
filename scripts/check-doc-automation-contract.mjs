@@ -1,39 +1,39 @@
 #!/usr/bin/env node
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 
 const strict = process.argv.includes('--strict');
 
 function gitLines(args) {
   try {
-    return execSync(`git ${args}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+    return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean);
-  } catch {
-    return [];
+  } catch (error) {
+    throw new Error(`Unable to determine changed files: git ${args.join(' ')}`, { cause: error });
   }
 }
 
 function changedFiles() {
   const files = new Set([
-    ...gitLines('diff --name-only'),
-    ...gitLines('diff --cached --name-only'),
-    ...gitLines('ls-files --others --exclude-standard'),
+    ...gitLines(['diff', '--name-only']),
+    ...gitLines(['diff', '--cached', '--name-only']),
+    ...gitLines(['ls-files', '--others', '--exclude-standard']),
   ]);
 
-  const baseRef = process.env.GITHUB_BASE_REF;
-  if (baseRef) {
-    if (/^[A-Za-z0-9._/-]+$/.test(baseRef)) {
-      gitLines(`fetch --no-tags origin ${baseRef}:refs/remotes/origin/${baseRef}`);
+  const inCi = process.env.GITHUB_ACTIONS === 'true' || process.env.CI === 'true';
+  const baseSha = process.env.DOC_AUTOMATION_BASE_SHA?.trim() ?? '';
+  if (inCi && !/^[a-f0-9]{40}$/iu.test(baseSha)) {
+    throw new Error('DOC_AUTOMATION_BASE_SHA must be an explicit 40-character commit SHA in CI');
+  }
+  if (baseSha) {
+    if (!/^[a-f0-9]{40}$/iu.test(baseSha) || /^0{40}$/u.test(baseSha)) {
+      throw new Error('DOC_AUTOMATION_BASE_SHA is invalid');
     }
-    for (const file of gitLines(`diff --name-only origin/${baseRef}...HEAD`)) {
-      files.add(file);
-    }
-    for (const file of gitLines(`diff --name-only ${baseRef}...HEAD`)) {
-      files.add(file);
-    }
+    gitLines(['rev-parse', '--verify', `${baseSha}^{commit}`]);
+    for (const file of gitLines(['diff', '--name-only', `${baseSha}...HEAD`])) files.add(file);
   }
 
   return files;
@@ -54,24 +54,21 @@ const requiredAnchors = [
       'docs/settlement-current-ssot.md',
       'docs/marketing-current-ssot.md',
       'docs/ai-ops-current-ssot.md',
-      'docs/agency-agents-adoption.md',
+      'docs/research-node-current-ssot.md',
+      'docs/document-registry.yml',
     ],
   },
   {
     file: '.claude/CLAUDE.md',
     includes: [
-      'Documentation Automation',
-      'Product Registration SSOT',
-      'docs/blog-autopublish-contract.md',
-      'docs/affiliate-current-ssot.md',
-      'docs/settlement-current-ssot.md',
-      'docs/marketing-current-ssot.md',
-      'docs/ai-ops-current-ssot.md',
+      '@../AGENTS.md',
+      '.agents/skills',
+      '자동 hook으로 실행하지 않는다',
     ],
   },
   {
     file: 'docs/ai-agent-doc-automation.md',
-    includes: ['Automatic Doc Decision Matrix', 'Agent Closeout Contract'],
+    includes: ['Registry', 'Spec 수명주기', '단일 감사 진입점', '평가 구분'],
   },
   {
     file: 'docs/blog-autopublish-contract.md',
@@ -92,10 +89,6 @@ const requiredAnchors = [
   {
     file: 'docs/ai-ops-current-ssot.md',
     includes: ['Required Invariants', 'Provider And Prompt Boundary', 'Durable Artifact Rule'],
-  },
-  {
-    file: 'docs/agency-agents-adoption.md',
-    includes: ['Highest-Value Imports', 'Pilot Protocol', 'Yeosonam Agent Pack V1', 'Hard Boundaries'],
   },
   {
     file: 'docs/audits/README.md',
@@ -141,6 +134,11 @@ function changedAny(prefixes) {
   return [...changed].some((file) =>
     prefixes.some((prefix) => file.startsWith(prefix) || file === prefix)
   );
+}
+
+function changedDomainTest(prefixes) {
+  return [...changed].some((file) => file.includes('.test.')
+    && prefixes.some((prefix) => file.startsWith(prefix) || file === prefix));
 }
 
 const blogAutomationChange = [...changed].some((file) =>
@@ -220,63 +218,82 @@ const aiOpsChange = changedAny([
 ]);
 
 const durableArtifactChange = [...changed].some((file) => {
-  if (file.includes('.test.')) return true;
   return [
     'docs/product-registration-current-ssot.md',
-    'docs/ai-agent-doc-automation.md',
-    'db/error-registry.md',
-    'docs/audits/',
     'src/lib/product-registration/golden-corpus/',
     'src/lib/product-registration-golden-fixtures.ts',
   ].some((prefix) => file.startsWith(prefix) || file === prefix);
-});
+}) || changedDomainTest([
+  'src/app/api/upload/',
+  'src/lib/product-registration/',
+  'src/lib/parser/deterministic/price-ir/',
+  'src/app/packages/[id]/',
+]);
 
 const blogDurableArtifactChange = [...changed].some((file) => {
-  if (file.includes('.test.')) return true;
   return [
     'docs/blog-autopublish-contract.md',
     'docs/blog-system-runbook.md',
     'docs/blog-ops-runbook.md',
     'docs/blog-search-quality-daily-process.md',
     'docs/errors/blog.md',
-    'db/error-registry.md',
-    'docs/audits/',
     'tests/regression/cases/ERR-BLOG',
     'tests/regression/fixtures/ERR-BLOG',
   ].some((prefix) => file.startsWith(prefix) || file === prefix);
-});
+}) || changedDomainTest([
+  'src/app/api/cron/blog-',
+  'src/app/api/blog/',
+  'src/app/blog/',
+  'src/lib/blog-',
+]);
 
 const affiliateDurableArtifactChange = changedAny([
   'docs/affiliate-current-ssot.md',
   'docs/affiliate-attribution.md',
   'docs/errors/affiliate.md',
-  'db/error-registry.md',
-  'docs/audits/',
   'tests/regression/cases/ERR-AFF',
   'tests/regression/fixtures/ERR-AFF',
-]) || [...changed].some((file) => file.includes('.test.'));
+]) || changedDomainTest([
+  'src/lib/affiliate',
+  'src/app/affiliate/',
+  'src/app/influencer/',
+  'src/app/api/affiliate/',
+  'src/app/api/affiliates/',
+]);
 
 const settlementDurableArtifactChange = changedAny([
   'docs/settlement-current-ssot.md',
   'docs/errors/settlement.md',
-  'db/error-registry.md',
-  'docs/audits/',
   'tests/regression/cases/ERR-LEDGER',
   'tests/regression/fixtures/ERR-LEDGER',
   'tests/regression/cases/ERR-SETTLEMENT',
   'tests/regression/fixtures/ERR-SETTLEMENT',
-]) || [...changed].some((file) => file.includes('.test.'));
+]) || changedDomainTest([
+  'src/lib/ledger-',
+  'src/lib/payment-',
+  'src/lib/settlement-',
+  'src/app/api/payments/',
+  'src/app/api/settlements/',
+  'src/app/admin/payments/',
+  'src/app/admin/settlements/',
+]);
 
 const marketingDurableArtifactChange = changedAny([
   'docs/marketing-current-ssot.md',
   'docs/errors/marketing.md',
-  'db/error-registry.md',
-  'docs/audits/',
   'tests/regression/cases/ERR-MARKETING',
   'tests/regression/fixtures/ERR-MARKETING',
   'tests/regression/cases/ERR-AD-OS',
   'tests/regression/fixtures/ERR-AD-OS',
-]) || [...changed].some((file) => file.includes('.test.'));
+]) || changedDomainTest([
+  'src/lib/marketing',
+  'src/lib/marketing-pipeline/',
+  'src/lib/social-publishing/',
+  'src/app/admin/marketing/',
+  'src/app/admin/ad-os/',
+  'src/app/api/marketing/',
+  'src/app/api/admin/marketing/',
+]);
 
 const aiOpsDurableArtifactChange = changedAny([
   'docs/ai-ops-current-ssot.md',
@@ -285,47 +302,50 @@ const aiOpsDurableArtifactChange = changedAny([
   'docs/jarvis-rag-audit-runbook.md',
   'docs/jarvis-readiness-gate.md',
   'docs/errors/ai-ops.md',
-  'db/error-registry.md',
-  'docs/audits/',
   'tests/regression/cases/ERR-AI',
   'tests/regression/fixtures/ERR-AI',
   'tests/regression/cases/ERR-JARVIS',
   'tests/regression/fixtures/ERR-JARVIS',
-]) || [...changed].some((file) => file.includes('.test.'));
+]) || changedDomainTest([
+  'src/lib/jarvis/',
+  'src/app/api/jarvis/',
+  'src/app/api/admin/jarvis/',
+  'src/lib/ai-',
+]);
 
 if (productRegistrationChange && !durableArtifactChange) {
   failures.push(
-    'Product-registration behavior changed without a durable artifact. Add a fixture/test, SSOT update, error-registry entry, or audit note.'
+    'Product-registration behavior changed without a domain-bound durable artifact. Add a mapped fixture/test, product SSOT update, or product error entry.'
   );
 }
 
 if (blogAutomationChange && !blogDurableArtifactChange) {
   failures.push(
-    'Blog automation/rendering/publish behavior changed without a durable artifact. Add a regression test, blog SSOT/runbook update, blog error-registry entry, or audit note.'
+    'Blog automation/rendering/publish behavior changed without a domain-bound durable artifact. Add a mapped regression test, blog SSOT/runbook update, or blog error entry.'
   );
 }
 
 if (affiliateChange && !affiliateDurableArtifactChange) {
   failures.push(
-    'Affiliate attribution/referral/commission behavior changed without a durable artifact. Add a test, affiliate SSOT update, affiliate error-registry entry, or audit note.'
+    'Affiliate behavior changed without a domain-bound durable artifact. Add a mapped test, affiliate SSOT update, or affiliate error entry.'
   );
 }
 
 if (settlementChange && !settlementDurableArtifactChange) {
   failures.push(
-    'Settlement/payment/ledger behavior changed without a durable artifact. Add a test, settlement SSOT update, settlement error-registry entry, or audit note.'
+    'Settlement/payment/ledger behavior changed without a domain-bound durable artifact. Add a mapped test, settlement SSOT update, or settlement error entry.'
   );
 }
 
 if (marketingChange && !marketingDurableArtifactChange) {
   failures.push(
-    'Marketing automation/external-publish behavior changed without a durable artifact. Add a test, marketing SSOT update, marketing error-registry entry, or audit note.'
+    'Marketing behavior changed without a domain-bound durable artifact. Add a mapped test, marketing SSOT update, or marketing error entry.'
   );
 }
 
 if (aiOpsChange && !aiOpsDurableArtifactChange) {
   failures.push(
-    'AI/Jarvis/RAG/provider behavior changed without a durable artifact. Add an eval/test, AI Ops SSOT update, AI error-registry entry, or audit note.'
+    'AI/Jarvis/RAG/provider behavior changed without a domain-bound durable artifact. Add a mapped eval/test, AI Ops SSOT update, or AI error entry.'
   );
 }
 

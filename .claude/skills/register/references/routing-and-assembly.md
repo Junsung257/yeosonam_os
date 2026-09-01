@@ -97,7 +97,7 @@ rm db/sample.txt
 - 상품 타입별 조합 → TEMPLATES 배열 (실속/품격 등)
 
 ### B-1. 상품 등록 (즉시)
-기본 경로는 현재 업로드 등록 엔진이다. `docs/product-registration-current-ssot.md`와 `.claude/skills/register/SKILL.md`의 통합 등록 흐름을 우선하고, `.claude/commands/register-product.md`는 사용자가 수동 legacy script insertion을 명시 요청한 경우에만 참조한다.
+기본 경로는 현재 업로드 등록 엔진이다. `docs/product-registration-current-ssot.md`와 `.agents/skills/register/SKILL.md`의 통합 등록 흐름을 우선하고, `.claude/commands/register-product.md`는 사용자가 수동 legacy script insertion을 명시 요청한 경우에만 참조한다.
 
 수동 legacy 요청이 명시된 경우에만:
 1. `.claude/commands/register-product.md`를 Read하여 스크립트 생성 규칙 참조

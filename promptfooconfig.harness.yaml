@@ -1,0 +1,15 @@
+description: Yeosonam deterministic harness contract regression (not a live model behavior test)
+
+prompts:
+  - "{{id}}"
+
+providers:
+  - file://evals/harness/policy-provider.mjs
+
+defaultTest:
+  assert:
+    - type: is-json
+    - type: javascript
+      value: JSON.parse(output).pass === true
+
+tests: file://evals/harness/promptfoo-tests.json

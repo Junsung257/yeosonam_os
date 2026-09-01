@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
     window: 60,
     prefix: 'rl-research-intake',
     failClosed: true,
+    requireDistributed: true,
   });
   if (limited) {
     limited.headers.set('Cache-Control', 'no-store');

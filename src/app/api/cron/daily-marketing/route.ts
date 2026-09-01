@@ -16,11 +16,10 @@ const tenantLogId = (tenantId: string | null | undefined) => tenantId?.slice(0, 
  * Schedule: 20 0 * * * (매일 00:20 UTC = 09:20 KST)
  */
 const handleDailyMarketing = async (request: NextRequest) => {
-  const t0 = Date.now();
-
   const authErr = requireCronBearer(request);
   if (authErr) return authErr;
 
+  const t0 = Date.now();
   if (!isSupabaseConfigured) {
     return { ok: true, skipped: true, reason: 'Supabase 미설정', errors: [] as string[] };
   }

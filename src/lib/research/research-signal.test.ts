@@ -44,8 +44,25 @@ describe('ResearchSignalEnvelopeV1', () => {
     expect(parsed.data.excerpt).toContain('[phone-redacted]');
   });
 
+  it('redacts dotted, 070, international, and zero-width-obfuscated phone formats', () => {
+    const parsed = parseResearchSignalEnvelopeV1({
+      ...validSignal(),
+      title: '010.1234.5678 / 070-1234-5678',
+      excerpt: '+1 (415) 555-2671 / 010\u200B-9999-0000',
+    });
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+    expect(parsed.data.title).not.toMatch(/010|070/u);
+    expect(parsed.data.excerpt).not.toMatch(/415|9999/u);
+    expect(parsed.data.title.match(/\[phone-redacted\]/gu)).toHaveLength(2);
+    expect(parsed.data.excerpt.match(/\[phone-redacted\]/gu)).toHaveLength(2);
+  });
+
   it('rejects private hosts, moving versions, and empty-result health checks', () => {
     const privateHost = parseResearchSignalEnvelopeV1({ ...validSignal(), sourceUrl: 'https://127.0.0.1/admin' });
+    const mappedPrivateHost = parseResearchSignalEnvelopeV1({ ...validSignal(), sourceUrl: 'https://[::ffff:7f00:1]/admin' });
+    const nat64PrivateHost = parseResearchSignalEnvelopeV1({ ...validSignal(), sourceUrl: 'https://[64:ff9b::7f00:1]/admin' });
+    const translatedPrivateHost = parseResearchSignalEnvelopeV1({ ...validSignal(), sourceUrl: 'https://[::ffff:0:7f00:1]/admin' });
     const movingVersion = parseResearchSignalEnvelopeV1({ ...validSignal(), collectorVersion: 'main' });
     const emptyResult = parseResearchSignalEnvelopeV1({
       ...validSignal(),
@@ -53,8 +70,35 @@ describe('ResearchSignalEnvelopeV1', () => {
     });
 
     expect(privateHost.success).toBe(false);
+    expect(mappedPrivateHost.success).toBe(false);
+    expect(nat64PrivateHost.success).toBe(false);
+    expect(translatedPrivateHost.success).toBe(false);
     expect(movingVersion.success).toBe(false);
     expect(emptyResult.success).toBe(false);
+  });
+
+  it('removes signed query credentials and soft-hyphen phone obfuscation', () => {
+    const parsed = parseResearchSignalEnvelopeV1({
+      ...validSignal(),
+      sourceUrl: 'https://example.com/file?sv=1&sig=credential&utm_source=test',
+      title: '문의 010\u00AD-1234-5678',
+    });
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+    expect(parsed.data.sourceUrl).toBe('https://example.com/file?sv=1');
+    expect(parsed.data.title).toBe('문의 [phone-redacted]');
+  });
+
+  it('removes camel-case credentials and Unicode contact/identity formats', () => {
+    const parsed = parseResearchSignalEnvelopeV1({
+      ...validSignal(),
+      sourceUrl: 'https://example.com/file?authToken=a&sessionId=b&hmac=c&signed=d&keep=yes',
+      title: '문의 사용자@예시.한국 / 010–1234–5678 / 900101‐1234567',
+    });
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+    expect(parsed.data.sourceUrl).toBe('https://example.com/file?keep=yes');
+    expect(parsed.data.title).toBe('문의 [email-redacted] / [phone-redacted] / [id-redacted]');
   });
 
   it('rejects future collection times and publication after collection', () => {

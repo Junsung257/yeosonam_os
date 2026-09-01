@@ -40,6 +40,17 @@ describe('rate-limiter (in-memory fallback)', () => {
     expect(getRateLimitBackend()).toBe('memory');
   });
 
+  it('분산 백엔드가 필수인 경로는 Upstash 미설정 시 503으로 실패-폐쇄한다', async () => {
+    const response = await rateLimit(makeReq('10.0.0.50'), {
+      limit: 3,
+      window: 60,
+      requireDistributed: true,
+    });
+
+    expect(response?.status).toBe(503);
+    expect(response?.headers.get('Retry-After')).toBe('30');
+  });
+
   it('limit 미만 요청은 통과한다 (null 반환)', async () => {
     const req = makeReq('10.0.0.1');
     const res = await rateLimit(req, { limit: 3, window: 60 });

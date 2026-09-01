@@ -3,8 +3,13 @@ import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 
 const SHA256 = /^sha256:[a-f0-9]{64}$/u;
-const SENSITIVE_QUERY_KEY = /(?:^|[-_])(?:access_?token|api_?key|auth(?:orization)?|code|credential|jwt|key|secret|session|signature|token)(?:$|[-_])/iu;
 const TRACKING_QUERY_KEY = /^(?:fbclid|gclid|utm_.+)$/iu;
+
+function isSensitiveQueryKey(key) {
+  const normalized = String(key).toLowerCase().replace(/[-_]/gu, '');
+  return ['accesstoken', 'apikey', 'auth', 'authorization', 'authtoken', 'code', 'credential', 'hmac', 'jwt', 'key', 'secret', 'session', 'sessionid', 'sig', 'signed', 'token'].includes(normalized)
+    || normalized.endsWith('signature');
+}
 
 export function sha256(value) {
   return `sha256:${createHash('sha256').update(value, 'utf8').digest('hex')}`;
@@ -30,11 +35,41 @@ export function validateIntakeEndpoint(value) {
   return endpoint;
 }
 
+function ipv6Groups(address) {
+  let value = address.toLowerCase();
+  const dotted = value.match(/(\d+\.\d+\.\d+\.\d+)$/u)?.[1];
+  if (dotted) {
+    const bytes = dotted.split('.').map(Number);
+    value = value.slice(0, -dotted.length) + `${((bytes[0] << 8) | bytes[1]).toString(16)}:${((bytes[2] << 8) | bytes[3]).toString(16)}`;
+  }
+  const halves = value.split('::');
+  if (halves.length > 2) return null;
+  const left = halves[0] ? halves[0].split(':') : [];
+  const right = halves[1] ? halves[1].split(':') : [];
+  const fill = halves.length === 2 ? Array(Math.max(0, 8 - left.length - right.length)).fill('0') : [];
+  const groups = [...left, ...fill, ...right].map((group) => Number.parseInt(group || '0', 16));
+  if (groups.length !== 8 || groups.some((group) => !Number.isInteger(group) || group < 0 || group > 0xffff)) return null;
+  return groups;
+}
+
+function embeddedIpv4FromIpv6(address) {
+  const groups = ipv6Groups(address);
+  if (!groups) return null;
+  return `${groups[6] >> 8}.${groups[6] & 0xff}.${groups[7] >> 8}.${groups[7] & 0xff}`;
+}
+
+function mappedIpv4FromIpv6(address) {
+  const groups = ipv6Groups(address);
+  if (!groups) return null;
+  if (groups.slice(0, 5).some((group) => group !== 0) || groups[5] !== 0xffff) return null;
+  return `${groups[6] >> 8}.${groups[6] & 0xff}.${groups[7] >> 8}.${groups[7] & 0xff}`;
+}
+
 export function isPrivateNetworkAddress(address) {
   const hostname = String(address ?? '').toLowerCase().replace(/^\[|\]$/gu, '');
   const version = isIP(hostname);
   if (version === 4) {
-    const [a, b] = hostname.split('.').map(Number);
+    const [a, b, c] = hostname.split('.').map(Number);
     return a === 10
       || a === 127
       || (a === 169 && b === 254)
@@ -42,12 +77,16 @@ export function isPrivateNetworkAddress(address) {
       || (a === 192 && b === 168)
       || (a === 100 && b >= 64 && b <= 127)
       || (a === 198 && (b === 18 || b === 19))
+      || (a === 192 && b === 0 && (c === 0 || c === 2))
+      || (a === 198 && b === 51 && c === 100)
+      || (a === 203 && b === 0 && c === 113)
       || a === 0
       || a >= 224;
   }
   if (version === 6) {
     const first = Number.parseInt(hostname.split(':')[0] || '0', 16);
-    const mappedIpv4 = hostname.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/u)?.[1];
+    const mappedIpv4 = mappedIpv4FromIpv6(hostname);
+    const embeddedIpv4 = embeddedIpv4FromIpv6(hostname);
     return hostname === '::'
       || hostname === '::1'
       || hostname.startsWith('fc')
@@ -55,7 +94,8 @@ export function isPrivateNetworkAddress(address) {
       || (Number.isFinite(first) && (first & 0xffc0) === 0xfe80)
       || hostname.startsWith('ff')
       || hostname.startsWith('2001:db8:')
-      || (mappedIpv4 ? isPrivateNetworkAddress(mappedIpv4) : false);
+      || (mappedIpv4 ? isPrivateNetworkAddress(mappedIpv4) : false)
+      || (embeddedIpv4 ? isPrivateNetworkAddress(embeddedIpv4) : false);
   }
   return false;
 }
@@ -94,6 +134,50 @@ export async function assertPublicHostname(hostname, resolver = lookup) {
   const blocked = addresses.find((entry) => isPrivateNetworkAddress(entry?.address));
   if (blocked) throw new Error(`hostname ${hostname} resolved to a private address`);
   return addresses;
+}
+
+/**
+ * got/Crawlee용 DNS lookup 함수다. 최초로 검증한 공개 IP 목록을 crawler 수명 동안
+ * 재사용해 검증과 실제 연결 사이의 두 번째 DNS 해석을 없앤다.
+ */
+export function createPinnedPublicLookup(source, resolver = lookup) {
+  const cache = new Map();
+
+  return (hostname, options, callback) => {
+    const lookupOptions = typeof options === 'function' ? {} : (options ?? {});
+    const done = typeof options === 'function' ? options : callback;
+    if (typeof done !== 'function') throw new Error('DNS lookup callback is required');
+
+    let reviewed;
+    try {
+      reviewed = validateReviewedRequestUrl(source, `https://${hostname}/`);
+    } catch (error) {
+      done(error);
+      return;
+    }
+
+    let pending = cache.get(reviewed.hostname);
+    if (!pending) {
+      pending = assertPublicHostname(reviewed.hostname, resolver);
+      cache.set(reviewed.hostname, pending);
+    }
+
+    pending.then((addresses) => {
+      const requestedFamily = Number(lookupOptions.family ?? 0);
+      const eligible = requestedFamily === 4 || requestedFamily === 6
+        ? addresses.filter((entry) => entry.family === requestedFamily)
+        : addresses;
+      if (eligible.length === 0) {
+        done(new Error(`hostname ${reviewed.hostname} has no address for family ${requestedFamily}`));
+        return;
+      }
+      if (lookupOptions.all === true) {
+        done(null, eligible.map(({ address, family }) => ({ address, family })));
+        return;
+      }
+      done(null, eligible[0].address, eligible[0].family);
+    }, done);
+  };
 }
 
 export function crawlerRequest(source, engine) {
@@ -137,7 +221,7 @@ export function validateReviewedSource(source) {
 
   url.hash = '';
   for (const key of [...url.searchParams.keys()]) {
-    if (SENSITIVE_QUERY_KEY.test(key)) throw new Error(`source ${id} contains a sensitive query key`);
+    if (isSensitiveQueryKey(key)) throw new Error(`source ${id} contains a sensitive query key`);
     if (TRACKING_QUERY_KEY.test(key)) url.searchParams.delete(key);
   }
   url.searchParams.sort();
@@ -152,6 +236,9 @@ export function validateReviewedSource(source) {
 
 export function compactText(value) {
   return String(value ?? '')
+    .normalize('NFKC')
+    .replace(/\p{Default_Ignorable_Code_Point}/gu, '')
+    .replace(/\p{Dash_Punctuation}/gu, '-')
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/gu, '')
     .replace(/\s+/gu, ' ')
     .trim();
@@ -159,10 +246,17 @@ export function compactText(value) {
 
 export function redactExcerpt(value) {
   return compactText(value)
-    .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/gu, '[email-redacted]')
-    .replace(/(?:\+82[-\s]?(?:10|[2-6][1-5])|0(?:10|[2-6][1-5]))[-\s]?\d{3,4}[-\s]?\d{4}/gu, '[phone-redacted]')
-    .replace(/01[016789][-\s]?\d{3,4}[-\s]?\d{4}/gu, '[phone-redacted]')
-    .replace(/\d{6}[-\s]?[1-4]\d{6}/gu, '[id-redacted]');
+    .replace(/[^\s@]{1,64}@[^\s@]{1,255}\.[\p{L}]{2,}/gu, '[email-redacted]')
+    .replace(/(?<!\d)(?:(?:\+?82|0082)[\s().-]*0?|0)(?:10|11|16|17|18|19|70|2|[3-6][1-5])(?:[\s().-]*\d){7,8}(?!\d)/gu, '[phone-redacted]')
+    .replace(/(?<![\p{L}\p{N}])(?:\+|00)[1-9]\d{0,2}(?:[\s().-]*\d){7,14}(?!\d)/gu, '[phone-redacted]')
+    .replace(/\d{6}[\s.-]?[1-4]\d{6}/gu, '[id-redacted]');
+}
+
+function containsContactPii(value) {
+  return /[^\s@]{1,64}@[^\s@]{1,255}\.[\p{L}]{2,}/u.test(value)
+    || /(?<!\d)(?:(?:\+?82|0082)[\s().-]*0?|0)(?:10|11|16|17|18|19|70|2|[3-6][1-5])(?:[\s().-]*\d){7,8}(?!\d)/u.test(value)
+    || /(?<![\p{L}\p{N}])(?:\+|00)[1-9]\d{0,2}(?:[\s().-]*\d){7,14}(?!\d)/u.test(value)
+    || /\d{6}[\s.-]?[1-4]\d{6}/u.test(value);
 }
 
 export function buildSignal({ source, title, text, collectedAt, collectorVersion, statusCode, engine }) {
@@ -210,6 +304,9 @@ export function validateSignal(signal) {
   if (signal?.contentCheck?.loginError !== false) errors.push('loginError');
   if (!String(signal?.title ?? '').trim()) errors.push('title');
   if (!String(signal?.excerpt ?? '').trim()) errors.push('excerpt');
+  if (containsContactPii(String(signal?.title ?? '')) || containsContactPii(String(signal?.excerpt ?? ''))) {
+    errors.push('residualPii');
+  }
   if (!Number.isInteger(signal?.collectorMeta?.statusCode)
     || signal.collectorMeta.statusCode < 200
     || signal.collectorMeta.statusCode >= 300) errors.push('statusCode');

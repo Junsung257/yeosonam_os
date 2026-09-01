@@ -1,0 +1,51 @@
+name: Weekly Agent and Documentation Harness Audit
+
+on:
+  schedule:
+    - cron: "17 20 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-harness-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Install and audit pinned harness evaluator
+        run: |
+          npm run setup:harness-evals
+          npm run audit:harness-evals
+
+      - name: Full document audit with external sources
+        run: node scripts/audit-doc-harness.mjs --external --strict --json-out artifacts/doc-harness-audit-external.json
+
+      - name: Deterministic harness contracts
+        run: npm run test:harness-contracts && npm run eval:harness:promptfoo
+
+      - name: Optional live provider policy evaluation
+        if: ${{ vars.HARNESS_LIVE_PROVIDER != '' }}
+        env:
+          HARNESS_LIVE_PROVIDER: ${{ vars.HARNESS_LIVE_PROVIDER }}
+        run: npm run eval:harness:live
+
+      - name: Upload audit evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: weekly-harness-audit
+          path: artifacts/doc-harness-audit-external.json
+          if-no-files-found: warn

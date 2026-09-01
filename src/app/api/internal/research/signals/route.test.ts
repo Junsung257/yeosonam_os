@@ -93,6 +93,16 @@ describe('POST /api/internal/research/signals', () => {
     expect(mocks.createTask).not.toHaveBeenCalled();
   });
 
+  it('requires the distributed limiter for authenticated research intake', async () => {
+    await POST(request(validSignal()));
+
+    expect(mocks.rateLimit).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      prefix: 'rl-research-intake',
+      failClosed: true,
+      requireDistributed: true,
+    }));
+  });
+
   it('rejects invalid health evidence before persistence', async () => {
     const response = await POST(request({
       ...validSignal(),

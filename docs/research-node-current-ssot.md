@@ -16,7 +16,7 @@
 
 ## 2. 현재 소유권과 도입 순서
 
-2026-08-31 Production 조사 결과 `vercel.json`에는 99개 Cron이 있고 Production에 Inngest 환경 변수는 없습니다. 따라서 현재 정기 작업의 소유자는 Vercel Cron이며 Inngest는 단순 설치 상태로 돌아가지 않습니다.
+2026-09-01 저장소 감사 기준 정기 작업의 소유자는 Vercel Cron이며 Inngest는 명시 플래그가 없으면 부작용을 실행하지 않습니다. Cron·함수의 정확한 개수는 문서에 복사하지 않고 `npm run audit:automation-runtime:ci` 결과로 확인합니다.
 
 | 후보 | 현재 결정 | 코드베이스 근거 |
 |---|---|---|
@@ -74,7 +74,9 @@ npm run check -- --input=outputs/signals.json
 npm run submit -- --input=outputs/signals.json
 ```
 
-기본 수집은 Cheerio로 시작하고 JavaScript 렌더링이 반드시 필요한 reviewed source에서만 Playwright Chromium으로 fallback합니다. 수집 대상은 버전 관리된 manifest의 exact hostname 허용 목록으로 제한합니다. 시작 전 DNS 결과가 사설·loopback·link-local이면 실패하고, Cheerio redirect는 따르지 않으며, Playwright의 모든 하위 요청도 승인 host와 공개 DNS를 다시 확인합니다. 브라우저는 incognito context와 service worker 차단으로 실행합니다. 제출에 필요한 환경 변수는 `RESEARCH_INTAKE_URL`, `RESEARCH_NODE_INGEST_TOKEN` 두 개뿐입니다.
+기본 수집은 Cheerio로 시작하고 JavaScript 렌더링이 반드시 필요한 reviewed source에서만 Playwright Chromium으로 fallback합니다. 수집 대상은 버전 관리된 manifest의 exact hostname 허용 목록으로 제한합니다. 공개 DNS를 확인한 IP는 실제 transport에 고정하며 Cheerio redirect는 따르지 않습니다. Playwright fallback은 시작 시 resolver rule로 고정된 문서 hostname만 허용하고 다른 subdomain·private·loopback·link-local 요청은 차단합니다. 브라우저는 incognito context와 service worker 차단으로 실행합니다. 제출에 필요한 환경 변수는 `RESEARCH_INTAKE_URL`, `RESEARCH_NODE_INGEST_TOKEN` 두 개뿐입니다.
+
+intake API는 유효 토큰 확인 뒤 분산 Upstash rate-limit을 요구합니다. 분산 backend가 없거나 장애가 나면 per-instance 메모리 제한으로 완화하지 않고 503으로 실패-폐쇄합니다.
 
 수집 보고서는 `sourceCount`, `signals`, `failures`를 하나의 배치로 검증합니다. 일부 소스 실패·중복 source ID·비정상 HTTP 상태가 있으면 제출하지 않습니다. `--previous=<직전 정상 보고서>`를 주면 직전 성공 건수의 절반 미만으로 급락한 결과도 실패 처리합니다.
 

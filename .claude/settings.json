@@ -1,58 +1,49 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node -e \":*)",
-      "Read(//c/Users/admin/Downloads/**)",
-      "Bash(node db/batch_pexels_photos.js --force)",
       "Bash(git status)",
       "Bash(git status --short)",
       "Bash(git diff)",
       "Bash(git diff --stat)",
       "Bash(git diff HEAD)",
-      "Bash(git diff HEAD -- *)",
       "Bash(git log --oneline -20)",
-      "Bash(git log --oneline -10)",
-      "Bash(git log --oneline -5)",
-      "Bash(git log --format=* -20)",
       "Bash(git branch)",
       "Bash(git branch -a)",
-      "Bash(npx tsc --noEmit)",
-      "Bash(node db/post_register_audit.js*)",
-      "Bash(node db/audit_schema_drift.js*)",
-      "Bash(node db/audit_api_field_drift.js*)",
-      "Bash(node db/cove_audit.js*)",
-      "Bash(node db/dump_package_result.js*)",
-      "Bash(node db/rag_reindex_all.js*)",
-      "Bash(node db/resync_paid_amounts.js*)"
-    ]
-  },
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "cd \"c:/Users/admin/Desktop/여소남OS\" && npx tsc --noEmit 2>&1 | tail -5",
-            "shell": "powershell",
-            "timeout": 30,
-            "statusMessage": "타입 검사 중..."
-          }
-        ]
-      }
+      "Bash(npx tsc --noEmit*)"
     ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "cd \"c:/Users/admin/Desktop/여소남OS\" && vercel --prod 2>&1",
-            "shell": "powershell",
-            "timeout": 120,
-            "statusMessage": "Vercel 배포 중..."
-          }
-        ]
-      }
+    "ask": [
+      "Bash(git push*)",
+      "Bash(gh pr merge*)",
+      "Bash(vercel*)",
+      "Bash(supabase*)",
+      "Bash(node db/*)",
+      "Bash(npm run *:apply*)",
+      "Bash(npm run *:enable*)",
+      "Bash(npm run *:production*)",
+      "Bash(npm run type-check)",
+      "Bash(npm test*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.local)",
+      "Read(./.env.development)",
+      "Read(./.env.development.local)",
+      "Read(./.env.production)",
+      "Read(./.env.production.local)",
+      "Read(./.env.test)",
+      "Read(./.env.test.local)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Read(**/id_rsa*)",
+      "Read(./.mcp.json)",
+      "Read(./.codex/**)",
+      "Read(//c/Users/admin/.codex/**)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean -fd*)",
+      "Bash(vercel --prod*)",
+      "Bash(vercel deploy --prod*)",
+      "Bash(supabase db reset*)",
+      "Bash(supabase db push*)"
     ]
   }
 }

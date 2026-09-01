@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "tier": 3,
+  "status": "active",
+  "owner": "finance",
+  "review_file": "verification.md",
+  "verified_commit": null,
+  "verification": [],
+  "evidence_paths": []
+}

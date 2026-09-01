@@ -43,7 +43,7 @@ Gemini 는 **두 번째 의견이 필요할 때만** 사용자가 명시적으�
 **비용**:
 - E5 (렌더 cross-check) — 상품 1건당 ~0.5원, 90초
 - E6 (CoVe claim 검증) — 상품 1건당 ~0.3원, 5~10초
-- 월간 누적은 [scratch/audit_ai_usage.json](scratch/audit_ai_usage.json)에 기록
+- 월간 누적은 생성 파일 `scratch/audit_ai_usage.json`에 기록한다. 이 파일은 저장소 계약이 아니다.
 - 80% 소진 시 경고, 100% 도달 시 자동 OFF
 
 **E5 vs E6 차이**:

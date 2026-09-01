@@ -7,6 +7,7 @@ import {
   assertPublicHostname,
   buildSignal,
   compactText,
+  createPinnedPublicLookup,
   crawlerRequest,
   validateReviewedRequestUrl,
   validateReviewedSource,
@@ -40,6 +41,7 @@ const collectorVersion = '3.18.1';
 const results = new Map();
 const browserFallback = new Map();
 const publicHostChecks = new Map();
+const pinnedLookups = new Map();
 
 function sourceForRequest(request) {
   const source = sourceById.get(String(request.userData?.sourceId ?? ''));
@@ -56,6 +58,7 @@ async function ensurePublicHost(hostname) {
 }
 
 await Promise.all(sources.map((source) => ensurePublicHost(new URL(source.url).hostname)));
+for (const source of sources) pinnedLookups.set(source.id, createPinnedPublicLookup(source));
 
 log.setLevel(log.LEVELS.WARNING);
 
@@ -69,6 +72,7 @@ const cheerio = new CheerioCrawler({
     await ensurePublicHost(hostname);
     gotOptions.followRedirect = false;
     gotOptions.maxRedirects = 0;
+    gotOptions.dnsLookup = pinnedLookups.get(source.id);
   }],
   async requestHandler({ request, $, response }) {
     const source = sourceForRequest(request);
@@ -98,11 +102,26 @@ await cheerio.run(sources.map((source) => crawlerRequest(source, 'cheerio')));
 
 if (!noBrowser && browserFallback.size > 0) {
   const fallbackSources = [...browserFallback.values()];
+  const browserPins = new Map();
+  for (const source of fallbackSources) {
+    const hostname = new URL(source.url).hostname;
+    const addresses = await ensurePublicHost(hostname);
+    browserPins.set(hostname, addresses[0].address);
+  }
+  const resolverRules = [...browserPins.entries()]
+    .map(([hostname, address]) => `MAP ${hostname} ${address}`)
+    .join(',');
   const browser = new PlaywrightCrawler({
     maxConcurrency: 2,
     maxRequestsPerCrawl: fallbackSources.length,
     requestHandlerTimeoutSecs: 45,
-    launchContext: { launchOptions: { headless: true }, useIncognitoPages: true },
+    launchContext: {
+      launchOptions: {
+        headless: true,
+        args: [`--host-resolver-rules=${resolverRules}`],
+      },
+      useIncognitoPages: true,
+    },
     browserPoolOptions: {
       prePageCreateHooks: [(_pageId, _browserController, pageOptions) => {
         pageOptions.serviceWorkers = 'block';
@@ -118,9 +137,9 @@ if (!noBrowser && browserFallback.size > 0) {
         }
         try {
           const { hostname } = validateReviewedRequestUrl(source, outbound.url());
-          // Browser requests are independently resolved so DNS changes cannot
-          // inherit the manifest preflight result for the rest of the crawl.
-          await assertPublicHostname(hostname);
+          // Chromium의 resolver rule은 시작 시점에만 고정할 수 있으므로 browser
+          // fallback은 사전 고정된 문서 hostname 외의 subdomain 요청을 허용하지 않는다.
+          if (!browserPins.has(hostname)) throw new Error('hostname is not transport-pinned');
           await route.continue();
         } catch {
           await route.abort('blockedbyclient');

@@ -7,8 +7,26 @@ import type { AgentTaskEnvelope } from '@/lib/agent/envelope';
 
 const SHA256 = /^sha256:[a-f0-9]{64}$/u;
 const PINNED_VERSION = /^(?:v?\d+\.\d+\.\d+(?:[-+][a-z0-9.-]+)?|[a-f0-9]{7,40})$/iu;
-const SENSITIVE_QUERY_KEY = /(?:^|[-_])(?:access_?token|api_?key|auth(?:orization)?|code|credential|jwt|key|secret|session|signature|token)(?:$|[-_])/iu;
 const TRACKING_QUERY_KEY = /^(?:fbclid|gclid|utm_.+)$/iu;
+const EMAIL_REDACTION = /[^\s@]{1,64}@[^\s@]{1,255}\.[\p{L}]{2,}/gu;
+const DOMESTIC_PHONE_REDACTION = /(?<!\d)(?:(?:\+?82|0082)[\s().-]*0?|0)(?:10|11|16|17|18|19|70|2|[3-6][1-5])(?:[\s().-]*\d){7,8}(?!\d)/gu;
+const INTERNATIONAL_PHONE_REDACTION = /(?<![\p{L}\p{N}])(?:\+|00)[1-9]\d{0,2}(?:[\s().-]*\d){7,14}(?!\d)/gu;
+const RESIDENT_ID_REDACTION = /\d{6}[\s.-]?[1-4]\d{6}/gu;
+
+function containsResearchPii(value: string): boolean {
+  return /[^\s@]{1,64}@[^\s@]{1,255}\.[\p{L}]{2,}/u.test(value)
+    || /(?<!\d)(?:(?:\+?82|0082)[\s().-]*0?|0)(?:10|11|16|17|18|19|70|2|[3-6][1-5])(?:[\s().-]*\d){7,8}(?!\d)/u.test(value)
+    || /(?<![\p{L}\p{N}])(?:\+|00)[1-9]\d{0,2}(?:[\s().-]*\d){7,14}(?!\d)/u.test(value)
+    || /\d{6}[\s.-]?[1-4]\d{6}/u.test(value);
+}
+
+function isSensitiveQueryKey(key: string): boolean {
+  const normalized = key.toLowerCase().replace(/[-_]/gu, '');
+  return ['accessToken', 'apiKey', 'auth', 'authorization', 'authToken', 'code', 'credential', 'hmac', 'jwt', 'key', 'secret', 'session', 'sessionId', 'sig', 'signed', 'token']
+    .map((value) => value.toLowerCase())
+    .includes(normalized)
+    || normalized.endsWith('signature');
+}
 
 const RawResearchSignalEnvelopeV1Schema = z.object({
   schemaVersion: z.literal(1),
@@ -46,10 +64,40 @@ const RawResearchSignalEnvelopeV1Schema = z.object({
 
 export type ResearchSignalEnvelopeV1 = z.infer<typeof RawResearchSignalEnvelopeV1Schema>;
 
+function ipv6Groups(address: string): number[] | null {
+  let value = address.toLowerCase();
+  const dotted = value.match(/(\d+\.\d+\.\d+\.\d+)$/u)?.[1];
+  if (dotted) {
+    const bytes = dotted.split('.').map(Number);
+    value = value.slice(0, -dotted.length) + `${((bytes[0] << 8) | bytes[1]).toString(16)}:${((bytes[2] << 8) | bytes[3]).toString(16)}`;
+  }
+  const halves = value.split('::');
+  if (halves.length > 2) return null;
+  const left = halves[0] ? halves[0].split(':') : [];
+  const right = halves[1] ? halves[1].split(':') : [];
+  const fill = halves.length === 2 ? Array(Math.max(0, 8 - left.length - right.length)).fill('0') : [];
+  const groups = [...left, ...fill, ...right].map((group) => Number.parseInt(group || '0', 16));
+  if (groups.length !== 8 || groups.some((group) => !Number.isInteger(group) || group < 0 || group > 0xffff)) return null;
+  return groups;
+}
+
+function embeddedIpv4FromIpv6(address: string): string | null {
+  const groups = ipv6Groups(address);
+  if (!groups) return null;
+  return `${groups[6] >> 8}.${groups[6] & 0xff}.${groups[7] >> 8}.${groups[7] & 0xff}`;
+}
+
+function mappedIpv4FromIpv6(address: string): string | null {
+  const groups = ipv6Groups(address);
+  if (!groups) return null;
+  if (groups.slice(0, 5).some((group) => group !== 0) || groups[5] !== 0xffff) return null;
+  return `${groups[6] >> 8}.${groups[6] & 0xff}.${groups[7] >> 8}.${groups[7] & 0xff}`;
+}
+
 function isPrivateNetworkAddress(hostname: string): boolean {
   const version = isIP(hostname);
   if (version === 4) {
-    const [a, b] = hostname.split('.').map(Number);
+    const [a, b, c] = hostname.split('.').map(Number);
     return a === 10
       || a === 127
       || (a === 169 && b === 254)
@@ -57,13 +105,17 @@ function isPrivateNetworkAddress(hostname: string): boolean {
       || (a === 192 && b === 168)
       || (a === 100 && b >= 64 && b <= 127)
       || (a === 198 && (b === 18 || b === 19))
+      || (a === 192 && b === 0 && (c === 0 || c === 2))
+      || (a === 198 && b === 51 && c === 100)
+      || (a === 203 && b === 0 && c === 113)
       || a === 0
       || a >= 224;
   }
   if (version === 6) {
     const value = hostname.toLowerCase();
     const first = Number.parseInt(value.split(':')[0] || '0', 16);
-    const mappedIpv4 = value.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/u)?.[1];
+    const mappedIpv4 = mappedIpv4FromIpv6(value);
+    const embeddedIpv4 = embeddedIpv4FromIpv6(value);
     return value === '::'
       || value === '::1'
       || value.startsWith('fc')
@@ -71,7 +123,8 @@ function isPrivateNetworkAddress(hostname: string): boolean {
       || (Number.isFinite(first) && (first & 0xffc0) === 0xfe80)
       || value.startsWith('ff')
       || value.startsWith('2001:db8:')
-      || (mappedIpv4 ? isPrivateNetworkAddress(mappedIpv4) : false);
+      || (mappedIpv4 ? isPrivateNetworkAddress(mappedIpv4) : false)
+      || (embeddedIpv4 ? isPrivateNetworkAddress(embeddedIpv4) : false);
   }
   return false;
 }
@@ -101,7 +154,7 @@ export function normalizeResearchSourceUrl(value: string): string {
 
   url.hash = '';
   for (const key of [...url.searchParams.keys()]) {
-    if (SENSITIVE_QUERY_KEY.test(key) || TRACKING_QUERY_KEY.test(key)) url.searchParams.delete(key);
+    if (isSensitiveQueryKey(key) || TRACKING_QUERY_KEY.test(key)) url.searchParams.delete(key);
   }
   url.searchParams.sort();
   return url.toString();
@@ -109,10 +162,13 @@ export function normalizeResearchSourceUrl(value: string): string {
 
 export function redactResearchExcerpt(value: string): string {
   return value
-    .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/gu, '[email-redacted]')
-    .replace(/(?:\+82[-\s]?(?:10|[2-6][1-5])|0(?:10|[2-6][1-5]))[-\s]?\d{3,4}[-\s]?\d{4}/gu, '[phone-redacted]')
-    .replace(/01[016789][-\s]?\d{3,4}[-\s]?\d{4}/gu, '[phone-redacted]')
-    .replace(/\d{6}[-\s]?[1-4]\d{6}/gu, '[id-redacted]')
+    .normalize('NFKC')
+    .replace(/\p{Default_Ignorable_Code_Point}/gu, '')
+    .replace(/\p{Dash_Punctuation}/gu, '-')
+    .replace(EMAIL_REDACTION, '[email-redacted]')
+    .replace(DOMESTIC_PHONE_REDACTION, '[phone-redacted]')
+    .replace(INTERNATIONAL_PHONE_REDACTION, '[phone-redacted]')
+    .replace(RESIDENT_ID_REDACTION, '[id-redacted]')
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/gu, '')
     .replace(/\s+/gu, ' ')
     .trim();
@@ -135,6 +191,9 @@ export function parseResearchSignalEnvelopeV1(input: unknown):
     const excerpt = redactResearchExcerpt(parsed.data.excerpt);
     if (!title) return { success: false, issues: ['title:empty_after_redaction'] };
     if (!excerpt) return { success: false, issues: ['excerpt:empty_after_redaction'] };
+    if (containsResearchPii(title) || containsResearchPii(excerpt)) {
+      return { success: false, issues: ['content:residual_pii'] };
+    }
     const collectedAt = Date.parse(parsed.data.collectedAt);
     const publishedAt = parsed.data.publishedAt ? Date.parse(parsed.data.publishedAt) : null;
     if (collectedAt > Date.now() + 5 * 60 * 1000) {

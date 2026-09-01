@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "tier": 2,
+  "status": "completed",
+  "owner": "analytics",
+  "review_file": "verification.md",
+  "verified_commit": "34c595c29a27b115268c4353428a24a4debd57f5",
+  "verification": [
+    {
+      "check": "packet verification record",
+      "result": "pass",
+      "evidence": "verification.md"
+    }
+  ],
+  "evidence_paths": [
+    "verification.md"
+  ]
+}

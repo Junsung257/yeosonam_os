@@ -228,6 +228,7 @@ dev-server.log
 logs/
 .promptfoo/
 promptfoo-results/
+/artifacts/
 
 # 세션 작업 파일 (git에 포함 금지)
 .commit-msg.txt
@@ -251,6 +252,9 @@ tmp-*.png
 /tools/
 !/tools/
 /tools/*
+!/tools/harness-evals/
+!/tools/harness-evals/package.json
+!/tools/harness-evals/package-lock.json
 !/tools/research-node/
 !/tools/research-node/**
 /Lib/

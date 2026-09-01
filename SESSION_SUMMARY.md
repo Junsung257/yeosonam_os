@@ -51,8 +51,8 @@ Layer 1 [입력] → Layer 2 [저장] → Layer 3 [렌더] → Layer 4 [회귀] 
 | [tests/visual/fixtures.json](tests/visual/fixtures.json) | 테스트 대상 상품 목록 |
 | [tests/visual/README.md](tests/visual/README.md) | 회귀 테스트 운영 가이드 |
 | [db/audit_schema_drift.js](db/audit_schema_drift.js) | 전수 drift 감사 CLI |
-| [db/migrate_photos_schema.js](db/migrate_photos_schema.js) | photos 스키마 통일 |
-| [db/fix_optional_tours_region.js](db/fix_optional_tours_region.js) | region 자동 주입 |
+| `db/migrate_photos_schema.js` (historical path; file removed) | photos 스키마 통일 |
+| `db/fix_optional_tours_region.js` (historical path; file removed) | region 자동 주입 |
 | [db/validate_all_packages.js](db/validate_all_packages.js) | Zod 호환 전수 검증 |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 아키텍처 설계 문서 |
 | [sentry.README.md](sentry.README.md) | Sentry 활성화 가이드 |

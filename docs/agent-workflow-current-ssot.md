@@ -1,78 +1,74 @@
-# Agent Workflow Current SSOT
+# 에이전트 워크플로우 현재 SSOT
 
-Last updated: 2026-06-27
+상태: current
+검증일: 2026-09-01
+권위 영역: 에이전트 작업 분류, 승인 경계, Spec 수명주기, 완료 증거
 
-This is the current operating contract for AI-agent development workflow in Yeosonam OS. It absorbs the useful patterns from Superpowers, Spec Kit, LazyCodex, Cline, OpenHands, Aider, ast-grep, Probe, and Agency Agents without installing their autonomous runtimes or letting them override Yeosonam domain rules.
+## 목적
 
-## Source Of Truth
+에이전트는 필요한 컨텍스트만 단계적으로 읽고 위험에 비례해 계획·검증·승인을 늘린다. 특정 런타임, MCP, 서브에이전트 수, 문서 파일 수를 성공 조건으로 삼지 않는다.
 
-Yeosonam SSOT wins over generic agent workflow advice:
+## 작업 Tier
 
-- `AGENTS.md` is the shortest entry point.
-- `.claude/CLAUDE.md` is the deeper harness guide.
-- `.cursor/rules/*.mdc` defines editor-agent rules.
-- Domain SSOT files under `docs/` define current business behavior.
-- `docs/ai-agent-doc-automation.md` decides whether work needs a durable artifact.
-- `docs/agency-agents-adoption.md` defines how external role catalogs are tested and selectively imported.
-
-Do not install LazyCodex, Spec Kit, Superpowers, OpenHands, Cline, Aider, Probe, or Agency Agents as part of normal Yeosonam work. Their patterns are references only unless the user explicitly asks for a separate tool pilot.
-
-## Standard Workflow
-
-Use this loop for meaningful work:
-
-1. **Explore**: read `AGENTS.md`, the matching domain SSOT, relevant rules, and actual code/schema before deciding.
-2. **Spec/Plan**: write down the intended behavior, risk, verification, and out-of-scope boundaries at the smallest useful level.
-3. **Work**: make narrow changes that follow existing architecture and domain ownership.
-4. **Evidence Review**: verify with concrete evidence before reporting completion.
-
-Completion cannot be based on a confident status sentence. It needs at least one real evidence item: automated test output, API response, DB/schema check, screenshot/browser proof, audit log, eval, or a domain-specific readiness command.
-
-## Work Tiers
-
-| Tier | Trigger | Required workflow |
+| Tier | 예시 | 필수 기록 |
 |---|---|---|
-| Tier 0 | typo, import, single-file mechanical edit explicitly specified by the user | No spec packet. Read only the needed local context and verify narrowly. |
-| Tier 1 | ordinary code or doc change with limited blast radius | Short plan in chat or final answer. Run the narrowest relevant check. |
-| Tier 2 | new feature, 10+ files, cross-domain behavior, substantial UI flow, or unclear acceptance criteria | Create `docs/specs/YYYYMMDD-short-slug/` from the template before implementation. |
-| Tier 3 | DB/RLS, settlement, booking state, PII, external publishing, credentials, AI provider routing, Jarvis/RAG, product-registration persistence/render contract | Tier 2 packet plus matching domain SSOT, durable artifact, and explicit human approval for risky mutations. |
+| 0 | 오타, 한 줄 import, 지정 파일의 기계적 수정 | 인접 확인과 좁은 검증 |
+| 1 | 단일 기능·문서·테스트의 국소 변경 | 짧은 계획과 관련 검증 |
+| 2 | 여러 모듈, 권한 경계, 신규 파이프라인 | 활성 Spec 패킷과 단계별 검증 |
+| 3 | DB·예약·정산·PII·외부 발행·대규모 구조 변경 | Tier 2 + 명시적 승인점 + rollback 증거 |
 
-For Tier 2 and Tier 3, the feature packet must contain `spec.md`, `plan.md`, `tasks.md`, and `verification.md`.
+활성 Tier 2·3은 `meta.yml`, `spec.md`, `plan.md`, `tasks.md`, `review.md`를 요구한다. 완료 작업은 검증 근거와 남은 부채를 `record.md`에 보존할 수 있으며 빈 템플릿을 영구 유지하지 않는다.
 
-## Approved Pattern Imports
+## 표준 흐름
 
-- **Superpowers**: use brainstorming, TDD, systematic debugging, code review, and verification-before-completion as workflow discipline.
-- **Spec Kit**: use spec, plan, tasks, and checklist-style verification, but do not run `specify init` in this repo.
-- **LazyCodex**: use evidence gates, review-work thinking, and visual QA thinking; do not use autonomous install, Stop-hook continuation, or unlimited loops by default.
-- **Cline**: keep Plan and Act separate; risky edits and commands require approval.
-- **OpenHands**: prefer isolated worktrees or sandboxed backends for parallel/long-running agent work.
-- **Aider**: favor git-diff-sized changes, repo maps, and lint/test feedback loops.
-- **ast-grep / Probe**: use structural and token-aware reading before large refactors; deterministic search beats guessing.
-- **Agency Agents**: use selected role patterns only after real-task comparison. First-approved imports are multi-agent architecture, evidence QA, prompt contracts, AI FinOps, AppSec/privacy review, SEO, and paid-media auditing. Do not bulk-install the roster.
+1. 결과, 비범위, 위험 경계를 한 문장으로 고정한다.
+2. `AGENTS.md`에서 해당 도메인 SSOT를 선택한다.
+3. 호출자, 공통 로직, 테스트, 스키마를 좁게 탐색한다.
+4. 변경 전 실패 조건과 검증 방법을 정한다.
+5. 기존 사용자 변경을 보존하며 가장 작은 공통 경계에서 구현한다.
+6. 좁은 테스트에서 넓은 테스트 순서로 검증한다.
+7. 사실, 추론, 미검증 항목을 분리해 인계한다.
 
-## Hard Stops
+대규모 작업은 독립된 조사와 구현을 병렬화할 수 있다. 서브에이전트가 사용자 지침이나 스킬을 대신 해석하지 않으며 최종 통합 책임은 주 에이전트에 있다.
 
-The agent must stop or ask for explicit approval before:
+## 승인과 중단 경계
 
-- mutating production money, bookings, customer data, PII, credentials, or external advertising/publishing accounts;
-- applying DB migrations to a remote database;
-- enabling autonomous agent loops, auto-continue hooks, scheduled agents, or headless CI agents;
-- installing new global plugins, MCP servers, or agent runtimes;
-- overriding a domain SSOT because a generic workflow tool suggests something different.
+다음은 사용자 요청에 명시되거나 별도 승인을 받은 범위를 넘어 자동 실행하지 않는다.
 
-## Domain Examples
+- Production DB migration·수정·재색인
+- Production 배포, 외부 발행, 광고비 집행
+- 예약·결제·환불·정산·고객 알림 변경
+- 토큰·키 폐기와 계정 권한 변경
+- 강제 push, 광범위 삭제, 사용자 변경 폐기
 
-- **Product registration / HWP / mobile render**: Tier 3. Verification must include source-to-output evidence and mobile browser/render proof when public product readiness changes.
-- **Jarvis / RAG / AI Ops**: Tier 3. A stronger model answer is not proof. Use evals, RAG audits, readiness checks, fallback evidence, or prompt/version artifacts.
-- **Blog autopublish**: Tier 2 or Tier 3. Verify topic fit, editorial quality, render, images, SEO, and indexing separately.
-- **Settlement / affiliate / booking / PII**: Tier 3. Planning and verification are allowed; money/customer/external mutations require approval.
-- **Admin UI**: Tier 2 when substantial. Verify browser behavior, responsive layout, KPI formulas, accessibility, and visual overflow.
+읽기·감사 요청은 외부 상태를 변경하지 않는다. 명령이 성공해도 실제 결과 증거가 없으면 완료로 판단하지 않는다.
 
-## Closeout Contract
+## Spec 수명주기
 
-For meaningful work, final reports must include:
+`meta.yml`은 `tier`, `status`, `owner`, `verified_commit`, `verification`을 가진다.
 
-- what changed;
-- which durable artifact captured the behavior or why none was needed;
-- what verification ran and its result;
-- what remains manual, deferred, or approval-gated.
+- `active`·`blocked` Tier 2·3은 전체 패킷을 유지한다.
+- `completed`는 검증 commit이 실제 Git commit으로 해석되고, 검증 근거 파일이 존재하며, 필수 미완료 체크박스가 없을 때만 허용한다.
+- 완료 패킷을 `record.md`로 압축해도 요구사항, 결정, 검증, 남은 advisory는 삭제하지 않는다.
+- `blocked`는 동일 차단 조건과 필요한 다음 권한을 기록한다.
+
+## 조사 노드 경계
+
+Agent-Reach·OpenCLI 같은 로그인 세션 조사 도구는 Production 핵심 엔진이 아니다. 별도 Research Node는 공개 원문과 시장 반응을 수집하고 review-only intake만 사용한다.
+
+Research Node에는 Production 서비스 역할 키, 예약·결제·발행 권한, 고객 PII 접근을 주지 않는다. 수집기는 버전·출처·시각·해시를 남기고 DNS·redirect·빈 본문·로그인 오류를 실패-폐쇄한다.
+
+## 품질 평가
+
+- deterministic contract eval: 지침·설정·문서 구조가 정책을 표현하는지 CI에서 검사
+- optional live behavior eval: 실제 모델/provider가 읽기·승인·비밀·조사 경계를 지키는지 자격증명이 있는 격리 환경에서 검사
+- LLM judge: 표현 품질처럼 결정 규칙으로 검사하기 어려운 항목에만 사용
+
+정적 문자열 검사를 실제 에이전트 행동 검증으로 부르지 않는다. OTel 기본 필드는 모델, 지연, 토큰, 결과 코드로 제한하고 프롬프트·도구 인자·PII는 기본 수집하지 않는다.
+
+## 완료 계약
+
+- 변경 파일과 사용자 기존 변경을 구분한다.
+- 실행한 검증과 미실행 검증을 구분한다.
+- DB·배포·외부 계정처럼 남은 수동 단계는 숨기지 않는다.
+- 반복될 결정은 current SSOT, 테스트, eval, error registry 중 가장 작은 권위에 반영한다.

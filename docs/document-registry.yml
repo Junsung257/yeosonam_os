@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 2,
+  "classes": ["current", "runbook", "reference", "roadmap", "research", "historical", "superseded"],
+  "collections": [
+    { "pattern": "^docs/archive/", "class": "historical", "authority_domain": "historical-record", "owner": "platform-docs", "status": "archived", "last_verified": "git-history", "review_days": 0, "supersedes": [] },
+    { "pattern": "^docs/audits/", "class": "historical", "authority_domain": "audit-record", "owner": "platform-docs", "status": "verified-record", "last_verified": "record-date", "review_days": 0, "supersedes": [] },
+    { "pattern": "^docs/specs/", "class": "reference", "authority_domain": "spec-packet", "owner": "engineering", "status": "managed-by-meta", "last_verified": "meta.yml", "review_days": 0, "supersedes": [] },
+    { "pattern": "^docs/errors/", "class": "reference", "authority_domain": "error-registry", "owner": "engineering", "status": "active", "last_verified": "domain-review", "review_days": 90, "supersedes": [] },
+    { "pattern": "^docs/generated/", "class": "reference", "authority_domain": "generated-inventory", "owner": "platform-engineering", "status": "generated", "last_verified": "generator", "review_days": 0, "supersedes": [] },
+    { "pattern": "(?:^|/)runbooks?/|runbook\\.md$|-runbook\\.md$", "class": "runbook", "authority_domain": "domain-runbook", "owner": "domain-owner", "status": "active", "last_verified": "domain-review", "review_days": 90, "supersedes": [] },
+    { "pattern": "roadmap|master-plan|improvement-plan|v1-plan", "class": "roadmap", "authority_domain": "product-roadmap", "owner": "product", "status": "active", "last_verified": "domain-review", "review_days": 180, "supersedes": [] },
+    { "pattern": "research|adoption|comparison", "class": "research", "authority_domain": "research-reference", "owner": "research", "status": "reference-only", "last_verified": "source-review", "review_days": 180, "supersedes": [] },
+    { "pattern": "^docs/", "class": "reference", "authority_domain": "domain-reference", "owner": "domain-owner", "status": "active", "last_verified": "domain-review", "review_days": 180, "supersedes": [] },
+    { "pattern": "^\\.agents/skills/", "class": "reference", "authority_domain": "canonical-skill", "owner": "platform-engineering", "status": "canonical", "last_verified": "skill-sync", "review_days": 90, "supersedes": [] },
+    { "pattern": "^(\\.claude|\\.github|\\.cursor)/", "class": "reference", "authority_domain": "tool-adapter", "owner": "platform-engineering", "status": "active", "last_verified": "harness-contract", "review_days": 90, "supersedes": [] },
+    { "pattern": "\\.(?:md|mdc)$", "class": "reference", "authority_domain": "repository-reference", "owner": "repository-owner", "status": "active", "last_verified": "git-history", "review_days": 180, "supersedes": [] }
+  ],
+  "documents": [
+    { "id": "project-agent-entry", "path": "AGENTS.md", "class": "current", "authority_domain": "agent-entry", "owner": "platform-engineering", "status": "active", "last_verified": "2026-09-01", "review_days": 90, "supersedes": [] },
+    { "id": "current-status", "path": "CURRENT_STATUS.md", "class": "current", "authority_domain": "current-status-index", "owner": "platform-engineering", "status": "active", "last_verified": "2026-09-01", "review_days": 30, "supersedes": ["docs/archive/status/2026-09-01-current-status-pre-refactor.md"] },
+    { "id": "os-constitution", "path": "docs/yeosonam-os-constitution.md", "class": "current", "authority_domain": "product-constitution", "owner": "product", "status": "active", "last_verified": "2026-08-29", "review_days": 90, "supersedes": [] },
+    { "id": "product-registration", "path": "docs/product-registration-current-ssot.md", "class": "current", "authority_domain": "product-registration", "owner": "product-operations", "status": "active", "last_verified": "2026-08-31", "review_days": 30, "supersedes": [] },
+    { "id": "blog-autopublish", "path": "docs/blog-autopublish-contract.md", "class": "current", "authority_domain": "blog-autopublish", "owner": "content-operations", "status": "active", "last_verified": "2026-08-30", "review_days": 30, "supersedes": [] },
+    { "id": "media-generation", "path": "docs/media-generation-current-ssot.md", "class": "current", "authority_domain": "media-generation", "owner": "content-operations", "status": "active", "last_verified": "2026-09-01", "review_days": 30, "supersedes": [] },
+    { "id": "affiliate", "path": "docs/affiliate-current-ssot.md", "class": "current", "authority_domain": "affiliate", "owner": "revenue-operations", "status": "active", "last_verified": "2026-08-29", "review_days": 30, "supersedes": [] },
+    { "id": "settlement", "path": "docs/settlement-current-ssot.md", "class": "current", "authority_domain": "settlement", "owner": "finance", "status": "active", "last_verified": "2026-08-29", "review_days": 30, "supersedes": [] },
+    { "id": "marketing", "path": "docs/marketing-current-ssot.md", "class": "current", "authority_domain": "marketing", "owner": "marketing", "status": "active", "last_verified": "2026-08-29", "review_days": 30, "supersedes": [] },
+    { "id": "ai-ops", "path": "docs/ai-ops-current-ssot.md", "class": "current", "authority_domain": "ai-operations", "owner": "ai-platform", "status": "active", "last_verified": "2026-08-29", "review_days": 30, "supersedes": ["docs/archive/ai-automation/ai-automation-implementation.md", "docs/archive/ai-automation/ai-automation-runbook.md"] },
+    { "id": "research-node", "path": "docs/research-node-current-ssot.md", "class": "current", "authority_domain": "research-node", "owner": "research", "status": "active", "last_verified": "2026-09-01", "review_days": 30, "supersedes": [] },
+    { "id": "agent-workflow", "path": "docs/agent-workflow-current-ssot.md", "class": "current", "authority_domain": "agent-workflow", "owner": "platform-engineering", "status": "active", "last_verified": "2026-09-01", "review_days": 30, "supersedes": ["docs/archive/harness/agency-agents-adoption.md", "docs/archive/harness/agent-superpowers-adoption.md"] },
+    { "id": "agent-office", "path": "docs/agent-office-current-ssot.md", "class": "current", "authority_domain": "agent-office", "owner": "ai-platform", "status": "active", "last_verified": "2026-08-29", "review_days": 30, "supersedes": [] },
+    { "id": "doc-harness", "path": "docs/ai-agent-doc-automation.md", "class": "current", "authority_domain": "document-harness", "owner": "platform-engineering", "status": "active", "last_verified": "2026-09-01", "review_days": 30, "supersedes": [] },
+    { "id": "agent-mcp", "path": "docs/agent-mcp-tooling.md", "class": "current", "authority_domain": "agent-host-tooling", "owner": "platform-engineering", "status": "active", "last_verified": "2026-09-01", "review_days": 30, "supersedes": [] },
+    { "id": "document-registry", "path": "docs/document-registry.yml", "class": "current", "authority_domain": "document-registry", "owner": "platform-engineering", "status": "active", "last_verified": "2026-09-01", "review_days": 30, "supersedes": [] },
+    { "id": "claude-adapter", "path": ".claude/CLAUDE.md", "class": "reference", "authority_domain": "claude-adapter", "owner": "platform-engineering", "status": "active", "last_verified": "2026-09-01", "review_days": 90, "supersedes": [] },
+    { "id": "copilot-adapter", "path": ".github/copilot-instructions.md", "class": "reference", "authority_domain": "copilot-adapter", "owner": "platform-engineering", "status": "active", "last_verified": "2026-09-01", "review_days": 90, "supersedes": [] }
+  ],
+  "externalSources": [
+    { "id": "openai-latest-model", "url": "https://developers.openai.com/api/docs/guides/latest-model", "authority": "OpenAI", "checked_at": "2026-09-01", "review_days": 90 },
+    { "id": "openai-harness-engineering", "url": "https://openai.com/index/harness-engineering/", "authority": "OpenAI", "checked_at": "2026-09-01", "review_days": 90 },
+    { "id": "anthropic-long-running-harness", "url": "https://www.anthropic.com/engineering/harness-design-long-running-apps", "authority": "Anthropic", "checked_at": "2026-09-01", "review_days": 90 },
+    { "id": "claude-permissions", "url": "https://code.claude.com/docs/en/permissions", "authority": "Anthropic", "checked_at": "2026-09-01", "review_days": 90 },
+    { "id": "supabase-mcp-security", "url": "https://supabase.com/docs/guides/ai-tools/mcp", "authority": "Supabase", "checked_at": "2026-09-01", "review_days": 60 },
+    { "id": "supabase-changelog", "url": "https://supabase.com/changelog", "authority": "Supabase", "checked_at": "2026-09-01", "review_days": 30 },
+    { "id": "promptfoo-ci", "url": "https://www.promptfoo.dev/docs/integrations/ci-cd/", "authority": "Promptfoo", "checked_at": "2026-09-01", "review_days": 90 },
+    { "id": "github-spec-kit", "url": "https://github.github.com/spec-kit/", "authority": "GitHub", "checked_at": "2026-09-01", "review_days": 90 },
+    { "id": "otel-genai", "url": "https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/", "authority": "OpenTelemetry", "checked_at": "2026-09-01", "review_days": 90 }
+  ]
+}

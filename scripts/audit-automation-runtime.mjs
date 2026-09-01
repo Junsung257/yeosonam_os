@@ -2,6 +2,8 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative, resolve } from 'node:path';
 
+import { analyzeCronRouteAuth, hasFailClosedRegisteredInngestHandler } from './lib/harness/automation-guards.mjs';
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const AUTH_MARKERS = [
   'withCronGuard',
@@ -10,6 +12,7 @@ const AUTH_MARKERS = [
   'isCronAuthorized',
   'isCronOrVercelAuthorized',
   'authorizeCronRequest',
+  'withAdminGuard',
 ];
 
 function walk(directory) {
@@ -38,7 +41,8 @@ function parseInngestFunctions() {
         file: relative(ROOT, file).replaceAll('\\', '/'),
         cronTriggers,
         eventTriggers,
-        failClosed: /\bisInngest(?:ScheduleExecution|Billing)Enabled\s*\(\s*\)/u.test(source),
+        failClosed: hasFailClosedRegisteredInngestHandler(source, 'isInngestScheduleExecutionEnabled')
+          || hasFailClosedRegisteredInngestHandler(source, 'isInngestBillingEnabled'),
       };
     });
 }
@@ -54,7 +58,7 @@ export function auditAutomationRuntime() {
     const file = routeFileForPath(cron.path);
     const exists = existsSync(file);
     const source = exists ? readFileSync(file, 'utf8') : '';
-    const authMarker = AUTH_MARKERS.find((marker) => source.includes(marker)) ?? null;
+    const authMarker = analyzeCronRouteAuth(source, AUTH_MARKERS);
 
     if (seenPaths.has(cron.path)) issues.push(`duplicate_vercel_cron_path:${cron.path}`);
     seenPaths.add(cron.path);
