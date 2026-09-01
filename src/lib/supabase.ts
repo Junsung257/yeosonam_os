@@ -74,7 +74,7 @@ let supabaseAdminClient: ReturnType<typeof createClient> | null = null;
 
 /**
  * 서비스 롤 키 기반 Admin 클라이언트 (lazy init).
- * 환경 미설정 시 anon 클라이언트로 fallback. 도메인 분할 모듈(db/*)에서 직접 사용 가능하도록 export.
+ * 환경 미설정 시 null을 반환하며 anon 클라이언트로 강등하지 않는다.
  */
 export function getSupabaseAdmin() {
   if (!supabaseAdminClient) {

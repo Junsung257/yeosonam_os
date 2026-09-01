@@ -17,6 +17,7 @@
 | **정산·입금·ledger·환불·지급** | `docs/settlement-current-ssot.md` 먼저 Read + 반복 오류는 `docs/errors/settlement.md` |
 | **마케팅·Ad OS·외부 광고 발행** | `docs/marketing-current-ssot.md` 먼저 Read + 반복 오류는 `docs/errors/marketing.md` |
 | **AI·자비스·RAG·프롬프트·모델 라우팅** | `docs/ai-ops-current-ssot.md` 먼저 Read + 반복 오류는 `docs/errors/ai-ops.md` |
+| **외부 조사·웹 수집·리서치 노드** | `docs/research-node-current-ssot.md` 먼저 Read + 사실·가격 근거는 해당 도메인 SSOT |
 | **게이미피케이션·마일리지** | `CURRENT_STATUS.md`, `docs/gamification-runbook.md`, `src/lib/gamification-service.ts`, `src/lib/mileage-service.ts` |
 | **API 응답 포맷·인증 패턴** | `.cursor/rules/api-response-format.mdc` |
 | **DB 변경·마이그레이션** | `.cursor/rules/db-migration-policy.mdc`, `CURRENT_STATUS.md`, `db/FIELD_POLICY.md` |
@@ -62,6 +63,7 @@
 | **정산 현재 SSOT·ledger·지급 계약** | **`docs/settlement-current-ssot.md`** |
 | **마케팅 현재 SSOT·Ad OS·외부발행 계약** | **`docs/marketing-current-ssot.md`** |
 | **AI Ops 현재 SSOT·자비스·RAG·모델 라우팅** | **`docs/ai-ops-current-ssot.md`** |
+| **조사 노드·웹 수집·외부 리서치 신호** | **`docs/research-node-current-ssot.md`** |
 | **AI 이미지·미디어 원장·검수·공개 경계** | **`docs/media-generation-current-ssot.md`** |
 | 배포 전 체크리스트 | `docs/deploy-checklist.md` |
 | 환경 변수 레퍼런스 | `docs/env-variables-reference.md` |

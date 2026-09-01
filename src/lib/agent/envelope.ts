@@ -26,7 +26,7 @@ export interface AgentTaskEnvelope {
   sessionId?: string;
   tenantId?: string;
   affiliateId?: string;
-  source: 'jarvis_stream' | 'jarvis_v1' | 'qa_chat' | 'cron' | 'manual';
+  source: 'jarvis_stream' | 'jarvis_v1' | 'qa_chat' | 'cron' | 'manual' | 'research_node';
   agentType: 'operations' | 'products' | 'finance' | 'marketing' | 'sales' | 'system';
   specialistId?: string;
   performative: AgentPerformative;

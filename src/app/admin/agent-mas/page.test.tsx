@@ -21,6 +21,8 @@ describe('AgentMasPage', () => {
 
     expect(source).toContain('관찰 전용 V1');
     expect(source).toContain('처리 잠금');
+    expect(source).toContain('외부 조사 근거');
+    expect(source).toContain('상품 사실 근거 불가');
     expect(source).toContain('snapshot.freshness.isStale');
     expect(source).not.toContain("fetch(`/api/agent/approvals/");
   });

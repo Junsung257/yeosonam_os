@@ -1,6 +1,7 @@
-import { inngest } from '../client';
+import { inngest, marketingTenantRunEvent } from '../client';
 import { runMarketingPipeline } from '@/lib/marketing-pipeline/orchestrator';
 import { autoPublishWinners } from '@/lib/creative-engine/winner-auto-publish';
+import { isInngestScheduleExecutionEnabled } from '@/inngest/runtime-policy';
 
 /**
  * 테넌트별 마케팅 파이프라인 — Inngest fan-out으로 실행
@@ -15,11 +16,15 @@ export const tenantMarketingFn = inngest.createFunction(
     name: '테넌트 마케팅 파이프라인',
     retries: 2,
     timeouts: { finish: '10m' },
-    event: 'marketing/tenant.run',
-  } as unknown as Parameters<typeof inngest.createFunction>[0],
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async ({ event, step }: any) => {
-    const { tenantId, tenantName } = event.data as { tenantId: string; tenantName: string };
+    idempotency: 'event.id',
+    concurrency: { limit: 1, key: 'event.data.tenantId' },
+    triggers: [marketingTenantRunEvent],
+  },
+  async ({ event, step }) => {
+    if (!isInngestScheduleExecutionEnabled()) {
+      return { skipped: true, reason: 'inngest_schedule_cutover_not_enabled' };
+    }
+    const { tenantId, tenantName, runDate } = event.data;
 
     const result = await step.run(`pipeline-${tenantId}`, async () => {
       return runMarketingPipeline(tenantId);
@@ -32,6 +37,7 @@ export const tenantMarketingFn = inngest.createFunction(
     return {
       tenantId,
       tenantName,
+      runDate,
       status: result.status,
       elapsed_ms: result.elapsed_ms,
       winners_published: publishReport.published,

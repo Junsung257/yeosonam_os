@@ -249,6 +249,10 @@ tmp-*.png
 
 # Local toolchains and generated app bundles
 /tools/
+!/tools/
+/tools/*
+!/tools/research-node/
+!/tools/research-node/**
 /Lib/
 
 # Local desktop cleanup archives

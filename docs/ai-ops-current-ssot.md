@@ -161,12 +161,16 @@ npm run verify:jarvis-all-scenarios
 npm run verify:customer-inquiry
 npm run eval:jarvis
 npm run eval:concierge:promptfoo
+npm run audit:automation-runtime:ci
+npm run audit:llm-telemetry:ci
 npm run audit:jarvis-rag
 npx vitest run src/lib/automation-command-center.test.ts src/app/admin/control-tower/_components/AutomationCommandCenterCard.test.tsx
 npm run type-check
 ```
 
 For blog, product registration, settlement, affiliate, or marketing AI behavior, also run that domain's SSOT verification checks.
+
+`audit:llm-telemetry:ci`는 신규 direct provider 호출이 공통 LLM trace를 우회하면 실패합니다. 2026-08-31 기준 legacy 직접 호출 28개는 `config/llm-telemetry-baseline.json`에 명시적으로 박제하고 증가만 차단합니다. 기존 호출을 수정할 때는 baseline을 늘리지 말고 공통 trace로 이전합니다. `audit:automation-runtime:ci`는 Vercel Cron route·인증 marker·중복 스케줄과 Inngest fail-closed 경계를 함께 검증합니다.
 
 ### Promptfoo challenger lane
 
