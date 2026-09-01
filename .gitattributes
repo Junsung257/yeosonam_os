@@ -16,3 +16,6 @@
 *.scss text working-tree-encoding=UTF-8
 *.html text working-tree-encoding=UTF-8
 *.txt text working-tree-encoding=UTF-8
+
+# Codebase Memory may create this ignored portable graph artifact during manual indexing.
+.codebase-memory/graph.db.zst merge=ours

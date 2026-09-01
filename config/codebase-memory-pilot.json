@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "release": {
+    "source": "https://github.com/DeusData/codebase-memory-mcp",
+    "version": "0.10.8",
+    "asset": "codebase-memory-mcp-windows-amd64.zip",
+    "archiveSha256": "b43ad982994c4d829670749e08d3b622a74bb20041fc0a7d02bef6113f81c34d",
+    "binarySha256": "b4b403b1d7c4def3785f148b93f345ce8427858f4f5489ce28580c4387a336a6",
+    "license": "MIT"
+  },
+  "runtime": {
+    "autoIndex": false,
+    "autoWatch": false,
+    "uiEnabled": false,
+    "diagnostics": false,
+    "indexMode": "manual_only",
+    "upstreamLimitations": [
+      "v0.10.8 does not expose the later watcher_enabled config key; auto_watch=false and explicit reindexing are mandatory.",
+      "On this Windows pilot, check_index_coverage returned metadata_changed for every benchmark anchor immediately after a successful reindex; normal-profile adoption is blocked until upstream freshness detection is reliable."
+    ]
+  },
+  "enabledTools": [
+    "index_repository",
+    "search_graph",
+    "query_graph",
+    "trace_path",
+    "get_code_snippet",
+    "get_graph_schema",
+    "get_architecture",
+    "search_code",
+    "list_projects",
+    "index_status",
+    "check_index_coverage",
+    "detect_changes"
+  ],
+  "blockedTools": ["delete_project", "manage_adr", "ingest_traces"],
+  "benchmark": {
+    "questionCount": 20,
+    "minimumCorrect": 18,
+    "maximumFalseAuthoritative": 0,
+    "minimumMedianContextReductionPercent": 50,
+    "minimumToolCallReductionPercent": 30
+  }
+}

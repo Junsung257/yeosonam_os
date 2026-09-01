@@ -43,6 +43,7 @@
     "generate:system-inventory": "node scripts/generate-system-inventory.mjs",
     "check:system-inventory": "node scripts/generate-system-inventory.mjs --check",
     "check:agent-host": "node scripts/check-agent-host-health.mjs",
+    "benchmark:codebase-memory": "node scripts/run-codebase-memory-benchmark.mjs",
     "test:harness-contracts": "node scripts/eval-harness-contract.mjs",
     "test:harness-audit": "node --test scripts/lib/harness/*.test.mjs",
     "setup:harness-evals": "node scripts/setup-harness-evals.mjs",

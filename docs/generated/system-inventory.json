@@ -1782,6 +1782,7 @@
     "scripts/run-a11y-lint.cjs",
     "scripts/run-blog-indexing-worker.ts",
     "scripts/run-blog-quality-v3-canary.ts",
+    "scripts/run-codebase-memory-benchmark.mjs",
     "scripts/run-customer-open-operational-gate.ts",
     "scripts/run-dev-temp.ps1",
     "scripts/run-harness-live-eval.mjs",
