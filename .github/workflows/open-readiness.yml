@@ -14,13 +14,62 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  production-deployment-guard:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      authorized: ${{ steps.guard.outputs.authorized }}
+    steps:
+      - id: guard
+        name: Authorize a mainline Production deployment
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DEPLOYMENT_STATE: ${{ github.event.deployment_status.state }}
+          DEPLOYMENT_ENVIRONMENT: ${{ github.event.deployment.environment }}
+          DEPLOYMENT_PRODUCTION: ${{ github.event.deployment.production_environment }}
+          DEPLOYMENT_SHA: ${{ github.event.deployment.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "authorized=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$DEPLOYMENT_STATE" != "success" ]]; then
+            echo "authorized=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$DEPLOYMENT_ENVIRONMENT" != "Production" && "$DEPLOYMENT_PRODUCTION" != "true" ]]; then
+            echo "authorized=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ ! "$DEPLOYMENT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "invalid deployment SHA" >&2
+            exit 1
+          fi
+
+          default_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${DEFAULT_BRANCH}" --jq .sha)"
+          merge_base_sha="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${DEPLOYMENT_SHA}...${default_sha}" --jq .merge_base_commit.sha)"
+          if [[ "$merge_base_sha" != "$DEPLOYMENT_SHA" ]]; then
+            echo "Production deployment SHA is not on the default-branch history" >&2
+            exit 1
+          fi
+
+          echo "authorized=true" >> "$GITHUB_OUTPUT"
+
   readiness:
-    # Preview deployments must not attach Production data-health failures to a PR.
-    # Keep the strict public gate for real Production deployments and manual runs.
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.deployment_status.state == 'success' &&
-      github.event.deployment.production_environment == true)
+    # Vercel can label a real Production deployment while leaving GitHub's
+    # production_environment flag false. The guard accepts that provider shape,
+    # rejects Preview, and proves the deployed SHA belongs to main history before
+    # this secret-bearing job checks public Production data.
+    needs: production-deployment-guard
+    if: needs.production-deployment-guard.outputs.authorized == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
