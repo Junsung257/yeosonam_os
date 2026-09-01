@@ -132,6 +132,8 @@ create index if not exists idx_blog_search_followup_jobs_due
 create index if not exists idx_blog_search_correction_queue_status
   on public.blog_search_correction_queue(status, created_at)
   where status in ('queued', 'reviewing');
+create index if not exists idx_blog_search_correction_queue_followup_job
+  on public.blog_search_correction_queue(followup_job_id);
 
 -- Preserve every raw provider field and record only the corrected projection.
 insert into public.blog_indexing_classification_revisions (

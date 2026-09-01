@@ -71,12 +71,12 @@
     {
       "version": "20260901114420",
       "file": "supabase/migrations/20260901114420_blog_autopilot_v4_truth_and_lifecycle.sql",
-      "sha256": "f8a8b5a4c64871b999b1ff215525565c874cfc97ad801efcc4429f284a9d6670"
+      "sha256": "f6273013b2ba7b863d72f36e263fa0bf1eb5a9a21842f09b650872bf8b3732ed"
     },
     {
       "version": "20260901155821",
       "file": "supabase/migrations/20260901155821_blog_autopilot_v4_seo_completion.sql",
-      "sha256": "f3860cac3e97316f768de7448147558a2f52c98ae28549990f2a9354c6660c69"
+      "sha256": "6847afcd6d37ec901434c99b68cca32849a232c5eabee72d4f0efcfb0e026434"
     }
   ],
   "rollback": {

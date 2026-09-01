@@ -89,9 +89,15 @@ create index if not exists idx_blog_seo_observations_url
   on public.blog_seo_observations(url, observed_at desc);
 create index if not exists idx_blog_seo_observations_slug
   on public.blog_seo_observations(slug, observed_at desc);
+create index if not exists idx_blog_seo_observations_content_creative
+  on public.blog_seo_observations(content_creative_id);
 create index if not exists idx_blog_seo_findings_open
   on public.blog_seo_audit_findings(severity, created_at desc)
   where status in ('open', 'queued');
+create index if not exists idx_blog_seo_findings_observation
+  on public.blog_seo_audit_findings(observation_id);
+create index if not exists idx_blog_seo_findings_content_creative
+  on public.blog_seo_audit_findings(content_creative_id);
 create index if not exists idx_blog_adapter_benchmarks_active
   on public.blog_adapter_benchmarks(adapter, evaluated_at desc)
   where passed = true;
