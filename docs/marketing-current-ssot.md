@@ -46,6 +46,7 @@ Repeated failures belong in `docs/errors/marketing.md`.
 - Campaign links must use lowercase, stable `utm_source`, `utm_medium`, and `utm_campaign` values. Do not compare channel performance using untagged social, email, or affiliate links.
 - Preview deployment success must not run the strict `www.yeosonam.com` data-health gate or receive Production readiness failures.
 - A Production deployment may enter the secret-bearing public readiness job only after a secret-free guard verifies a successful Production environment signal and proves that the deployed SHA belongs to the repository default-branch history. Provider-specific `production_environment` metadata is supporting evidence, not the sole authority, because Vercel can report `environment=Production` with that flag false.
+- Local release CI runs against an isolated dummy database. A Production-discovered package or blog identifier that is absent there is `blocked`, not `fail`; this downgrade is local-only and must never weaken Preview or Production public-surface verification.
 
 ## External Write Boundary
 

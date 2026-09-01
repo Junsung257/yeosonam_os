@@ -280,7 +280,11 @@ async function fetchUrl(name, path, options = {}) {
       const localDataBlocked = !ok
         && options.allowLocalMissingData === true
         && ALLOW_LOCAL_MISSING_DATA
-        && (localDataUnavailableText(body) || PACKAGE_NOT_FOUND_PATTERN.test(body));
+        && (
+          localDataUnavailableText(body)
+          || PACKAGE_NOT_FOUND_PATTERN.test(body)
+          || options.localMissingData?.(res, body, setCookie) === true
+        );
       addCheck(name, ok ? 'pass' : protectedDeployment || localDataBlocked ? 'blocked' : 'fail', {
         statusCode: res.status,
         ms: Date.now() - started,
@@ -395,6 +399,8 @@ async function checkPublicUrls() {
   } else {
     await fetchUrl('public:blog-runtime', `/blog/${encodeURIComponent(BLOG_SLUG)}`, {
       ok: (res, body) => res.status >= 200 && res.status < 400 && blogDetailLooksRenderable(body),
+      allowLocalMissingData: true,
+      localMissingData: (_res, body) => !blogDetailLooksRenderable(body),
       notes: (_res, body) => (blogDetailLooksRenderable(body) ? '' : 'blog detail rendered a not-found or noindex state'),
     });
   }
