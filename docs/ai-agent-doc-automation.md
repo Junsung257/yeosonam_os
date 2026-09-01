@@ -39,13 +39,18 @@ npm run check:system-inventory
 ```bash
 npm run sync:agent-skills
 npm run check:agent-skill-sync
+npm run check:external-skill-sources
 ```
 
 동기화 검사는 파일 집합과 바이트 내용을 모두 비교한다. 생성물을 직접 수정한 PR은 실패한다.
 
+외부 Skill은 `.agents/skills`로 직접 복사하지 않는다. `config/agent-skill-sources.json`의 immutable provenance와 capability review를 통과하고 실제 여소남 과제 eval에서 안전성 회귀 없이 이긴 동작만 좁은 프로젝트 Skill로 재작성한다. catalog-wide install과 외부 installer 실행은 정상 경로가 아니다.
+
 ## Spec 수명주기
 
 Tier 2·3의 active·blocked 작업은 `meta.yml`과 spec, plan, tasks, review를 가진다. completed 작업은 실제로 해석되는 verified commit, 존재하는 검증 증거, 미완료 필수 항목 0건이 필요하다. 요구사항·결정·증거·남은 부채를 `record.md` 하나로 압축할 수 있다.
+
+새 Tier 2·3 패킷은 `surface_map_version: 1`과 `surface-map.v1.json`을 사용한다. CI는 선언된 활성 맵의 구조·write 중복·review write 금지를 검사하고, 작업자는 `--spec`, `--agent`, `--base`로 자신의 변경 경로를 검사한다.
 
 문구 존재만으로 완전성을 판단하지 않는다. 구조, 상태, commit, evidence path, 체크박스를 검사한다.
 
@@ -83,7 +88,7 @@ Promptfoo는 루트 앱 의존성과 분리한 `tools/harness-evals` package loc
 
 ## CI 분리
 
-- PR `harness-contract`: registry, 내부 링크, Spec, 스킬 동기화, 지침 예산, 비밀, 신규 위험 패턴, inventory drift, deterministic contract eval
+- PR `harness-contract`: registry, 내부 링크, Spec, 작업 surface, 외부 Skill provenance, 스킬 동기화, 지침 예산, 비밀, 신규 위험 패턴, inventory drift, deterministic contract eval
 - 주간 전체 감사: 외부 링크, 출처 freshness, 전체 문서, 선택형 live eval
 
 문서·비밀·권한 P0·P1에는 `continue-on-error`를 사용하지 않는다. 외부 사이트의 일시 장애는 advisory로 분리한다.

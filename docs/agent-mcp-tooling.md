@@ -44,11 +44,27 @@ Production 앱의 서버 키는 MCP 자격증명과 분리한다. 폐기 전에�
 
 Serena 같은 프로젝트 분석기는 현재 작업 디렉터리에서 프로젝트를 찾도록 설정한다. 외부 CLI는 검증된 버전을 고정한다. 특정 PC의 설치 완료 여부는 current 문서가 아니라 로컬 health-check 결과로 확인한다.
 
+## Codebase Memory 파일럿
+
+Codebase Memory는 구조 탐색 보조 도구이며 실제 소스, 테스트, Serena, `rg`를 대체하는 권위가 아니다. 공식 `DeusData/codebase-memory-mcp`의 attested headless Windows binary만 고정 버전·hash로 사용자 도구 디렉터리에 두며 `install`, `update`, hooks, Skills, UI를 실행하지 않는다.
+
+- 감사 프로필에서만 `CBM_ALLOWED_ROOT`를 깨끗한 파일럿 worktree 하나로 제한한다.
+- cache는 저장소 밖에 두고 `auto_index=false`, `auto_watch=false`, `ui_enabled=false`, `CBM_DIAGNOSTICS=false`를 유지한다.
+- v0.10.8에는 후속 문서의 `watcher_enabled` 키가 없으므로 수동 인덱싱만 사용한다.
+- `delete_project`, `manage_adr`, `ingest_traces`는 도구 표면에서 차단하고 `index_repository`는 매번 승인한다.
+- `.cbmignore`가 환경 파일, 개인·공급사 자료, 감사·archive, build output을 제외한 뒤에만 `persistence=false`로 인덱싱한다.
+- 구조 답변은 관련 실제 파일을 다시 읽어 확인하고 stale coverage를 확인한다.
+
+2026-09-02 파일럿에서 검색 앵커는 20/20, 민감 경로와 git 변경은 0건이었지만 Windows v0.10.8의 `check_index_coverage`가 재인덱싱 직후에도 35개 앵커 전부를 `metadata_changed`로 판정했다. 따라서 파일럿 구현은 준비되었지만 일반 프로필 채택은 보류한다. 이 신호를 무시하거나 성공으로 바꾸지 말고, 실제 소스 재확인과 신뢰 가능한 freshness 검사가 모두 가능해진 뒤 다시 평가한다.
+
+릴리스·도구 allowlist·benchmark 기준은 `config/codebase-memory-pilot.json`, 실제 질문은 `evals/codebase-memory/questions.json`이 권위다. 20문항 중 18개 이상 정확, 민감 경로·git 변경 0건을 통과해도 baseline context 50%·도구 호출 30% 개선과 답변 단위 거짓 단정 0건 검토 전에는 pilot이다.
+
 ## 검증
 
 ```bash
 npm run check:agent-host -- --repo-only
 npm run check:agent-host
+npm run benchmark:codebase-memory
 ```
 
 첫 명령은 CI에서 추적 파일만 검사한다. 두 번째는 로컬 프로필의 최소 권한, 버전 고정, 비밀 비포함, Supabase 연결 충돌을 값 노출 없이 확인한다.

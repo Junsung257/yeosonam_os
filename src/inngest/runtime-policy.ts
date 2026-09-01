@@ -17,6 +17,11 @@ export function isInngestBillingEnabled(): boolean {
   return isInngestScheduleExecutionEnabled() && enabled(getSecret('INNGEST_BILLING_ENABLED'));
 }
 
+/** Blog cutover is independent from marketing/billing and remains fail-closed. */
+export function isInngestBlogAutopilotEnabled(): boolean {
+  return enabled(getSecret('INNGEST_BLOG_AUTOPILOT_ENABLED'));
+}
+
 export function utcDayFromTimestamp(timestamp?: number): string {
   const date = new Date(typeof timestamp === 'number' ? timestamp : Date.now());
   if (Number.isNaN(date.getTime())) throw new Error('invalid Inngest timestamp');

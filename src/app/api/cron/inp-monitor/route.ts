@@ -6,6 +6,7 @@ import { sendSlackAlert } from '@/lib/slack-alert';
 import { getSecret } from '@/lib/secret-registry';
 import { logWarning } from '@/lib/sentry-logger';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
+import { fetchBlogPageSpeedObservationV4 } from '@/lib/blog-pagespeed-v4';
 
 /**
  * INP 모니터링 — 매일 1회 실행 (PR-D)
@@ -29,52 +30,6 @@ export const dynamic = 'force-dynamic';
 
 const INP_THRESHOLD_MS = 200;       // 2026 ranking signal 임계값
 const MAX_URLS_PER_RUN = 12;         // 호출 수 통제
-const PSI_BASE = 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed';
-
-interface PsiMetric {
-  percentile?: number;
-  category?: string;
-}
-
-interface PsiPayload {
-  loadingExperience?: {
-    metrics?: {
-      INTERACTION_TO_NEXT_PAINT?: PsiMetric;
-      LARGEST_CONTENTFUL_PAINT_MS?: PsiMetric;
-      CUMULATIVE_LAYOUT_SHIFT_SCORE?: PsiMetric;
-      FIRST_CONTENTFUL_PAINT_MS?: PsiMetric;
-      EXPERIMENTAL_TIME_TO_FIRST_BYTE?: PsiMetric;
-    };
-  };
-  lighthouseResult?: {
-    categories?: { performance?: { score?: number } };
-  };
-}
-
-async function callPsi(url: string, apiKey: string | null): Promise<PsiPayload | null> {
-  const params = new URLSearchParams({
-    url,
-    strategy: 'mobile',
-    category: 'performance',
-  });
-  if (apiKey) params.set('key', apiKey);
-
-  try {
-    const res = await fetch(`${PSI_BASE}?${params.toString()}`, {
-      headers: { Accept: 'application/json' },
-      // PSI 는 응답이 길어 30초+ 걸릴 수 있음
-      signal: AbortSignal.timeout(60_000),
-    });
-    if (!res.ok) {
-      logWarning(`[cron/inp-monitor] PSI request failed HTTP ${res.status}`, { url });
-      return null;
-    }
-    return (await res.json()) as PsiPayload;
-  } catch (e) {
-    logWarning(`[cron/inp-monitor] PSI request exception`, e);
-    return null;
-  }
-}
 
 async function pickTargetUrls(baseUrl: string): Promise<string[]> {
   const urls = new Set<string>([baseUrl, `${baseUrl}/packages`, `${baseUrl}/blog`]);
@@ -141,29 +96,30 @@ async function runInpMonitor(request: NextRequest) {
   const rows: Array<Record<string, unknown>> = [];
 
   for (const url of targets) {
-    const payload = await callPsi(url, apiKey);
-    if (!payload) {
+    const observation = await fetchBlogPageSpeedObservationV4({ url, apiKey }).catch((error) => {
+      logWarning('[cron/inp-monitor] PSI request failed', { url, error });
+      return null;
+    });
+    if (!observation) {
       errors.push(`PSI 실패: ${url}`);
       continue;
     }
-    const m = payload.loadingExperience?.metrics;
-    const inpMs = m?.INTERACTION_TO_NEXT_PAINT?.percentile ?? null;
-    const lcpMs = m?.LARGEST_CONTENTFUL_PAINT_MS?.percentile ?? null;
-    const cls = m?.CUMULATIVE_LAYOUT_SHIFT_SCORE?.percentile ?? null;
-    const fcp = m?.FIRST_CONTENTFUL_PAINT_MS?.percentile ?? null;
-    const ttfb = m?.EXPERIMENTAL_TIME_TO_FIRST_BYTE?.percentile ?? null;
-    const score = payload.lighthouseResult?.categories?.performance?.score ?? null;
+    const inpMs = observation.inpMs;
 
     rows.push({
       url,
       device: 'mobile',
       inp_ms: inpMs,
-      lcp_ms: lcpMs,
-      cls: typeof cls === 'number' ? cls / 100 : null,  // PSI 는 100배수 정수로 반환
-      ttfb_ms: ttfb,
-      fcp_ms: fcp,
-      performance_score: typeof score === 'number' ? Math.round(score * 100) : null,
-      raw: { metrics: m ?? null },
+      lcp_ms: observation.lcpMs,
+      cls: observation.cls,
+      ttfb_ms: observation.ttfbMs,
+      fcp_ms: observation.fcpMs,
+      performance_score: observation.performanceScore,
+      raw: {
+        contract_version: observation.contractVersion,
+        field_source: observation.fieldSource,
+        receipt: observation.receipt,
+      },
       measured_at: new Date().toISOString(),
     });
 

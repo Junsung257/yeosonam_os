@@ -65,12 +65,12 @@ describe('notifyIndexingBatch', () => {
     expect(reports.every((report) => report.google === 'success')).toBe(true);
   });
 
-  it('allows direct Google Indexing API only when explicitly enabled', async () => {
+  it('never uses direct Google Indexing API for ordinary blog URLs even if the retired flag remains set', async () => {
     process.env.GOOGLE_INDEXING_API_FOR_BLOGS = 'true';
 
     await notifyIndexingBatch(['https://www.yeosonam.com/blog/test'], 'https://www.yeosonam.com');
 
-    expect(requestGoogleIndexing).toHaveBeenCalledTimes(1);
+    expect(requestGoogleIndexing).not.toHaveBeenCalled();
   });
 
   it('skips IndexNow when the key is not configured', async () => {

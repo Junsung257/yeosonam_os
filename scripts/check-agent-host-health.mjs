@@ -1,8 +1,16 @@
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 
-import { validateCodexTomlText, validateSupabaseMcpConfigText } from './lib/harness/agent-host-config.mjs';
+import {
+  codebaseMemoryConfigDetails,
+  validateCodebaseMemoryCodexConfigText,
+  validateCodebaseMemoryRepositoryContract,
+  validateCodexTomlText,
+  validateSupabaseMcpConfigText,
+} from './lib/harness/agent-host-config.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const repoOnly = process.argv.includes('--repo-only');
@@ -48,6 +56,13 @@ function inspectCodexToml(path, expectations) {
 }
 
 const secret = /(?:sbp_|sb_secret_|ghp_|github_pat_|sk-)[A-Za-z0-9._-]{20,}/;
+const cbmManifest = JSON.parse(readFileSync(resolve(root, 'config/codebase-memory-pilot.json'), 'utf8'));
+for (const failure of validateCodebaseMemoryRepositoryContract({
+  gitignore: readFileSync(resolve(root, '.gitignore'), 'utf8'),
+  gitattributes: readFileSync(resolve(root, '.gitattributes'), 'utf8'),
+  cbmignore: readFileSync(resolve(root, '.cbmignore'), 'utf8'),
+  manifest: cbmManifest,
+})) failures.push(failure);
 inspect(resolve(root, '.claude/settings.json'), [
   { label: 'project Claude config contains no token-shaped secret', pattern: secret, expected: false },
   { label: 'project Claude config does not allow broad node -e', pattern: /Bash\(node\s+-e/i, expected: false },
@@ -76,7 +91,40 @@ if (!repoOnly) {
     { label: 'Serena derives the project from cwd', pattern: /--project-from-cwd/, expected: true },
     { label: 'apifable is version-pinned', pattern: /apifable@1\.1\.8/, expected: true },
   ]);
-  inspectCodexToml(resolve(homedir(), '.codex/audit.config.toml'), { approvalPolicy: 'on-request', sandboxMode: 'read-only' });
+  const auditConfigPath = resolve(homedir(), '.codex/audit.config.toml');
+  inspectCodexToml(auditConfigPath, { approvalPolicy: 'on-request', sandboxMode: 'read-only' });
+  if (!existsSync(auditConfigPath)) {
+    advisories.push('Codebase Memory audit profile is not configured');
+  } else {
+    const auditConfig = readFileSync(auditConfigPath, 'utf8');
+    const details = codebaseMemoryConfigDetails(auditConfig);
+    if (!details.command) {
+      advisories.push('Codebase Memory audit profile is not configured');
+    } else {
+      for (const failure of validateCodebaseMemoryCodexConfigText(auditConfig, {
+        repoRoot: root,
+        version: cbmManifest.release.version,
+      })) failures.push(failure);
+      if (!existsSync(details.command)) failures.push('Codebase Memory pinned binary is missing');
+      else {
+        const digest = createHash('sha256').update(readFileSync(details.command)).digest('hex');
+        if (digest !== cbmManifest.release.binarySha256) failures.push('Codebase Memory binary hash differs from the manifest');
+        try {
+          const version = execFileSync(details.command, ['--version'], { encoding: 'utf8' }).trim();
+          if (version !== `codebase-memory-mcp ${cbmManifest.release.version}`) failures.push('Codebase Memory binary version differs from the manifest');
+          const config = execFileSync(details.command, ['config', 'list'], {
+            encoding: 'utf8',
+            env: { ...process.env, CBM_CACHE_DIR: details.cacheDir, CBM_DIAGNOSTICS: 'false' },
+          });
+          for (const expected of ['auto_index                = false', 'auto_watch                = false', 'ui_enabled                = false']) {
+            if (!config.includes(expected)) failures.push(`Codebase Memory local setting is unsafe: expected ${expected.trim()}`);
+          }
+        } catch (error) {
+          failures.push(`Codebase Memory local binary check failed: ${error.message}`);
+        }
+      }
+    }
+  }
   inspectCodexToml(resolve(homedir(), '.codex/elevated.config.toml'), { approvalPolicy: 'on-request', sandboxMode: 'danger-full-access' });
   inspect(resolve(homedir(), '.claude/settings.json'), [
     { label: 'global Claude config contains no token-shaped secret', pattern: secret, expected: false },

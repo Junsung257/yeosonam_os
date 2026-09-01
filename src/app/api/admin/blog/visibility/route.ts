@@ -5,6 +5,14 @@ import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
+import {
+  BLOG_AUTOPILOT_PIPELINE_VERSION,
+  BLOG_AUTOPILOT_SCHEMA_MIGRATION_VERSION,
+  BLOG_SEARCH_CLASSIFICATION_VERSION,
+  readBlogDeploymentCommitShaV4,
+  resolveBlogSearchLifecycleStatus,
+  resolveProviderReceiptStatus,
+} from '@/lib/blog-autopilot-v4-contract';
 
 export const dynamic = 'force-dynamic';
 
@@ -170,18 +178,41 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     return apiResponse({ ok: false, error: 'slug and url are required' }, { status: 400 });
   }
 
+  const requestStatus = body.request_status || 'requested';
+  const indexStatus = body.index_status || (platform === 'naver' ? 'verification_unavailable' : 'inspectable');
+  const providerReceiptStatus = resolveProviderReceiptStatus({
+    requestStatus,
+    providerOk: body.provider_received === true
+      ? true
+      : requestStatus === 'request_failed' ? false : null,
+    verificationOnly: body.verification_only === true,
+  });
   const row = {
     slug,
     url,
     platform,
-    request_status: body.request_status || 'requested',
-    index_status: body.index_status || (platform === 'naver' ? 'verification_unavailable' : 'inspectable'),
+    request_status: requestStatus,
+    index_status: indexStatus,
     visibility_status: body.visibility_status || 'unknown',
     best_rank: body.best_rank || null,
     best_query: body.best_query || null,
     source: body.source || (platform === 'naver' ? 'indexnow_request' : 'google_indexing_request'),
     confidence: Number(body.confidence ?? 0.45),
     evidence: body.evidence || {},
+    search_lifecycle_status: resolveBlogSearchLifecycleStatus({
+      requestStatus,
+      providerReceiptStatus,
+      indexStatus,
+      coverageState: body.evidence?.coverage_state,
+      pageFetchState: body.evidence?.page_fetch_state,
+      lastCrawlTime: body.evidence?.last_crawl_time,
+      bestRank: body.best_rank,
+    }),
+    provider_receipt_status: providerReceiptStatus,
+    classification_version: BLOG_SEARCH_CLASSIFICATION_VERSION,
+    pipeline_version: BLOG_AUTOPILOT_PIPELINE_VERSION,
+    deployment_commit_sha: readBlogDeploymentCommitShaV4(),
+    schema_migration_version: BLOG_AUTOPILOT_SCHEMA_MIGRATION_VERSION,
   };
 
   const { data, error } = await supabaseAdmin

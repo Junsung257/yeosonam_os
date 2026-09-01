@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "sourceId": "headcount-catalog",
+      "sourceUrl": "https://github.com/dvcrn/headcount",
+      "immutableRevision": "0cb04d56e04ca5718daaf0e5915b2010a7253870",
+      "sourcePath": ".",
+      "contentSha256": null,
+      "license": "MIT",
+      "reviewedCapabilities": {
+        "commands": [],
+        "hooks": [],
+        "secretNames": [],
+        "networkHosts": ["github.com"]
+      },
+      "evalSuite": [],
+      "status": "reference_only",
+      "allowBulkInstall": false,
+      "notes": "Pattern reference only. No department, skill, hook, or installer has been imported."
+    }
+  ]
+}

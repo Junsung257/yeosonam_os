@@ -19,6 +19,8 @@
 
 활성 Tier 2·3은 `meta.yml`, `spec.md`, `plan.md`, `tasks.md`, `review.md`를 요구한다. 완료 작업은 검증 근거와 남은 부채를 `record.md`에 보존할 수 있으며 빈 템플릿을 영구 유지하지 않는다.
 
+새 Tier 2·3 작업은 `surface_map_version: 1`과 `surface-map.v1.json`을 함께 둔다. 맵은 작업 안에서만 유효하며 에이전트별 write, read-only, forbidden 경로를 선언한다. 서로 다른 에이전트의 write 범위는 겹칠 수 없고 review/audit 역할은 write 범위를 가질 수 없다. 기존 활성 Spec에는 근거 없는 소유권을 소급 생성하지 않고 다음 재계획 때 도입한다.
+
 ## 표준 흐름
 
 1. 결과, 비범위, 위험 경계를 한 문장으로 고정한다.
@@ -28,6 +30,10 @@
 5. 기존 사용자 변경을 보존하며 가장 작은 공통 경계에서 구현한다.
 6. 좁은 테스트에서 넓은 테스트 순서로 검증한다.
 7. 사실, 추론, 미검증 항목을 분리해 인계한다.
+
+여러 에이전트나 worktree가 쓰는 Tier 2·3 작업은 커밋 전 `npm run check:agent-surfaces -- --spec <spec-id> --agent <agent-id> --base <base-ref>`로 tracked, staged, unstaged, untracked 경로를 함께 검사한다.
+
+외부 Skill·에이전트 카탈로그는 challenger 자료다. 자동 설치기나 전체 카탈로그를 실행하지 않고 `config/agent-skill-sources.json`에 immutable source, hash, license, 명령·Hook·비밀·네트워크 권한, eval, 상태를 기록한다. 승인된 동작만 여소남 전용 Skill·테스트·체크리스트로 다시 작성한다.
 
 대규모 작업은 독립된 조사와 구현을 병렬화할 수 있다. 서브에이전트가 사용자 지침이나 스킬을 대신 해석하지 않으며 최종 통합 책임은 주 에이전트에 있다.
 

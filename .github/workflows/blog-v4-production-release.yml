@@ -42,14 +42,14 @@ jobs:
     environment: blog-production
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID || vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID || vars.VERCEL_PROJECT_ID }}
       VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF || vars.SUPABASE_PROJECT_REF }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       CRON_SECRET: ${{ secrets.CRON_SECRET }}
       NEXT_PUBLIC_BASE_URL: https://www.yeosonam.com
@@ -67,7 +67,7 @@ jobs:
             echo "promote_live requires migration apply and candidate deployment" >&2
             exit 1
           fi
-          for key in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID VERCEL_AUTOMATION_BYPASS_SECRET SUPABASE_PROJECT_REF SUPABASE_DB_PASSWORD SUPABASE_ACCESS_TOKEN SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY CRON_SECRET; do
+          for key in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID VERCEL_AUTOMATION_BYPASS_SECRET SUPABASE_PROJECT_REF SUPABASE_ACCESS_TOKEN SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY CRON_SECRET; do
             if [ -z "${!key:-}" ]; then
               echo "Missing protected environment secret: ${key}" >&2
               exit 1
@@ -96,6 +96,10 @@ jobs:
           test "$(git rev-parse origin/main)" = "${{ inputs.release_commit }}"
           npm ci
           npm run verify:blog-release-bundle-v4
+          npm run test:blog-autopilot-v4
+          npm run setup:harness-evals
+          npm run audit:harness-evals
+          npm run eval:blog-editorial:offline
           npm run type-check
           npx vitest run \
             src/lib/blog-ai-caller.test.ts \
@@ -112,9 +116,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+          supabase_link_args=(--project-ref "$SUPABASE_PROJECT_REF")
+          if [ -n "${SUPABASE_DB_PASSWORD:-}" ]; then
+            supabase_link_args+=(--password "$SUPABASE_DB_PASSWORD")
+          fi
+          npx --yes supabase@2.116.0 link "${supabase_link_args[@]}"
           mkdir -p .vercel
           printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID" > .vercel/project.json
+          npx vercel project inspect "$VERCEL_PROJECT_ID" \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN" >/dev/null
 
       - name: Prove exact Supabase dry-run set
         shell: bash
@@ -122,7 +132,11 @@ jobs:
           set -euo pipefail
           mkdir -p .tmp/blog-v4-release
           npm run prepare:blog-supabase-release-workdir-v4 -- --output=.tmp/blog-v4-supabase-release
-          npx supabase db push --workdir .tmp/blog-v4-supabase-release --linked --include-all --skip-vault --dry-run --password "$SUPABASE_DB_PASSWORD" 2>&1 | tee .tmp/blog-v4-release/supabase-dry-run.txt
+          supabase_db_auth_args=()
+          if [ -n "${SUPABASE_DB_PASSWORD:-}" ]; then
+            supabase_db_auth_args+=(--password "$SUPABASE_DB_PASSWORD")
+          fi
+          npx --yes supabase@2.116.0 db push --workdir .tmp/blog-v4-supabase-release --linked --include-all --skip-vault --dry-run "${supabase_db_auth_args[@]}" 2>&1 | tee .tmp/blog-v4-release/supabase-dry-run.txt
           npm run verify:blog-supabase-dry-run-v4 -- --input=.tmp/blog-v4-release/supabase-dry-run.txt --allow-empty
 
       - name: Apply pinned forward migrations
@@ -130,7 +144,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx supabase db push --workdir .tmp/blog-v4-supabase-release --linked --include-all --skip-vault --yes --password "$SUPABASE_DB_PASSWORD"
+          supabase_db_auth_args=()
+          if [ -n "${SUPABASE_DB_PASSWORD:-}" ]; then
+            supabase_db_auth_args+=(--password "$SUPABASE_DB_PASSWORD")
+          fi
+          npx --yes supabase@2.116.0 db push --workdir .tmp/blog-v4-supabase-release --linked --include-all --skip-vault --yes "${supabase_db_auth_args[@]}"
+
+      - name: Persist passing Korean semantic benchmark
+        if: inputs.apply_migrations
+        shell: bash
+        run: npm run benchmark:blog-korean-semantic-v4 -- --apply
 
       - name: Record reviewed blocked-URL dispositions
         if: inputs.apply_dispositions
@@ -158,8 +181,10 @@ jobs:
           set -euo pipefail
           update_env() {
             local name="$1" value="$2"
-            npx vercel env update "$name" production --value "$value" --yes --token "$VERCEL_TOKEN" >/dev/null 2>&1 \
-              || npx vercel env add "$name" production --value "$value" --yes --token "$VERCEL_TOKEN" >/dev/null
+            npx vercel env update "$name" production --value "$value" --yes \
+              --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN" >/dev/null 2>&1 \
+              || npx vercel env add "$name" production --value "$value" --yes \
+                --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN" >/dev/null
           }
           catalog_path="$(node -p "require('./public/blog-snapshots/v3/manifest.json').catalog.relative_path")"
           catalog_sha="$(node -p "require('./public/blog-snapshots/v3/manifest.json').catalog.sha256")"
@@ -167,9 +192,9 @@ jobs:
           detail_sha="$(node -p "require('./public/blog-snapshots/v3/manifest.json').detail.sha256")"
           update_env BLOG_AUTOPUBLISH_MODE draft_only
           update_env BLOG_GENERATION_CRON_ENABLED false
-          update_env BLOG_DAILY_PUBLISH_CAP 30
-          update_env BLOG_PUBLICATION_RAMP_STAGE max_30
-          update_env BLOG_AUTO_RAMP_ENABLED true
+          update_env INNGEST_BLOG_AUTOPILOT_ENABLED true
+          update_env BLOG_PUBLICATION_RAMP_STAGE pilot_3
+          update_env BLOG_AUTO_RAMP_ENABLED false
           update_env BLOG_AUTO_ROLLBACK_ENABLED true
           update_env BLOG_DAILY_AI_COST_CAP_USD 2
           update_env DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS 1
@@ -185,7 +210,8 @@ jobs:
         run: |
           set -euo pipefail
           npm run build
-          candidate_url="$(npx vercel deploy --prod --skip-domain --yes --token "$VERCEL_TOKEN")"
+          candidate_url="$(npx vercel deploy --prod --skip-domain --yes \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN")"
           echo "url=${candidate_url}" >> "$GITHUB_OUTPUT"
           echo "Candidate: ${candidate_url}"
 
@@ -207,6 +233,7 @@ jobs:
           call_cron blog-analytics-canary | tee .tmp/blog-v4-release/analytics-canary.json
           call_cron rank-tracking | tee .tmp/blog-v4-release/rank-tracking.json
           call_cron blog-data-readiness | tee .tmp/blog-v4-release/data-readiness.json
+          call_cron 'blog-seo-weekly-audit?scope=release' | tee .tmp/blog-v4-release/seo-weekly-audit.json
           npm run verify:blog-release-candidate-responses-v4 -- \
             --ai-model-canary=.tmp/blog-v4-release/ai-model-canary.json \
             --analytics-canary=.tmp/blog-v4-release/analytics-canary.json \
@@ -222,7 +249,9 @@ jobs:
             --header "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
             "${CANDIDATE_URL}/blog/__blog_v4_missing_probe__)"
           test "$missing_status" = "404"
-          npx vercel logs "$CANDIDATE_URL" --no-follow --since 30m --json --token "$VERCEL_TOKEN" > .tmp/blog-v4-release/candidate-logs.jsonl || true
+          npx vercel logs "$CANDIDATE_URL" --no-follow --since 30m --json \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN" \
+            > .tmp/blog-v4-release/candidate-logs.jsonl || true
           db_errors="$(grep -c 'BLOG_DATABASE_UNAVAILABLE' .tmp/blog-v4-release/candidate-logs.jsonl || true)"
           npm run collect:blog-production-evidence-v4 -- \
             --base="$CANDIDATE_URL" \
@@ -244,9 +273,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx vercel env update BLOG_AUTOPUBLISH_MODE production --value live --yes --token "$VERCEL_TOKEN"
-          npx vercel env update BLOG_GENERATION_CRON_ENABLED production --value true --yes --token "$VERCEL_TOKEN"
-          live_url="$(npx vercel deploy --prod --skip-domain --yes --token "$VERCEL_TOKEN")"
+          npx vercel env update BLOG_AUTOPUBLISH_MODE production --value live --yes \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN"
+          npx vercel env update BLOG_GENERATION_CRON_ENABLED production --value false --yes \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN"
+          npx vercel env update INNGEST_BLOG_AUTOPILOT_ENABLED production --value true --yes \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN"
+          live_url="$(npx vercel deploy --prod --skip-domain --yes \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN")"
           echo "url=${live_url}" >> "$GITHUB_OUTPUT"
           curl --fail --silent --show-error --location \
             --header "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
@@ -259,7 +293,9 @@ jobs:
       - name: Promote verified live candidate
         if: inputs.promote_live
         shell: bash
-        run: npx vercel promote "${{ steps.live_candidate.outputs.url }}" --yes --token "$VERCEL_TOKEN"
+        run: >-
+          npx vercel promote "${{ steps.live_candidate.outputs.url }}" --yes
+          --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN"
 
       - name: Verify promoted production surfaces
         if: inputs.promote_live
@@ -277,7 +313,8 @@ jobs:
             --header "Authorization: Bearer ${CRON_SECRET}" \
             https://www.yeosonam.com/api/cron/blog-data-readiness >/dev/null
           npx vercel logs --environment production --no-branch --no-follow --since 10m \
-            --query BLOG_DATABASE_UNAVAILABLE --json --token "$VERCEL_TOKEN" \
+            --query BLOG_DATABASE_UNAVAILABLE --json \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN" \
             > .tmp/blog-v4-release/post-promote-errors.jsonl || true
           test "$(grep -c 'BLOG_DATABASE_UNAVAILABLE' .tmp/blog-v4-release/post-promote-errors.jsonl || true)" = "0"
 
@@ -286,10 +323,16 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          npx vercel env update BLOG_AUTOPUBLISH_MODE production --value draft_only --yes --token "$VERCEL_TOKEN"
-          npx vercel env update BLOG_GENERATION_CRON_ENABLED production --value false --yes --token "$VERCEL_TOKEN"
-          safe_url="$(npx vercel deploy --prod --skip-domain --yes --token "$VERCEL_TOKEN")"
-          npx vercel promote "$safe_url" --yes --token "$VERCEL_TOKEN"
+          npx vercel env update BLOG_AUTOPUBLISH_MODE production --value draft_only --yes \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN"
+          npx vercel env update BLOG_GENERATION_CRON_ENABLED production --value false --yes \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN"
+          npx vercel env update INNGEST_BLOG_AUTOPILOT_ENABLED production --value false --yes \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN"
+          safe_url="$(npx vercel deploy --prod --skip-domain --yes \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN")"
+          npx vercel promote "$safe_url" --yes \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN"
 
       - name: Upload release evidence
         if: always()

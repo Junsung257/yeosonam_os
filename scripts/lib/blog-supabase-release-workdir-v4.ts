@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import {
   cpSync,
   existsSync,
@@ -13,6 +14,7 @@ import { basename, relative, resolve, sep } from 'node:path';
 import { verifyBlogOrchestratorV4ReleaseBundle } from './blog-orchestrator-v4-release-bundle';
 
 const VERSION_PATTERN = /^\d{14}$/;
+export const BLOG_RELEASE_SUPABASE_CLI_PACKAGE = 'supabase@2.116.0';
 
 type ReleaseMigration = {
   version: string;
@@ -64,14 +66,49 @@ function migrationDigest(directory: string): string {
 
 export function parseLinkedMigrationVersionsV4(output: string): string[] {
   const parsed = JSON.parse(output) as {
-    rows?: Array<{ evidence?: { versions?: unknown[] } }>;
+    rows?: Array<{ evidence?: { versions?: unknown[] } | string }>;
+    migrations?: Array<{ remote?: unknown }>;
   };
-  const values = parsed.rows?.[0]?.evidence?.versions;
+  const evidence = parsed.rows?.[0]?.evidence;
+  const normalizedEvidence = typeof evidence === 'string'
+    ? JSON.parse(evidence) as { versions?: unknown[] }
+    : evidence;
+  const values = Array.isArray(parsed.migrations)
+    ? parsed.migrations
+        .map((migration) => migration.remote)
+        .filter((version) => version !== '')
+    : normalizedEvidence?.versions;
   if (!Array.isArray(values)) throw new Error('blog_v4_remote_migration_versions_missing');
   for (const value of values) assertVersion(value);
   const versions = [...new Set(values as string[])].sort();
   if (versions.length !== values.length) throw new Error('blog_v4_remote_migration_versions_duplicate');
   return versions;
+}
+
+export function readLinkedMigrationVersionsV4(): string[] {
+  const options = {
+    encoding: 'utf8' as const,
+    maxBuffer: 20 * 1024 * 1024,
+    stdio: ['ignore', 'pipe', 'pipe'] as ['ignore', 'pipe', 'pipe'],
+  };
+  const arguments_ = [
+    '--yes',
+    BLOG_RELEASE_SUPABASE_CLI_PACKAGE,
+    'migration',
+    'list',
+    '--linked',
+    '--output-format',
+    'json',
+  ];
+  const output = process.platform === 'win32'
+    ? execFileSync('powershell.exe', [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        `$nodeExe = (Get-Command node).Source; $npxCli = Join-Path (Split-Path $nodeExe) 'node_modules\\npm\\bin\\npx-cli.js'; & $nodeExe $npxCli ${arguments_.join(' ')}`,
+      ], options)
+    : execFileSync('npx', arguments_, options);
+  return parseLinkedMigrationVersionsV4(output);
 }
 
 export function prepareBlogSupabaseReleaseWorkdirV4(input: {

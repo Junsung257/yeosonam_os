@@ -20,6 +20,14 @@ import {
   type UrlInspectionQuotaState,
 } from '@/lib/gsc-url-inspection-quota';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
+import {
+  BLOG_AUTOPILOT_PIPELINE_VERSION,
+  BLOG_AUTOPILOT_SCHEMA_MIGRATION_VERSION,
+  BLOG_SEARCH_CLASSIFICATION_VERSION,
+  readBlogDeploymentCommitShaV4,
+  resolveBlogSearchLifecycleStatus,
+  resolveProviderReceiptStatus,
+} from '@/lib/blog-autopilot-v4-contract';
 
 /**
  * GSC 색인/순위 추적 — 발행된 블로그 글의 page-level aggregate + URL Inspection
@@ -348,11 +356,21 @@ async function runGscIndexRank(request: NextRequest) {
       }
       continue;
     }
-    const isIndexed = googleInspectionToIndexStatus({
+    const indexStatus = googleInspectionToIndexStatus({
       verdict: r.verdict,
       coverage_state: r.coverageState,
       page_fetch_state: r.pageFetchState,
-    }) === 'indexed';
+    });
+    const isIndexed = indexStatus === 'indexed';
+    const providerReceiptStatus = resolveProviderReceiptStatus({ verificationOnly: true });
+    const searchLifecycleStatus = resolveBlogSearchLifecycleStatus({
+      requestStatus: 'requested',
+      providerReceiptStatus,
+      indexStatus,
+      coverageState: r.coverageState,
+      pageFetchState: r.pageFetchState,
+      lastCrawlTime: r.lastCrawlTime,
+    });
     if (!isIndexed) notIndexed += 1;
     inspectionReportRows.push({
       url,
@@ -371,6 +389,13 @@ async function runGscIndexRank(request: NextRequest) {
       google_page_fetch_state: r.pageFetchState,
       google_canonical: r.googleCanonical,
       user_canonical: r.userCanonical,
+      search_lifecycle_status: searchLifecycleStatus,
+      provider_receipt_status: providerReceiptStatus,
+      classification_version: BLOG_SEARCH_CLASSIFICATION_VERSION,
+      provider_raw_response: r.raw ?? {},
+      pipeline_version: BLOG_AUTOPILOT_PIPELINE_VERSION,
+      deployment_commit_sha: readBlogDeploymentCommitShaV4(),
+      schema_migration_version: BLOG_AUTOPILOT_SCHEMA_MIGRATION_VERSION,
     });
     await recordBlogVisibilitySnapshot(
       supabaseAdmin,

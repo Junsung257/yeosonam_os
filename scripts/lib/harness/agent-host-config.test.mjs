@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { validateCodexTomlText, validateSupabaseMcpConfigText } from './agent-host-config.mjs';
+import {
+  validateCodebaseMemoryCodexConfigText,
+  validateCodebaseMemoryRepositoryContract,
+  validateCodexTomlText,
+  validateSupabaseMcpConfigText,
+} from './agent-host-config.mjs';
 
 function config(url) {
   return JSON.stringify({ mcpServers: { supabase: { type: 'http', url } } });
@@ -133,4 +138,61 @@ url = "https://mcp.supabase.com/mcp"
   assert.ok(failures.some((failure) => failure.includes('headers, tokens, or executable fields')));
   assert.ok(failures.some((failure) => failure.includes('nested header, token, or executable tables')));
   assert.ok(failures.some((failure) => failure.includes('additional Supabase MCP alias')));
+});
+
+const cbmConfig = `
+[mcp_servers.codebase_memory]
+command = "C:/Users/example/.codex/tools/codebase-memory-mcp/v0.10.8/codebase-memory-mcp.exe"
+args = ["--ui=false", "--tool-profile=analysis"]
+cwd = "C:/dev/pilot"
+enabled = true
+required = false
+enabled_tools = ["index_repository", "search_graph", "query_graph", "trace_path", "get_code_snippet", "get_graph_schema", "get_architecture", "search_code", "list_projects", "index_status", "check_index_coverage", "detect_changes"]
+disabled_tools = ["delete_project", "manage_adr", "ingest_traces"]
+default_tools_approval_mode = "prompt"
+
+[mcp_servers.codebase_memory.tools.index_repository]
+approval_mode = "prompt"
+
+[mcp_servers.codebase_memory.env]
+CBM_ALLOWED_ROOT = "C:/dev/pilot"
+CBM_CACHE_DIR = "C:/Users/example/.codex/cache/cbm"
+CBM_DIAGNOSTICS = "false"
+CBM_LOG_LEVEL = "warn"
+`;
+
+test('Codebase Memory audit profile accepts the pinned least-privilege shape', () => {
+  assert.deepEqual(validateCodebaseMemoryCodexConfigText(cbmConfig, { repoRoot: 'C:/dev/pilot' }), []);
+});
+
+test('Codebase Memory audit profile rejects broad roots, unsafe tools, and verbose logs', () => {
+  const unsafe = cbmConfig
+    .replace('CBM_ALLOWED_ROOT = "C:/dev/pilot"', 'CBM_ALLOWED_ROOT = "C:/dev"')
+    .replace('"detect_changes"]', '"detect_changes", "delete_project"]')
+    .replace('CBM_LOG_LEVEL = "warn"', 'CBM_LOG_LEVEL = "debug"');
+  const failures = validateCodebaseMemoryCodexConfigText(unsafe, { repoRoot: 'C:/dev/pilot' });
+  assert.ok(failures.some((failure) => failure.includes('ALLOWED_ROOT')));
+  assert.ok(failures.some((failure) => failure.includes('allowlist')));
+  assert.ok(failures.some((failure) => failure.includes('verbose')));
+});
+
+test('Codebase Memory repository contract requires secret and graph exclusions', () => {
+  const manifest = {
+    schemaVersion: 1,
+    release: { version: '0.10.8', archiveSha256: 'a'.repeat(64), binarySha256: 'b'.repeat(64) },
+    runtime: { autoIndex: false, autoWatch: false, uiEnabled: false, diagnostics: false, indexMode: 'manual_only' },
+    enabledTools: [
+      'index_repository', 'search_graph', 'query_graph', 'trace_path', 'get_code_snippet', 'get_graph_schema',
+      'get_architecture', 'search_code', 'list_projects', 'index_status', 'check_index_coverage', 'detect_changes',
+    ],
+    blockedTools: ['delete_project', 'manage_adr', 'ingest_traces'],
+  };
+  const failures = validateCodebaseMemoryRepositoryContract({
+    gitignore: '.codebase-memory/\n',
+    gitattributes: '.codebase-memory/graph.db.zst merge=ours\n',
+    cbmignore: '.codebase-memory/\n.env*\nnode_modules/\n.next/\nartifacts/\nprivate/\ndata/product-registration/hwp-inbox/\n',
+    manifest,
+  });
+  assert.deepEqual(failures, []);
+  assert.ok(validateCodebaseMemoryRepositoryContract({ gitignore: '', gitattributes: '', cbmignore: '', manifest }).length >= 7);
 });
