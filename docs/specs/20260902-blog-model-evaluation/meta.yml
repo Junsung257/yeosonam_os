@@ -5,7 +5,17 @@
   "owner": "ai-platform",
   "review_file": "review.md",
   "surface_map_version": 1,
-  "verified_commit": null,
-  "verification": [],
-  "evidence_paths": []
+  "verified_commit": "0dbbcc6cfcaf685c5dd2afe9f6267477c1399c2f",
+  "verification": [
+    {
+      "check": "Offline fixture, provider boundary, secret isolation, telemetry, and repository harness",
+      "result": "pass",
+      "evidence": "review.md"
+    }
+  ],
+  "evidence_paths": [
+    "review.md",
+    "verification.md",
+    "../../../evals/blog-model/latest-summary.json"
+  ]
 }
