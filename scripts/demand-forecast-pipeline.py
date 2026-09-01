@@ -5,7 +5,7 @@
 동작:
   1. Supabase에서 booking 데이터 로드 (최근 90일)
   2. 목적지/패키지별 수요 추세 계산 (단순 이동 평균)
-  3. demand_forecasts 테이블에 저장 (저 + 중앙 + 고 추정치)
+  3. legacy demand_forecasts 결과는 계산만 하고 저장하지 않음 (read-only compatibility)
   4. cancellation_predictions 테이블에 취소 확률 저장
   5. (향후) Isolation Forest / Prophet 적용
 
@@ -226,15 +226,16 @@ def _top_reason(booking: dict[str, Any], cancel_rate: float) -> str:
 # ─── 저장 ─────────────────────────────────────────────────────────────────
 
 def save_forecasts(forecasts: list[dict[str, Any]]) -> int:
-    """demand_forecasts 테이블에 저장."""
+    """Legacy compatibility boundary: demand_forecasts is read-only."""
     if not forecasts:
         log.info("저장할 예측 데이터 없음")
         return 0
-
-    resp = supabase.table("demand_forecasts").upsert(forecasts, on_conflict="target_type,target_id,forecast_date").execute()
-    count = len(resp.data) if resp.data else 0
-    log.info(f"demand_forecasts 저장 완료: {count} 건")
-    return count
+    log.warning(
+        "legacy demand_forecasts 쓰기 차단: %s건은 계산만 수행. "
+        "PII-free Forecast Lab 검증 전에는 demand_forecast_v2에도 저장하지 않습니다.",
+        len(forecasts),
+    )
+    return 0
 
 
 def save_predictions(predictions: list[dict[str, Any]]) -> int:

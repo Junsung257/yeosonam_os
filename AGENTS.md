@@ -21,6 +21,7 @@
 | 제휴·추천·커미션 | [제휴 SSOT](docs/affiliate-current-ssot.md) |
 | 결제·ledger·정산·환불 | [정산 SSOT](docs/settlement-current-ssot.md) |
 | 마케팅·광고·외부 발행 | [마케팅 SSOT](docs/marketing-current-ssot.md) |
+| 수요예측·Forecast Lab | [예측 SSOT](docs/forecasting-current-ssot.md) |
 | AI·자비스·RAG·프롬프트 | [AI Ops SSOT](docs/ai-ops-current-ssot.md) |
 | 외부 조사·웹 수집 | [Research Node SSOT](docs/research-node-current-ssot.md) |
 | 에이전트·문서·하네스 | [Agent Workflow SSOT](docs/agent-workflow-current-ssot.md), [문서 자동화 계약](docs/ai-agent-doc-automation.md) |

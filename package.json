@@ -51,6 +51,8 @@
     "check:product-registration-contract": "node scripts/check-product-registration-contract.mjs --strict && node scripts/check-product-registration-authority.mjs --strict",
     "audit:media-generation": "node scripts/check-media-generation-contract.mjs",
     "audit:media-generation:live": "node scripts/check-media-generation-contract.mjs --live --check-urls --strict",
+    "check:forecast-lab": "node scripts/check-forecast-lab-contract.mjs",
+    "forecast:lab": "tsx scripts/run-forecast-lab.ts",
     "media:codex-worker": "node scripts/codex-media-job.mjs",
     "check:product-registration-authority": "node scripts/check-product-registration-authority.mjs --strict",
     "check:product-registration-authority:kernel-only": "node scripts/check-product-registration-authority.mjs --strict --no-legacy-writers",

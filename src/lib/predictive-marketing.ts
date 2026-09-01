@@ -1,7 +1,7 @@
 /**
  * Predictive Marketing Engine — 예측 마케팅 엔진
  *
- * GSC 데이터 + 키워드 트렌드로 미래 수요 예측 → 콘텐츠 기회 발굴 → blog_topic_queue 자동 등록
+ * GSC 데이터 + 키워드 트렌드로 참고용 수요 신호와 콘텐츠 기회를 계산한다.
  *
  * 사용 통계 기법 (순수 TypeScript, 외부 ML 라이브러리 불필요):
  *   - 단순 이동평균 (Simple Moving Average)
@@ -11,8 +11,10 @@
  *
  * 파이프라인:
  *   GSC/트렌드 데이터 → detectTrend → forecast → findSeasonalPatterns
- *   → findKeywordOpportunities → generatePredictiveInsights → persistInsights
- *   → autoQueueFromInsights
+ *   → findKeywordOpportunities → generatePredictiveInsights
+ *
+ * `persistInsights`는 명시적으로 호출하는 기존 원장 helper이고,
+ * `autoQueueFromInsights`는 안전 경계로서 항상 비활성 응답을 반환한다.
  */
 import { supabaseAdmin } from '@/lib/supabase';
 
@@ -68,6 +70,16 @@ export interface SeasonalPattern {
   isSignificant: boolean;
 }
 
+export type KeywordOpportunityRun =
+  | { status: 'ready'; signals: TrendSignal[] }
+  | { status: 'data_insufficient'; signals: []; reason: string; minimumDailyPoints: number };
+
+export type PredictiveInsightsRun =
+  | { status: 'ready'; insights: PredictiveInsight[] }
+  | { status: 'data_insufficient'; insights: []; reason: string; minimumDailyPoints: number };
+
+const PREDICTIVE_MIN_DAILY_POINTS = 28;
+
 // ─── 코어 예측 함수 ──────────────────────────────────────────
 
 /**
@@ -117,7 +129,6 @@ export function movingAverageForecast(
       predictedValue: Math.round(ma * 100) / 100,
       lowerBound: Math.round((ma - 1.96 * std) * 100) / 100,
       upperBound: Math.round((ma + 1.96 * std) * 100) / 100,
-      confidence: 0.95,
     };
   });
 }
@@ -189,7 +200,6 @@ export function exponentialSmoothingForecast(
       predictedValue: Math.round(predicted * 100) / 100,
       lowerBound: Math.round((predicted - 1.96 * std) * 100) / 100,
       upperBound: Math.round((predicted + 1.96 * std) * 100) / 100,
-      confidence: 0.95,
     };
   });
 }
@@ -237,7 +247,6 @@ export function linearTrendForecast(
       predictedValue: Math.round(predicted * 100) / 100,
       lowerBound: Math.round((predicted - 1.96 * std) * 100) / 100,
       upperBound: Math.round((predicted + 1.96 * std) * 100) / 100,
-      confidence: 0.95,
     };
   });
 }
@@ -349,7 +358,7 @@ export function findSeasonalPatterns(
  * GSC/blog_rankings 데이터로 키워드 트렌드 분석
  * 마지막 90일 치 daily impression/click 시계열을 추출 → 예측
  */
-export async function findKeywordOpportunities(): Promise<TrendSignal[]> {
+export async function findKeywordOpportunities(): Promise<KeywordOpportunityRun> {
   const signals: TrendSignal[] = [];
   const since = new Date();
   since.setDate(since.getDate() - 90);
@@ -363,40 +372,12 @@ export async function findKeywordOpportunities(): Promise<TrendSignal[]> {
     .limit(5000);
 
   if (!snapshots || snapshots.length === 0) {
-    // fallback: trend_keyword_archive 에서 수집
-    const { data: archive } = await supabaseAdmin
-      .from('trend_keyword_archive')
-      .select('keyword, related_destination, trend_score, observed_at')
-      .gte('observed_at', since.toISOString())
-      .order('observed_at', { ascending: false })
-      .limit(1000);
-
-    if (archive && archive.length > 0) {
-      // 아카이브는 트렌드 점수 기반 — 시계열 부족 시 점수로 추정
-      const keywordMap = new Map<string, { score: number; dest: string }>();
-      for (const row of archive as Array<{ keyword: string; related_destination: string | null; trend_score: number | null; observed_at: string }>) {
-        const kw = row.keyword;
-        if (!keywordMap.has(kw) || (row.trend_score ?? 0) > (keywordMap.get(kw)?.score ?? 0)) {
-          keywordMap.set(kw, {
-            score: row.trend_score ?? 50,
-            dest: row.related_destination ?? '',
-          });
-        }
-      }
-      for (const [kw, info] of keywordMap) {
-        const trendResult = detectTrend(Array.from({ length: 14 }, () => info.score + Math.random() * 10 - 5));
-        signals.push({
-          keyword: kw,
-          destination: info.dest,
-          currentTrend: trendResult.direction,
-          changePercent: trendResult.changePercent,
-          forecast: movingAverageForecast(Array.from({ length: 14 }, () => info.score + Math.random() * 10 - 5)),
-          recommendation: generateRecommendation(trendResult.direction, trendResult.changePercent),
-          priority: computeSignalPriority(trendResult.direction, trendResult.changePercent, info.score),
-        });
-      }
-    }
-    return signals.sort((a, b) => b.priority - a.priority).slice(0, 50);
+    return {
+      status: 'data_insufficient',
+      signals: [],
+      reason: 'NO_DAILY_KEYWORD_SERIES',
+      minimumDailyPoints: PREDICTIVE_MIN_DAILY_POINTS,
+    };
   }
 
   // 2) 키워드별 시계열 그룹핑
@@ -412,7 +393,7 @@ export async function findKeywordOpportunities(): Promise<TrendSignal[]> {
 
   // 3) 각 키워드 분석
   for (const [kw, series] of seriesMap) {
-    if (series.length < 7) continue; // 데이터 부족
+    if (new Set(series.map((point) => point.date)).size < PREDICTIVE_MIN_DAILY_POINTS) continue;
 
     const values = series.map(s => s.value);
     const trendResult = detectTrend(values);
@@ -440,7 +421,15 @@ export async function findKeywordOpportunities(): Promise<TrendSignal[]> {
     });
   }
 
-  return signals.sort((a, b) => b.priority - a.priority).slice(0, 50);
+  if (signals.length === 0) {
+    return {
+      status: 'data_insufficient',
+      signals: [],
+      reason: 'NO_KEYWORD_HAS_MINIMUM_DAILY_HISTORY',
+      minimumDailyPoints: PREDICTIVE_MIN_DAILY_POINTS,
+    };
+  }
+  return { status: 'ready', signals: signals.sort((a, b) => b.priority - a.priority).slice(0, 50) };
 }
 
 function generateRecommendation(
@@ -484,8 +473,17 @@ function computeSignalPriority(
  * 키워드 기회에서 예측 인사이트 생성
  * 기존 content_creatives / blog_topic_queue 와 교차 참조
  */
-export async function generatePredictiveInsights(): Promise<PredictiveInsight[]> {
-  const signals = await findKeywordOpportunities();
+export async function generatePredictiveInsights(): Promise<PredictiveInsightsRun> {
+  const opportunityRun = await findKeywordOpportunities();
+  if (opportunityRun.status === 'data_insufficient') {
+    return {
+      status: 'data_insufficient',
+      insights: [],
+      reason: opportunityRun.reason,
+      minimumDailyPoints: opportunityRun.minimumDailyPoints,
+    };
+  }
+  const signals = opportunityRun.signals;
   const insights: PredictiveInsight[] = [];
 
   // 기존 콘텐츠 키워드 목록
@@ -596,7 +594,7 @@ export async function generatePredictiveInsights(): Promise<PredictiveInsight[]>
     }
   }
 
-  return insights;
+  return { status: 'ready', insights };
 }
 
 /**
@@ -697,110 +695,16 @@ export async function persistInsights(insights: PredictiveInsight[]): Promise<{ 
 }
 
 /**
- * 예측 인사이트 기반 blog_topic_queue 자동 등록
- * content_opportunity 타입 중 high-priority를 큐에 INSERT
+ * Compatibility boundary. Forecast output must never enqueue content.
  */
-export async function autoQueueFromInsights(opts?: {
+export async function autoQueueFromInsights(_opts?: {
   minPriority?: number;
   maxInsights?: number;
-}): Promise<{ queued: number; insights: PredictiveInsight[] }> {
-  const minPriority = opts?.minPriority ?? 70;
-  const maxInsights = opts?.maxInsights ?? 10;
-
-  // 1) pending 인사이트 조회 (content_opportunity + seasonal_preparation)
-  const { data: pendingInsights } = await supabaseAdmin
-    .from('predictive_insights')
-    .select('*')
-    .eq('status', 'pending')
-    .in('insight_type', ['content_opportunity', 'seasonal_preparation'])
-    .gte('priority', minPriority)
-    .order('priority', { ascending: false })
-    .limit(maxInsights);
-
-  if (!pendingInsights || pendingInsights.length === 0) {
-    return { queued: 0, insights: [] };
-  }
-
-  const typedInsights = pendingInsights as Array<{
-    id: string;
-    title: string;
-    keyword: string | null;
-    destination: string | null;
-    recommendation: string | null;
-    suggested_action: string | null;
-    priority: number;
-    insight_type: string;
-  }>;
-
-  // 2) blog_topic_queue 에 등록 (중복 방지)
-  let queued = 0;
-  const queuedInsights: PredictiveInsight[] = [];
-
-  for (const insight of typedInsights) {
-    const keyword = insight.keyword ?? insight.title;
-    const destination = insight.destination ?? null;
-
-    // 이미 큐에 같은 primary_keyword가 있는지 확인
-    const { data: existing } = await supabaseAdmin
-      .from('blog_topic_queue')
-      .select('id')
-      .eq('primary_keyword', keyword)
-      .in('status', ['queued', 'generating'])
-      .limit(1);
-
-    if (existing && existing.length > 0) continue;
-
-    // 큐에 INSERT
-    const topic = destination
-      ? `${destination} ${keyword} 블로그`
-      : `${keyword} 블로그`;
-
-    const { error } = await supabaseAdmin
-      .from('blog_topic_queue')
-      .insert({
-        topic,
-        source: 'trend',
-        priority: insight.priority,
-        destination,
-        primary_keyword: keyword,
-        keyword_tier: 'mid',
-        competition_level: 'medium',
-        meta: {
-          predictive_insight_id: insight.id,
-          recommendation: insight.recommendation,
-          suggested_action: insight.suggested_action,
-        },
-      });
-
-    if (!error) {
-      queued++;
-
-      // insight 상태 업데이트
-      await supabaseAdmin
-        .from('predictive_insights')
-        .update({ status: 'actioned', actioned_at: new Date().toISOString() })
-        .eq('id', insight.id);
-
-      queuedInsights.push({
-        type: insight.insight_type as InsightType,
-        title: insight.title,
-        description: insight.recommendation ?? '',
-        signal: {
-          keyword: keyword,
-          destination: destination ?? '',
-          currentTrend: 'rising',
-          changePercent: 0,
-          forecast: [],
-          recommendation: insight.recommendation ?? '',
-          priority: insight.priority,
-        },
-        suggestedAction: insight.suggested_action ?? '',
-        estimatedImpact: '',
-        createdAt: new Date().toISOString(),
-        status: 'actioned',
-      });
-    }
-  }
-
-  return { queued, insights: queuedInsights };
+}): Promise<{ queued: 0; insights: []; status: 'automation_disabled'; reason: 'FORECAST_DOWNSTREAM_MUTATION_FORBIDDEN' }> {
+  return {
+    queued: 0,
+    insights: [],
+    status: 'automation_disabled',
+    reason: 'FORECAST_DOWNSTREAM_MUTATION_FORBIDDEN',
+  };
 }
