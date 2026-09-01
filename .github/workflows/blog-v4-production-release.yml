@@ -120,7 +120,7 @@ jobs:
           if [ -n "${SUPABASE_DB_PASSWORD:-}" ]; then
             supabase_link_args+=(--password "$SUPABASE_DB_PASSWORD")
           fi
-          npx supabase link "${supabase_link_args[@]}"
+          npx --yes supabase@2.116.0 link "${supabase_link_args[@]}"
           mkdir -p .vercel
           printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID" > .vercel/project.json
 
@@ -134,7 +134,7 @@ jobs:
           if [ -n "${SUPABASE_DB_PASSWORD:-}" ]; then
             supabase_db_auth_args+=(--password "$SUPABASE_DB_PASSWORD")
           fi
-          npx supabase db push --workdir .tmp/blog-v4-supabase-release --linked --include-all --skip-vault --dry-run "${supabase_db_auth_args[@]}" 2>&1 | tee .tmp/blog-v4-release/supabase-dry-run.txt
+          npx --yes supabase@2.116.0 db push --workdir .tmp/blog-v4-supabase-release --linked --include-all --skip-vault --dry-run "${supabase_db_auth_args[@]}" 2>&1 | tee .tmp/blog-v4-release/supabase-dry-run.txt
           npm run verify:blog-supabase-dry-run-v4 -- --input=.tmp/blog-v4-release/supabase-dry-run.txt --allow-empty
 
       - name: Apply pinned forward migrations
@@ -146,7 +146,7 @@ jobs:
           if [ -n "${SUPABASE_DB_PASSWORD:-}" ]; then
             supabase_db_auth_args+=(--password "$SUPABASE_DB_PASSWORD")
           fi
-          npx supabase db push --workdir .tmp/blog-v4-supabase-release --linked --include-all --skip-vault --yes "${supabase_db_auth_args[@]}"
+          npx --yes supabase@2.116.0 db push --workdir .tmp/blog-v4-supabase-release --linked --include-all --skip-vault --yes "${supabase_db_auth_args[@]}"
 
       - name: Persist passing Korean semantic benchmark
         if: inputs.apply_migrations

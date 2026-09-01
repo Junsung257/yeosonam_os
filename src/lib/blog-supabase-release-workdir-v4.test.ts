@@ -40,6 +40,20 @@ describe('Blog V4 isolated Supabase release workdir', () => {
     expect(() => parseLinkedMigrationVersionsV4(JSON.stringify({
       rows: [{ evidence: { versions: ['not-a-version'] } }],
     }))).toThrow('blog_v4_remote_migration_version_invalid');
+    expect(parseLinkedMigrationVersionsV4(JSON.stringify({
+      migrations: [
+        { local: '20260101000000', remote: '20260101000000' },
+        { local: '20260102000000', remote: '' },
+        { local: '', remote: '20260103000000' },
+      ],
+      message: 'Migrations listed',
+    }))).toEqual(['20260101000000', '20260103000000']);
+    expect(() => parseLinkedMigrationVersionsV4(JSON.stringify({
+      migrations: [
+        { remote: '20260101000000' },
+        { remote: '20260101000000' },
+      ],
+    }))).toThrow('blog_v4_remote_migration_versions_duplicate');
   });
 
   it('copies only applied placeholders and the exact pinned release set', () => {

@@ -23,6 +23,7 @@ describe('blog V4 protected production release workflow', () => {
     expect(dryRun).toBeGreaterThan(0);
     expect(dryRun).toBeLessThan(apply);
     expect(source).toContain('prepare:blog-supabase-release-workdir-v4');
+    expect(source.match(/npx --yes supabase@2\.116\.0/g)?.length).toBe(3);
     expect(source.match(/--workdir \.tmp\/blog-v4-supabase-release/g)?.length).toBe(2);
     expect(source).toContain('verify:blog-supabase-dry-run-v4');
   });
