@@ -1,6 +1,6 @@
 # 2026-09-01 문서·AI 하네스 통합 리팩터링 감사
 
-상태: local verification complete; remote integration tracked in PR #1218; one ratchet debt and one external-link advisory open
+상태: merged to main via PR #1218; Production deployment follow-up verification in progress; one ratchet debt and one external-link advisory open
 담당: platform-engineering
 기준: `origin/main@421e81bb4f1394b17e8039dba4919a28825b68ba`
 브랜치: `codex/harness-doc-remediation-20260901`
@@ -26,6 +26,7 @@ dirty 작업 보존 snapshot: `b1e8b9d4b`
 - Promptfoo는 `tools/harness-evals`에 격리했다. 잠긴 `0.122.2`를 사용하되 미사용 provider optional dependency는 설치하지 않고 플랫폼별 잠긴 libSQL·esbuild binding만 설치한 뒤 esbuild만 rebuild한다.
 - 모든 GitHub Actions Node runtime을 24로 통일했고, 문서 변경 계약에는 PR base의 명시적 40자 commit SHA를 주입한다.
 - Preview 배포가 Production 공개 데이터 readiness를 실행해 PR을 오염시키던 경계를 분리했다. 엄격한 `www.yeosonam.com` 검사는 Production deployment 또는 수동 실행에서만 유지한다.
+- 병합 뒤 실제 Vercel payload가 `environment=Production`이면서 `production_environment=false`인 공급자 형태를 확인했다. 별도 무비밀 guard가 성공 상태·Production 환경명 또는 플래그를 확인하고 배포 SHA가 default-branch history에 속함을 GitHub compare API로 증명한 뒤에만 secret-bearing readiness job을 허용한다.
 - PR #1217의 Research Node를 통합하면서 distributed limiter 미설정·장애 시 503 fail-closed, 첫 public DNS 응답 transport pinning, credential destination 제한을 적용했다.
 - Codex 기본·audit·elevated profile, Serena cwd 인식, apifable 버전 고정, Claude hook·권한 축소를 host health 검사로 확인한다.
 - Codex host 검사는 계정 범위 Supabase 플러그인 비활성화와 별도 project-scoped read-only hosted MCP의 존재·URL·feature allowlist·credential-free 구성을 함께 검사한다.
