@@ -19,6 +19,7 @@ const result = spawnSync(bin, ['eval', '-c', resolve(root, config), '--no-share'
   shell: process.platform === 'win32',
   env: {
     ...process.env,
+    NODE_OPTIONS: [process.env.NODE_OPTIONS, config.endsWith('.ts') ? '--import tsx' : ''].filter(Boolean).join(' '),
     FORCE_COLOR: '0',
     PROMPTFOO_SELF_HOSTED: '1',
     PROMPTFOO_DISABLE_TELEMETRY: '1',

@@ -1,3 +1,14 @@
+import {
+  BLOG_AUTOPILOT_PIPELINE_VERSION,
+  BLOG_AUTOPILOT_SCHEMA_MIGRATION_VERSION,
+  BLOG_SEARCH_CLASSIFICATION_VERSION,
+  readBlogDeploymentCommitShaV4,
+  resolveBlogSearchLifecycleStatus,
+  resolveProviderReceiptStatus,
+  type BlogProviderReceiptStatus,
+  type BlogSearchLifecycleStatus,
+} from './blog-autopilot-v4-contract';
+
 type SupabaseLike = {
   from: (table: string) => {
     insert: (row: Record<string, unknown> | Record<string, unknown>[]) => {
@@ -34,6 +45,9 @@ export type BlogVisibilitySnapshotInput = {
   source: string;
   confidence?: number;
   evidence?: Record<string, unknown>;
+  search_lifecycle_status: BlogSearchLifecycleStatus;
+  provider_receipt_status: BlogProviderReceiptStatus;
+  classification_version: string;
 };
 
 export type GoogleInspectionEvidence = {
@@ -125,6 +139,16 @@ export function buildGoogleVisibilitySnapshot(input: {
   const rank = normalizeRank(input.rank);
   const evidence = input.evidence || {};
   const indexStatus = googleInspectionToIndexStatus(evidence);
+  const providerReceiptStatus = resolveProviderReceiptStatus({ verificationOnly: true });
+  const lifecycleStatus = resolveBlogSearchLifecycleStatus({
+    requestStatus: input.requestStatus || 'requested',
+    providerReceiptStatus,
+    indexStatus,
+    coverageState: evidence.coverage_state,
+    pageFetchState: evidence.page_fetch_state,
+    lastCrawlTime: evidence.last_crawl_time,
+    bestRank: rank,
+  });
   return {
     slug: input.slug,
     url: input.url || blogUrlForSlug(input.slug, input.baseUrl),
@@ -137,6 +161,9 @@ export function buildGoogleVisibilitySnapshot(input: {
     source: input.source || 'gsc_url_inspection',
     confidence: rank ? 0.95 : indexStatus === 'indexed' ? 0.9 : indexStatus === 'not_indexed' ? 0.85 : 0.6,
     evidence,
+    search_lifecycle_status: lifecycleStatus,
+    provider_receipt_status: providerReceiptStatus,
+    classification_version: BLOG_SEARCH_CLASSIFICATION_VERSION,
   };
 }
 
@@ -154,6 +181,10 @@ export function buildNaverVisibilitySnapshot(input: {
   const rank = normalizeRank(input.rank);
   const requestStatus =
     input.requestStatus || (input.indexNowOk === false ? 'request_failed' : input.indexNowOk === true ? 'requested' : 'unknown');
+  const providerReceiptStatus = resolveProviderReceiptStatus({
+    requestStatus,
+    providerOk: input.indexNowOk,
+  });
 
   return {
     slug: input.slug,
@@ -167,6 +198,14 @@ export function buildNaverVisibilitySnapshot(input: {
     source: input.source || (rank ? 'naver_rank_history' : 'indexnow_request'),
     confidence: rank ? 0.9 : requestStatus === 'requested' ? 0.55 : 0.35,
     evidence: input.evidence || {},
+    search_lifecycle_status: resolveBlogSearchLifecycleStatus({
+      requestStatus,
+      providerReceiptStatus,
+      indexStatus: 'verification_unavailable',
+      bestRank: rank,
+    }),
+    provider_receipt_status: providerReceiptStatus,
+    classification_version: BLOG_SEARCH_CLASSIFICATION_VERSION,
   };
 }
 
@@ -188,6 +227,12 @@ export async function recordBlogVisibilitySnapshot(
     source: input.source,
     confidence: input.confidence ?? 0.5,
     evidence: input.evidence || {},
+    search_lifecycle_status: input.search_lifecycle_status,
+    provider_receipt_status: input.provider_receipt_status,
+    classification_version: input.classification_version,
+    pipeline_version: BLOG_AUTOPILOT_PIPELINE_VERSION,
+    deployment_commit_sha: readBlogDeploymentCommitShaV4(),
+    schema_migration_version: BLOG_AUTOPILOT_SCHEMA_MIGRATION_VERSION,
   };
 
   const result = await Promise.resolve(supabase.from('blog_visibility_snapshots').insert(row) as any);

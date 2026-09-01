@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "tier": 3,
+  "status": "active",
+  "owner": "content-operations",
+  "review_file": "review.md",
+  "verified_commit": "b001d2b8d",
+  "verification": [
+    {
+      "check": "implementation and automated verification",
+      "result": "pass_with_release_gates_deferred",
+      "evidence": "verification.md"
+    }
+  ],
+  "evidence_paths": [
+    "verification.md",
+    "review.md",
+    "../../blog-autopublish-contract.md",
+    "../../blog-ops-runbook.md"
+  ]
+}

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { unstable_cache } from 'next/cache';
+import { unstable_cache, unstable_noStore } from 'next/cache';
 import { notFound, permanentRedirect, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
@@ -83,6 +83,7 @@ import {
   loadBlogPublicDetailSnapshotV3,
   type BlogPublicDetailSnapshotV3,
 } from '@/lib/blog-public-snapshot-v3';
+import { verifyBlogPreviewToken } from '@/lib/blog-browser-preview-v4';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -231,6 +232,26 @@ type BlogDetailQueryResult<T> = T & { __blogQueryUnavailable?: true };
 const BLOG_DETAIL_LEGACY_SELECT =
   'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, content_type, category, topic_source, review_status, pillar_for, target_audience, generation_meta, quality_gate';
 const BLOG_DETAIL_V3_SELECT = `${BLOG_DETAIL_LEGACY_SELECT}, content_modified_at, fact_checked_at`;
+
+async function getDraftPreviewPost(slug: string, token: string | null): Promise<BlogPost | null> {
+  const verified = verifyBlogPreviewToken({ token, slug });
+  if (!verified || !isSupabaseAdminConfigured) return null;
+  unstable_noStore();
+  const { data, error } = await supabaseAdmin
+    .from('content_creatives')
+    .select(BLOG_DETAIL_V3_SELECT)
+    .eq('id', verified.creativeId)
+    .eq('slug', slug)
+    .eq('channel', 'naver_blog')
+    .eq('status', 'draft')
+    .maybeSingle();
+  if (error || !data) return null;
+  return {
+    ...(data as unknown as Omit<BlogPost, 'travel_packages'>),
+    published_at: String(data.published_at || data.created_at || new Date().toISOString()),
+    travel_packages: null,
+  };
+}
 
 function isMissingV3DetailProjection(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
@@ -980,8 +1001,10 @@ async function getPrevNextPosts(
 // ── 동적 메타데이터 ──────────────────────────────────────────
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }): Promise<Metadata> {
   const { slug: rawSlug } = await params;
   const slug = safeDecodeSlug(rawSlug);
@@ -993,9 +1016,13 @@ export async function generateMetadata({
   if (/^\d+$/.test(slug)) {
     return { title: '글을 찾을 수 없습니다', robots: { index: false, follow: false } };
   }
-  let post: BlogPost | null = null;
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const previewValue = resolvedSearchParams.preview;
+  const previewToken = typeof previewValue === 'string' ? previewValue : null;
+  let post: BlogPost | null = await getDraftPreviewPost(slug, previewToken);
+  const isPreview = Boolean(post);
   try {
-    post = await getPostFast(slug);
+    post ??= await getPostFast(slug);
   } catch (err) {
     if (isBlogDatabaseUnavailableError(err)) {
       return {
@@ -1032,6 +1059,7 @@ export async function generateMetadata({
     // absolute를 쓰면 layout의 template이 적용되지 않음
     title: { absolute: metadataTitle },
     description,
+    robots: isPreview ? { index: false, follow: false, nocache: true } : undefined,
     keywords: tagSet,
     alternates: {
       canonical: `${BASE_URL}/blog/${slug}`,
@@ -1096,19 +1124,24 @@ function BlogDatabaseUnavailableView({ slug }: { slug: string }) {
 // ── 페이지 컴포넌트 ──────────────────────────────────────────
 export default async function BlogDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { slug: rawSlug } = await params;
   const slug = safeDecodeSlug(rawSlug);
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const previewValue = resolvedSearchParams.preview;
+  const previewToken = typeof previewValue === 'string' ? previewValue : null;
   const redirectedSlug = resolveBlogSlugRedirect(slug);
   if (redirectedSlug) {
     permanentRedirect(`/blog/${redirectedSlug}`);
   }
   // 렌더링 errors를 notFound로 fallback (E1401/500 방어)
   try {
-    return await renderBlogDetail({ rawSlug, slug });
+    const previewPost = await getDraftPreviewPost(slug, previewToken);
+    return await renderBlogDetail({ rawSlug, slug, previewPost });
   } catch (err) {
     if (isNextNotFoundError(err) || isNextRedirectError(err)) {
       throw err;
@@ -1129,16 +1162,18 @@ export default async function BlogDetailPage({
 async function renderBlogDetail({
   rawSlug,
   slug,
+  previewPost,
 }: {
   rawSlug: string;
   slug: string;
+  previewPost?: BlogPost | null;
 }) {
   // 숫자로만 구성된 slug(e.g. "/blog/2026")는 블로그 목록으로 리다이렉트
   if (/^\d+$/.test(slug)) {
     redirect('/blog');
   }
 
-  const post = await getPostFast(slug);
+  const post = previewPost ?? await getPostFast(slug);
   if (!post) notFound();
 
   const pkg = post.travel_packages;

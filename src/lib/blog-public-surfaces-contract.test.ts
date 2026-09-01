@@ -26,14 +26,37 @@ function source(path: string): string {
   return readFileSync(join(process.cwd(), path), 'utf8');
 }
 
+function publicOnlySource(path: string, contents: string): string {
+  if (path !== 'src/app/blog/[slug]/page.tsx') return contents;
+  const previewStart = contents.indexOf('async function getDraftPreviewPost(');
+  const previewEnd = contents.indexOf('function isMissingV3DetailProjection(', previewStart);
+  expect(previewStart).toBeGreaterThan(0);
+  expect(previewEnd).toBeGreaterThan(previewStart);
+  return `${contents.slice(0, previewStart)}${contents.slice(previewEnd)}`;
+}
+
 describe('public blog surface contract', () => {
   it.each(PUBLIC_SURFACES)('%s reads blog rows from the canonical public source', (path) => {
     const contents = source(path);
+    const publicContents = publicOnlySource(path, contents);
     expect(
-      contents.includes('PUBLIC_BLOG_READ_SOURCE')
-      || contents.includes('loadPublicBlogCatalog'),
+      publicContents.includes('PUBLIC_BLOG_READ_SOURCE')
+      || publicContents.includes('loadPublicBlogCatalog'),
     ).toBe(true);
-    expect(contents).not.toContain(".from('content_creatives')");
+    expect(publicContents).not.toContain(".from('content_creatives')");
+  });
+
+  it('allows the authenticated noindex draft preview to read only its verified draft row', () => {
+    const contents = source('src/app/blog/[slug]/page.tsx');
+    const previewStart = contents.indexOf('async function getDraftPreviewPost(');
+    const previewEnd = contents.indexOf('function isMissingV3DetailProjection(', previewStart);
+    const previewBlock = contents.slice(previewStart, previewEnd);
+
+    expect(previewBlock).toContain('verifyBlogPreviewToken({ token, slug })');
+    expect(previewBlock).toContain(".from('content_creatives')");
+    expect(previewBlock).toContain(".eq('id', verified.creativeId)");
+    expect(previewBlock).toContain(".eq('status', 'draft')");
+    expect(previewBlock).toContain('unstable_noStore()');
   });
 
   it('keeps the shared public catalog on the canonical public source', () => {

@@ -11,6 +11,11 @@ import {
   type BlogQualityRouteV4,
 } from './blog-deepseek-orchestrator-v4';
 import type { BlogPromptTraceV1 } from './blog-editorial-harness-v5';
+import {
+  BLOG_AUTOPILOT_PIPELINE_VERSION,
+  BLOG_AUTOPILOT_SCHEMA_MIGRATION_VERSION,
+  readBlogDeploymentCommitShaV4,
+} from './blog-autopilot-v4-contract';
 
 export interface BlogAiBudgetReservationRecordV4 {
   reservationId: string | null;
@@ -400,6 +405,9 @@ export async function recordBlogGenerationAttemptV4(
       tenant_id: input.tenantId ?? null,
       agent_task_id: task?.id ?? null,
       generation_key: generationKey,
+      pipeline_version: BLOG_AUTOPILOT_PIPELINE_VERSION,
+      deployment_commit_sha: readBlogDeploymentCommitShaV4(),
+      schema_migration_version: BLOG_AUTOPILOT_SCHEMA_MIGRATION_VERSION,
       status: runStatus,
       attempt_count: input.attemptNumber,
       latest_quality_score: input.qualityScore,

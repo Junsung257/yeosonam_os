@@ -37,7 +37,6 @@ export interface IndexingReport {
 }
 
 function shouldUseGoogleIndexingApi(url: string): boolean {
-  if (getSecret('GOOGLE_INDEXING_API_FOR_BLOGS') === 'true') return true;
   try {
     const parsed = new URL(url);
     return !parsed.pathname.startsWith('/blog/');
@@ -217,7 +216,7 @@ export async function notifyIndexing(
 
   // 1. Google Search Console 알림.
   //    일반 블로그는 공식 지원 범위상 Indexing API 대신 Sitemaps API를 기본으로 쓴다.
-  //    GOOGLE_INDEXING_API_FOR_BLOGS=true 일 때만 기존 직접 URL 알림을 보조로 허용한다.
+  //    일반 블로그에는 환경 변수로도 우회할 수 없다. 공식 지원 대상만 직접 알림한다.
   let googleDirectResult: IndexingResult | null = null;
   if (shouldUseGoogleIndexingApi(url)) {
     googleDirectResult = await requestGoogleIndexing(url, type);
