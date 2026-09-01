@@ -39,3 +39,5 @@ npm run build
 ## Approval Gates
 
 - [x] No production DB migration, production deployment, external publication, or credential mutation occurs without a separate explicit release action.
+
+Implementation commit verified: `b001d2b8d`.
