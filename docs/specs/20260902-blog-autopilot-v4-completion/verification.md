@@ -14,6 +14,7 @@ npm run build
 - `npm run lint`: PASS. The repository's existing TypeScript 5.9 versus ESLint parser support-range warning remains non-blocking.
 - `npm run test:blog-autopilot-v4`: PASS, 12 files and 44 tests.
 - Publisher/controller/operations/indexing regression suite: PASS, 8 files and 84 tests.
+- Full Vitest contract reconciliation: the four stale CI expectations for the 15-migration bundle, 11-cron allowlist, release workdir, and authenticated draft preview were corrected and pass 32/32. A local Windows full-suite run completed 6,596 assertions with only two load-related timeouts; both timed-out files passed immediately in isolation, 16/16. The Linux PR suite remains the release authority.
 - `npm run eval:blog-editorial:offline`: PASS, 100/100 golden fixtures with no failure or provider error.
 - `npm run benchmark:blog-korean-semantic-v4`: PASS in dry-run, 100 samples, precision 1.00, recall 1.00.
 - `npm run verify:blog-release-bundle-v4`: PASS, 15 ordered migrations and rollback hashes verified.
