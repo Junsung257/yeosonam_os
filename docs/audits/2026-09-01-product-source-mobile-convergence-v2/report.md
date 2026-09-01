@@ -1,10 +1,10 @@
 # 상품 원문 → 고객 모바일 수렴 V2 운영 감사
 
 - 실행일: 2026-09-01 (Asia/Seoul)
-- 배포 소스: `e7b088ff1220b439eb18a3d030de8d18576a7974`
+- 배포 소스: `1da8914a3b6a38ba0421da29535e7c7960f31d93`
 - 배포 시점 `origin/main`: `0eedb00339fca3a4198c42ebcab60ebc275ae4ca`
 - 브랜치: `codex/product-source-mobile-convergence-v2`
-- 운영 배포: `dpl_3jKNTBMrf2TbH4Aj8RPPP2tUZcXS`
+- 운영 배포: `dpl_C6mcuLnq5PiqUUwFNDTN8w6yTQBQ`
 - 판정: 고객 읽기·판매상태·모바일 상세/LP/CTA 수렴은 운영에서 통과. 100건 원문 정확도와 점진 자동공개는 아직 HOLD.
 
 ## 결론
@@ -89,16 +89,19 @@
 - 최신 main rebase 후 CLI deployment `dpl_FSpdc3aR9titJPbKP7Yj48fgZWAg`는 Git author의 Vercel team access 때문에 build 전 BLOCKED 됐고 운영 영향은 없었다.
 - exact detached worktree에서 Git author metadata만 배포 입력에서 제외해 만든 `dpl_7HjsoUQRHuh7qRv9ztbKw2XqemvB`를 최초 운영 승격했다.
 - 운영 모바일 재검증에서 지난 8월 출발일을 현재 선택 가능한 가격처럼 보이게 하는 문제를 발견했다. `ce65a38e5`는 현재 KST 이후 price rows만 현재 재고로 사용하도록 고쳤지만 staged `dpl_Fxi6qMyKEES7a9wJhpz6mdKnuxxe`에서 이전 300초 mapped payload cache가 과거 `departureFullDate`를 재사용해 promote하지 않았다.
-- cache contract를 `lp-package-v4-current-inventory-source-notices`로 올린 source의 `dpl_EiN8LCMNspybbZVMpS4xA5J7rbuA`를 promote한 뒤, `origin/main`이 비활성 cron 정리 `0eedb0033`까지 전진했다. 다른 팀의 최신 운영 변경을 되돌리지 않기 위해 최신 main에 rebase하고 exact source `e7b088ff1`의 `dpl_3jKNTBMrf2TbH4Aj8RPPP2tUZcXS`를 다시 staged 검증한 뒤 최종 promote했다.
+- cache contract를 `lp-package-v4-current-inventory-source-notices`로 올린 source의 `dpl_EiN8LCMNspybbZVMpS4xA5J7rbuA`를 promote한 뒤, `origin/main`이 비활성 cron 정리 `0eedb0033`까지 전진했다. 다른 팀의 최신 운영 변경을 되돌리지 않기 위해 최신 main에 rebase하고 exact source `e7b088ff1`의 `dpl_3jKNTBMrf2TbH4Aj8RPPP2tUZcXS`를 다시 staged 검증한 뒤 promote했다.
+- 현재 날짜를 쓰는 운영 재고 필터 때문에 2026년 고정 fixture 3건이 2026-09-01 이후 골든 코퍼스에서 만료되는 회귀를 발견했다. 운영 기본값은 KST 현재일로 유지하고, immutable historical corpus 평가만 `2026-01-01` 기준일을 주입하도록 분리했다. strict corpus는 다시 13/13을 통과했다.
+- exact source `1da8914a3`의 일반 Preview `dpl_7TCy6Fbqa1MhsJ43ajrgiBndCYSb`는 Preview DB 환경에서 동적 상품이 404라 promote하지 않았다. 같은 source를 production environment + `skip-domain`으로 만든 `dpl_C6mcuLnq5PiqUUwFNDTN8w6yTQBQ`는 운영 도메인 변경 전 200/410/404 matrix를 통과했고 그 배포만 최종 promote했다.
 - 최종 staged와 production 모두 `departureFullDate=null`, `priceFrom=0`, 과거 기본값 없음, 200/410/404 matrix를 통과했다. 운영 JavaScript asset에도 최종 deployment ID가 확인됐다.
-- 직전 production rollback 기준은 `dpl_EiN8LCMNspybbZVMpS4xA5J7rbuA`, 그 이전 기준은 `dpl_7HjsoUQRHuh7qRv9ztbKw2XqemvB`다.
+- 직전 production rollback 기준은 `dpl_3jKNTBMrf2TbH4Aj8RPPP2tUZcXS`, 그 이전 기준은 `dpl_EiN8LCMNspybbZVMpS4xA5J7rbuA`다.
 - 로컬 Vercel CLI 53.3.2는 compile/page generation 후 `/api/rss` lambda packaging에서 실패했지만 remote builder CLI 59.3.0은 같은 소스를 정상 빌드했다. 앱 TypeScript/Next compile 오류가 아니라 로컬 CLI package assembly 차이로 분류했다.
 
 ## 검증
 
 - read-boundary focused Vitest: 4 files, 83 tests 통과
 - current-inventory/cache focused Vitest: 5 files, 53 tests 통과
-- latest-main integrated focused Vitest: 9 files, 136 tests 통과
+- latest-main integrated focused Vitest: 9 files, 141 tests 통과
+- strict product-registration golden corpus: supplier raw 5/5, customer deliverability 13/13, field pass 100%, render blocked 0
 - TypeScript: 통과
 - touched-file ESLint: 통과
 - `git diff --check`: 통과
