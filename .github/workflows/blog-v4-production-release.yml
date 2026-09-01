@@ -42,14 +42,14 @@ jobs:
     environment: blog-production
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID || vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID || vars.VERCEL_PROJECT_ID }}
       VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF || vars.SUPABASE_PROJECT_REF }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       CRON_SECRET: ${{ secrets.CRON_SECRET }}
       NEXT_PUBLIC_BASE_URL: https://www.yeosonam.com
@@ -67,7 +67,7 @@ jobs:
             echo "promote_live requires migration apply and candidate deployment" >&2
             exit 1
           fi
-          for key in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID VERCEL_AUTOMATION_BYPASS_SECRET SUPABASE_PROJECT_REF SUPABASE_DB_PASSWORD SUPABASE_ACCESS_TOKEN SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY CRON_SECRET; do
+          for key in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID VERCEL_AUTOMATION_BYPASS_SECRET SUPABASE_PROJECT_REF SUPABASE_ACCESS_TOKEN SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY CRON_SECRET; do
             if [ -z "${!key:-}" ]; then
               echo "Missing protected environment secret: ${key}" >&2
               exit 1
@@ -114,7 +114,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+          supabase_link_args=(--project-ref "$SUPABASE_PROJECT_REF")
+          if [ -n "${SUPABASE_DB_PASSWORD:-}" ]; then
+            supabase_link_args+=(--password "$SUPABASE_DB_PASSWORD")
+          fi
+          npx supabase link "${supabase_link_args[@]}"
           mkdir -p .vercel
           printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID" > .vercel/project.json
 
@@ -124,7 +128,11 @@ jobs:
           set -euo pipefail
           mkdir -p .tmp/blog-v4-release
           npm run prepare:blog-supabase-release-workdir-v4 -- --output=.tmp/blog-v4-supabase-release
-          npx supabase db push --workdir .tmp/blog-v4-supabase-release --linked --include-all --skip-vault --dry-run --password "$SUPABASE_DB_PASSWORD" 2>&1 | tee .tmp/blog-v4-release/supabase-dry-run.txt
+          supabase_db_auth_args=()
+          if [ -n "${SUPABASE_DB_PASSWORD:-}" ]; then
+            supabase_db_auth_args+=(--password "$SUPABASE_DB_PASSWORD")
+          fi
+          npx supabase db push --workdir .tmp/blog-v4-supabase-release --linked --include-all --skip-vault --dry-run "${supabase_db_auth_args[@]}" 2>&1 | tee .tmp/blog-v4-release/supabase-dry-run.txt
           npm run verify:blog-supabase-dry-run-v4 -- --input=.tmp/blog-v4-release/supabase-dry-run.txt --allow-empty
 
       - name: Apply pinned forward migrations
@@ -132,7 +140,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx supabase db push --workdir .tmp/blog-v4-supabase-release --linked --include-all --skip-vault --yes --password "$SUPABASE_DB_PASSWORD"
+          supabase_db_auth_args=()
+          if [ -n "${SUPABASE_DB_PASSWORD:-}" ]; then
+            supabase_db_auth_args+=(--password "$SUPABASE_DB_PASSWORD")
+          fi
+          npx supabase db push --workdir .tmp/blog-v4-supabase-release --linked --include-all --skip-vault --yes "${supabase_db_auth_args[@]}"
 
       - name: Persist passing Korean semantic benchmark
         if: inputs.apply_migrations
