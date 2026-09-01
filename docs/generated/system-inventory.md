@@ -6,7 +6,7 @@ This file is generated from the repository. Do not edit it directly.
 
 | Kind | Count |
 |---|---:|
-| API routes | 727 |
+| API routes | 724 |
 | App pages | 212 |
 | Supabase migrations | 560 |
 | GitHub workflows | 34 |
@@ -14,9 +14,6 @@ This file is generated from the repository. Do not edit it directly.
 
 ## API routes
 
-- src/app/.well-known/workflow/v1/flow/route.js
-- src/app/.well-known/workflow/v1/step/route.js
-- src/app/.well-known/workflow/v1/webhook/[token]/route.js
 - src/app/[indexnowKey]/route.ts
 - src/app/api/ab-test/conversion/route.ts
 - src/app/api/admin/active-destinations/route.ts
