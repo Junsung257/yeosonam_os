@@ -1,10 +1,10 @@
 # 2026-09-01 문서·AI 하네스 통합 리팩터링 감사
 
-상태: merged to main via PR #1218; Production deployment follow-up verification in progress; one ratchet debt and one external-link advisory open
+상태: merged to main via PR #1218 and #1219; Production deployment/readiness verified; local isolated-data boundary correction included in PR #1220; non-blocking advisory debt only
 담당: platform-engineering
-기준: `origin/main@421e81bb4f1394b17e8039dba4919a28825b68ba`
-브랜치: `codex/harness-doc-remediation-20260901`
-검토 PR: `#1218`
+기준: `origin/main@faa045e60dccecbed803d0509fbea157657b7b51`
+브랜치: `codex/harness-doc-remediation-20260901`, `codex/production-readiness-event-fix-20260901`, `codex/local-readiness-data-boundary-20260901`
+검토 PR: `#1218`, `#1219`, `#1220`
 Research Node 통합: `b08e2ac77`
 dirty 작업 보존 snapshot: `b1e8b9d4b`
 
@@ -27,6 +27,7 @@ dirty 작업 보존 snapshot: `b1e8b9d4b`
 - 모든 GitHub Actions Node runtime을 24로 통일했고, 문서 변경 계약에는 PR base의 명시적 40자 commit SHA를 주입한다.
 - Preview 배포가 Production 공개 데이터 readiness를 실행해 PR을 오염시키던 경계를 분리했다. 엄격한 `www.yeosonam.com` 검사는 Production deployment 또는 수동 실행에서만 유지한다.
 - 병합 뒤 실제 Vercel payload가 `environment=Production`이면서 `production_environment=false`인 공급자 형태를 확인했다. 별도 무비밀 guard가 성공 상태·Production 환경명 또는 플래그를 확인하고 배포 SHA가 default-branch history에 속함을 GitHub compare API로 증명한 뒤에만 secret-bearing readiness job을 허용한다.
+- 로컬 CI의 더미 DB에는 Production에서 발견한 package/blog 식별자가 존재하지 않을 수 있다. 이 격리 조건은 로컬에서만 `blocked`로 보고하며, Preview·Production 공개 surface 검사는 계속 엄격하게 실패 처리한다.
 - PR #1217의 Research Node를 통합하면서 distributed limiter 미설정·장애 시 503 fail-closed, 첫 public DNS 응답 transport pinning, credential destination 제한을 적용했다.
 - Codex 기본·audit·elevated profile, Serena cwd 인식, apifable 버전 고정, Claude hook·권한 축소를 host health 검사로 확인한다.
 - Codex host 검사는 계정 범위 Supabase 플러그인 비활성화와 별도 project-scoped read-only hosted MCP의 존재·URL·feature allowlist·credential-free 구성을 함께 검사한다.
@@ -48,6 +49,8 @@ dirty 작업 보존 snapshot: `b1e8b9d4b`
 | Research signal·route·rate limiter Vitest | 26/26 pass |
 | Research Node Node tests | 9/9 pass |
 | `npm run verify:marketing-automation:ci` | 66/66 pass; package/workflow glob targets expanded and syntax-checked |
+| Vercel Production deployment | `faa045e60` 배포 Ready; `https://www.yeosonam.com` alias 확인 |
+| Production Open Readiness | run `33488965291`; deployment guard pass; strict readiness pass (5m11s) |
 | `npm run type-check` | pass |
 | agent workflow·doc automation | pass |
 | secret lint·CI action pin·automation runtime·LLM telemetry | pass |
@@ -59,6 +62,8 @@ dirty 작업 보존 snapshot: `b1e8b9d4b`
 | 로컬 Codex 이력 정리 | session JSONL 45개에서 retired PAT/secret literal 507개 동일 길이 redaction; raw pattern 0; DPAPI 복구 지도·ACL·바이트 위치 검증 통과; 보강 도구 합성 redaction/restore/stale-file refusal 6/6 pass |
 
 세 차례 독립 read-only 우회 검토에서 발견한 22개 경계 결함을 모두 수정했다. 여기에는 외부 링크 감사 SSRF, Supabase 설정 문자열·stdio·sibling server·TOML profile/decoy 우회, import alias·주석·dead branch·무관 handler·비지배 인증 가드 통과, push 변경 감지 누락, 공용 문서·무관 테스트 artifact 우회, IPv4-mapped·NAT64·IPv4-embedded IPv6, signed URL 변형, Unicode·전화번호·주민번호 PII 우회가 포함된다. 외부 감사는 공개 HTTPS 주소를 확인하고 DNS 응답을 실제 transport에 pin하며 redirect마다 다시 검증한다. 관련 negative test를 포함한 전체 외부 출처 감사는 0건이다.
+
+보존 대조 이후 원래 dirty 작업 폴더에는 다른 사용자·프로세스가 수정한 파일이 추가로 관찰됐다. 이 리팩터링은 해당 폴더를 다시 쓰거나 되돌리지 않았고, 복구 기준은 격리 snapshot `b1e8b9d4b`와 manifest로 유지한다.
 
 최종 네 번째 read-only 우회 검토에서 dotted TOML header, 별도 provider 명령 실행, 전체 environment 상속, `$register` 확인 전 mutation 기대값 등 4건을 추가 발견해 수정했다. live provider ID는 승인된 hosted family와 credential-free model ID만 허용하며, 자식 프로세스에는 해당 provider 자격증명과 최소 OS 변수만 전달한다.
 
@@ -84,13 +89,15 @@ live eval의 13개 advisory는 위험 작업 실행이 아니라 staged write의
 |---|---|---|---|
 | 기존 P2 risk baseline 2,679건 | 신규 위반은 차단되지만 기존 부채는 점진 감축 필요 | 각 domain owner | 매 PR·주간 감사 |
 | OpenAI Harness Engineering 자동 링크 확인 403 | URL은 공식 검색에서 2026-09-01 현재 확인됐지만 자동 감사는 access-controlled 403을 P3로 유지 | platform-engineering | 2026-09-08 주간 감사 |
+| GitHub JavaScript actions Node 20 런타임 경고 | 현재 workflow job runtime은 Node 24이나 일부 upstream action bundle은 Node 20을 내장한다. 공급자 major 업데이트 시 고정 SHA를 재검증한다. | platform-engineering | 2026-09-08 주간 감사 |
 
 새 Codex 세션에서는 먼저 `npm run check:agent-host`를 실행한다. OAuth read smoke는 완료됐으므로 Production write probe는 실행하지 않으며, project/read-only URL 계약과 공급자 read-only role로 차단을 유지한다.
 
 ## Rollback
 
-- 최신 main 기준점: `421e81bb4f1394b17e8039dba4919a28825b68ba`
-- 통합 검토 기록: GitHub PR `#1218`
+- 하네스 통합 main 기준점: `abd4afea47e6bac444d47c8d03bfc369f2929eb4`
+- Production readiness 경계 기준점: `faa045e60dccecbed803d0509fbea157657b7b51`
+- 통합 검토 기록: GitHub PR `#1218`, `#1219`, `#1220`
 - Research Node merge 기준점: `b08e2ac77`
 - 이전 격리 스냅샷: `codex/harness-doc-refactor-20260901`
 - dirty 작업 보존 commit: `b1e8b9d4b`
