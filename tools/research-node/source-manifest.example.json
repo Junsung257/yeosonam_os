@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "id": "visit-guam-home",
+      "url": "https://www.visitguam.com/",
+      "approvedHostname": "visitguam.com",
+      "allowSubdomains": true,
+      "evidenceClass": "official_source_candidate"
+    }
+  ]
+}

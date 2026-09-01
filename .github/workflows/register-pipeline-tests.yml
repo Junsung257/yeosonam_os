@@ -51,10 +51,11 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
       - run: npm run check:doc-automation:ci
         env:
           CI: true
+          DOC_AUTOMATION_BASE_SHA: ${{ github.event.pull_request.base.sha }}
 
   product-registration-golden-corpus:
     name: product registration golden corpus
@@ -63,7 +64,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
       - run: npm ci
       - run: npm run eval:product-registration:ci
@@ -77,7 +78,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
       - run: npm ci
       - run: npx vitest run src/lib/upload-verify.test.ts
@@ -91,7 +92,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
       - run: npm ci
       - run: npx vitest run src/lib/customer-package-payload.test.ts src/lib/customer-package-price-options.test.ts src/lib/product-registration/persistence-rows.test.ts src/lib/product-registration/upload-persistence.test.ts src/lib/product-registration/upload-route-boundary.test.ts
@@ -106,7 +107,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
       - run: npm ci
       - run: npx tsc --noEmit

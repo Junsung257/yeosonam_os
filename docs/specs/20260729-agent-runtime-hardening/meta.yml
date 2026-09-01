@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "tier": 3,
+  "status": "completed",
+  "owner": "platform-engineering",
+  "review_file": "verification.md",
+  "verified_commit": "9341391d929b4d56ce4734034358705339a159b8",
+  "verification": [
+    {
+      "check": "packet verification record",
+      "result": "pass",
+      "evidence": "verification.md"
+    }
+  ],
+  "evidence_paths": [
+    "verification.md"
+  ]
+}

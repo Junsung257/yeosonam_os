@@ -224,6 +224,10 @@ function WorkroomDetail({ workroom }: { workroom: AgentOfficeWorkroom | null }) 
     );
   }
 
+  const researchSignals = workroom.tasks.flatMap((task) => task.researchSignal
+    ? [{ taskId: task.id, ...task.researchSignal }]
+    : []);
+
   return (
     <div>
       <div className="border-b border-admin-border px-5 py-4">
@@ -272,6 +276,62 @@ function WorkroomDetail({ workroom }: { workroom: AgentOfficeWorkroom | null }) 
           ))}
         </div>
       </div>
+
+      {researchSignals.length > 0 && (
+        <section className="border-b border-admin-border bg-sky-50/40 px-5 py-4" aria-labelledby="research-evidence-heading">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h3 id="research-evidence-heading" className="text-admin-sm font-semibold text-admin-text">
+                외부 조사 근거
+              </h3>
+              <p className="mt-0.5 text-[11px] text-admin-muted">
+                조사 신호는 검토 대기 자료이며 공개·상품 사실 근거로 자동 전환되지 않습니다.
+              </p>
+            </div>
+            <span className="rounded-admin-sm border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-800">
+              검토 필요
+            </span>
+          </div>
+
+          <div className="mt-3 space-y-3">
+            {researchSignals.map((signal) => (
+              <article key={signal.taskId} className="rounded-admin-md border border-sky-200 bg-white p-3 shadow-admin-xs">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="break-words text-admin-sm font-semibold text-admin-text">{signal.title}</p>
+                    <p className="mt-1 text-[11px] text-admin-muted">
+                      {signal.sourcePlatform} · {signal.sourceHostname} · 신뢰도 {Math.round(signal.confidence * 100)}%
+                    </p>
+                  </div>
+                  <a
+                    href={signal.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 text-[11px] font-semibold text-blue-700 hover:underline"
+                  >
+                    원문 열기
+                  </a>
+                </div>
+                <p className="mt-2 break-words text-admin-xs leading-relaxed text-admin-text-2">{signal.excerpt}</p>
+                <div className="mt-3 flex flex-wrap gap-1.5 text-[10px]">
+                  <span className="rounded-admin-sm border border-admin-border-mid bg-admin-surface-2 px-2 py-1 text-admin-muted">
+                    {signal.evidenceClass}
+                  </span>
+                  <span className="rounded-admin-sm border border-rose-200 bg-rose-50 px-2 py-1 font-semibold text-rose-700">
+                    공개 불가
+                  </span>
+                  <span className="rounded-admin-sm border border-rose-200 bg-rose-50 px-2 py-1 font-semibold text-rose-700">
+                    상품 사실 근거 불가
+                  </span>
+                  <span className="rounded-admin-sm border border-admin-border-mid bg-admin-surface-2 px-2 py-1 text-admin-muted">
+                    {signal.collector}@{signal.collectorVersion}
+                  </span>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className="px-5 py-4">
         <h3 className="text-admin-sm font-semibold text-admin-text">활동 타임라인</h3>

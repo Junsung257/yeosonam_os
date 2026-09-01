@@ -100,7 +100,7 @@
 
 ## References
 
-- [Stage 1 완료 보고서](../STAGE1_COMPLETE.md)
+- [Stage 1 완료 보고서](../archive/completions/STAGE1_COMPLETE.md)
 - [개발자 가이드](../DEVELOPER_GUIDE.md)
 - [P3 고급 설정](../P3_ADVANCED_SETUP.md)
 - [CLAUDE.md 하네스](../../.claude/CLAUDE.md)

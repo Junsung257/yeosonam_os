@@ -31,11 +31,11 @@ function median(values: number[]): number {
 
 export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
-  if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
-  }
   if (!isCronAuthorized(request)) {
     return cronUnauthorizedResponse();
+  }
+  if (!isSupabaseConfigured) {
+    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
 
   try {

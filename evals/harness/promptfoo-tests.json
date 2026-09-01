@@ -1,0 +1,182 @@
+[
+  {
+    "description": "route-product-registration",
+    "vars": {
+      "id": "route-product-registration"
+    }
+  },
+  {
+    "description": "route-blog",
+    "vars": {
+      "id": "route-blog"
+    }
+  },
+  {
+    "description": "route-affiliate",
+    "vars": {
+      "id": "route-affiliate"
+    }
+  },
+  {
+    "description": "route-settlement",
+    "vars": {
+      "id": "route-settlement"
+    }
+  },
+  {
+    "description": "route-marketing",
+    "vars": {
+      "id": "route-marketing"
+    }
+  },
+  {
+    "description": "route-ai-ops",
+    "vars": {
+      "id": "route-ai-ops"
+    }
+  },
+  {
+    "description": "route-research",
+    "vars": {
+      "id": "route-research"
+    }
+  },
+  {
+    "description": "route-harness",
+    "vars": {
+      "id": "route-harness"
+    }
+  },
+  {
+    "description": "route-db",
+    "vars": {
+      "id": "route-db"
+    }
+  },
+  {
+    "description": "route-api",
+    "vars": {
+      "id": "route-api"
+    }
+  },
+  {
+    "description": "route-git",
+    "vars": {
+      "id": "route-git"
+    }
+  },
+  {
+    "description": "readonly-request",
+    "vars": {
+      "id": "readonly-request"
+    }
+  },
+  {
+    "description": "implementation-authority",
+    "vars": {
+      "id": "implementation-authority"
+    }
+  },
+  {
+    "description": "skill-canonical-source",
+    "vars": {
+      "id": "skill-canonical-source"
+    }
+  },
+  {
+    "description": "skill-generated-mirror",
+    "vars": {
+      "id": "skill-generated-mirror"
+    }
+  },
+  {
+    "description": "register-explicit-trigger",
+    "vars": {
+      "id": "register-explicit-trigger"
+    }
+  },
+  {
+    "description": "media-no-fallback",
+    "vars": {
+      "id": "media-no-fallback"
+    }
+  },
+  {
+    "description": "selective-context",
+    "vars": {
+      "id": "selective-context"
+    }
+  },
+  {
+    "description": "subagent-not-mandatory",
+    "vars": {
+      "id": "subagent-not-mandatory"
+    }
+  },
+  {
+    "description": "production-db-approval",
+    "vars": {
+      "id": "production-db-approval"
+    }
+  },
+  {
+    "description": "deployment-approval",
+    "vars": {
+      "id": "deployment-approval"
+    }
+  },
+  {
+    "description": "external-publish-approval",
+    "vars": {
+      "id": "external-publish-approval"
+    }
+  },
+  {
+    "description": "destructive-git-approval",
+    "vars": {
+      "id": "destructive-git-approval"
+    }
+  },
+  {
+    "description": "credential-change-approval",
+    "vars": {
+      "id": "credential-change-approval"
+    }
+  },
+  {
+    "description": "secret-read-deny",
+    "vars": {
+      "id": "secret-read-deny"
+    }
+  },
+  {
+    "description": "no-auto-mutation-hook",
+    "vars": {
+      "id": "no-auto-mutation-hook"
+    }
+  },
+  {
+    "description": "codex-profile-contract",
+    "vars": {
+      "id": "codex-profile-contract"
+    }
+  },
+  {
+    "description": "research-node-boundary",
+    "vars": {
+      "id": "research-node-boundary"
+    }
+  },
+  {
+    "description": "otel-privacy",
+    "vars": {
+      "id": "otel-privacy"
+    }
+  },
+  {
+    "description": "adapter-single-policy",
+    "vars": {
+      "id": "adapter-single-policy"
+    }
+  }
+]

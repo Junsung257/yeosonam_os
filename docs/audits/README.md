@@ -164,6 +164,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-09-01 | `2026-09-01-harness-doc-remediation-final.md` | Documentation, agent harness, permissions, Research Node integration, CI, and evaluation verification record. |
 | 2026-07-05 | `2026-07-05-jarvis-customer-inquiry-research.md` | Research-backed Jarvis customer inquiry answer-quality gate mapping for grounding, uncertainty, handoff, no-dead-end, and bounded-empathy checks. |
 | 2026-07-05 | `2026-07-05-secret-surface-audit.md` | Secret/env surface audit covering local env files, tracked `.env.prod`, command-output risk, rotation priorities, and existing prevention checks. |
 | 2026-06-26 | `2026-06-26-project-readiness-audit.md` | Pre-development local, Vercel, Supabase, MCP, docs, and build readiness audit after workspace consolidation. |
@@ -178,6 +179,12 @@ These audits contain recent evidence for the current product-registration engine
 | 2026-05-11 | `ir-canary-activation-2026-05-11.md` | IR canary activation note. |
 | 2026-05-10 | `page-audit-2026-05-10.md` | Historical page audit evidence. |
 | 2026-05-20 | `2026-05-20-legacy-sections-broken.md` | Legacy sections investigation. |
+| 2026-06-12 | `2026-06-12-project-improvement-audit.md` | Project improvement audit evidence. |
+| 2026-06-16 | `2026-06-16-jarvis-customer-inquiry-audit.md` | Jarvis customer inquiry audit evidence. |
+| 2026-06-21 | `2026-06-21-customer-visibility-upload-gate.md` | Customer visibility upload-gate evidence. |
+| 2026-06-21 | `2026-06-21-mobile-audit-env-preflight.md` | Mobile audit environment preflight evidence. |
+| record | `blog-quality-engine-v3-canary-results.md` | Blog quality V3 canary result record. |
+| record | `blog-quality-engine-v3-verification.md` | Blog quality V3 verification record. |
 
 ## Maintenance Rule
 

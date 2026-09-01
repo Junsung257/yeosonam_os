@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, globSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, normalize, resolve } from 'node:path';
 
@@ -62,8 +62,16 @@ function cleanTarget(value) {
     .replace(/\\$/g, '');
 }
 
+function targetMatches(target) {
+  if (/[*?[\]{}]/u.test(target)) {
+    return globSync(target, { cwd: process.cwd() }).sort();
+  }
+  const normalized = normalize(target);
+  return existsSync(normalized) ? [normalized] : [];
+}
+
 function pathExists(target) {
-  return existsSync(normalize(target));
+  return targetMatches(target).length > 0;
 }
 
 function workflowFiles() {
@@ -223,9 +231,10 @@ function checkWorkflowYamlSyntax() {
 }
 
 function addTarget(targets, target, source) {
-  if (!pathExists(target)) return;
-  if (!targets.has(target)) targets.set(target, new Set());
-  targets.get(target).add(source);
+  for (const matchedTarget of targetMatches(target)) {
+    if (!targets.has(matchedTarget)) targets.set(matchedTarget, new Set());
+    targets.get(matchedTarget).add(source);
+  }
 }
 
 function nodeCheckable(target) {

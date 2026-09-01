@@ -36,6 +36,13 @@ interface RateLimitOptions {
    * 보안 권고: rateLimitAI 류는 failClosed=true 검토.
    */
   failClosed?: boolean;
+  /**
+   * 분산 백엔드가 없으면 요청을 거부한다.
+   *
+   * 인증 토큰 하나로 여러 서버리스 인스턴스를 두드릴 수 있는 내부 intake처럼
+   * per-instance 메모리 제한이 보안 경계가 될 수 없는 라우트에서만 사용한다.
+   */
+  requireDistributed?: boolean;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -166,9 +173,17 @@ export async function rateLimit(
   const windowSec = opts.window ?? 60;
   const prefix = opts.prefix ?? 'rl';
   const failClosed = opts.failClosed === true;
+  const requireDistributed = opts.requireDistributed === true;
   const key = opts.keyFn ? opts.keyFn(req) : extractClientIp(req);
 
   const limiter = getLimiter(limit, windowSec, prefix);
+
+  if (!limiter && requireDistributed) {
+    return NextResponse.json(
+      { error: 'Rate limit backend unavailable' },
+      { status: 503, headers: { 'Retry-After': '30' } },
+    );
+  }
 
   let ok: boolean;
   let remaining: number;
@@ -182,6 +197,12 @@ export async function rateLimit(
       resetAt = r.reset;
     } catch (err) {
       console.warn('[rate-limiter] Upstash error:', err);
+      if (requireDistributed) {
+        return NextResponse.json(
+          { error: 'Rate limit backend unavailable' },
+          { status: 503, headers: { 'Retry-After': '30' } },
+        );
+      }
       if (failClosed) {
         // 정책 무결성 우선 — 즉시 429 반환 (AI/billing 등 critical)
         return NextResponse.json(

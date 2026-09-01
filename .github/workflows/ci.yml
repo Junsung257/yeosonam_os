@@ -35,8 +35,34 @@ jobs:
       - name: Secret usage lint
         run: npm run lint:secrets:all
 
+      - name: Install and audit pinned harness evaluator
+        run: |
+          npm run setup:harness-evals
+          npm run audit:harness-evals
+
+      - name: Agent and documentation harness contract
+        run: npm run check:harness && npm run eval:harness:promptfoo
+
+      - name: Agent workflow and durable-document contract
+        env:
+          DOC_AUTOMATION_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: npm run check:agent-workflow:ci && npm run check:doc-automation:ci
+
       - name: Verify CI actions are immutable
         run: npm run verify:ci-action-pins
+
+      - name: Audit automation runtime ownership
+        run: npm run audit:automation-runtime:ci
+
+      - name: Block new untraced direct LLM calls
+        run: npm run audit:llm-telemetry:ci
+
+      - name: Verify isolated research node package
+        working-directory: tools/research-node
+        run: |
+          npm ci --ignore-scripts
+          npm audit --audit-level=high
+          npm test
 
       - name: Verify external API contract artifacts
         run: npm run verify:openapi:v1

@@ -35,7 +35,7 @@ Vercel 프로덕션에서는 정상적으로 빠를 것으로 추정됩니다 (p
 **증상**: `/m/admin/bookings`, `/m/admin/notifications`, `/m/admin/payments`, `/m/admin/timeline/[bookingId]`,
 `/auth/callback` 5건이 모두 같은 메시지로 throw — `Supabase가 구성되지 않았습니다. 환경 변수를 확인하세요.`
 
-**원인**: [src/lib/secret-registry.ts:88-91](../src/lib/secret-registry.ts#L88-L91)
+**원인**: [src/lib/secret-registry.ts:88-91](../../src/lib/secret-registry.ts#L88-L91)
 
 ```ts
 export function getSecret(key: SecretKey): string | null {
@@ -50,7 +50,7 @@ Next.js 클라이언트 번들링은 `process.env.NEXT_PUBLIC_*` **정적 리터
 서버 컴포넌트(`/admin/*` 데스크톱 어드민)는 `process.env` 가 런타임에 그대로 살아 있으므로 OK.
 클라이언트 컴포넌트(`/m/admin/*`, `/auth/callback`) 는 NEXT_PUBLIC_* 도 못 읽음 → supabase 클라이언트 생성 실패 → 5건 페이지 모두 크래시.
 
-**적용한 수정**: [src/lib/supabase.ts:17-26](../src/lib/supabase.ts#L17-L26)
+**적용한 수정**: [src/lib/supabase.ts:17-26](../../src/lib/supabase.ts#L17-L26)
 
 ```ts
 const supabaseUrl =
@@ -89,9 +89,9 @@ const resolved = (params && typeof (params as { then?: unknown }).then === 'func
 ```
 
 수정 파일:
-- [src/app/admin/prompts/\[key\]/page.tsx](../src/app/admin/prompts/[key]/page.tsx)
-- [src/app/admin/tenants/\[tenantId\]/bot/page.tsx](../src/app/admin/tenants/[tenantId]/bot/page.tsx)
-- [src/app/admin/terms-templates/\[id\]/page.tsx](../src/app/admin/terms-templates/[id]/page.tsx)
+- [src/app/admin/prompts/\[key\]/page.tsx](../../src/app/admin/prompts/[key]/page.tsx)
+- [src/app/admin/tenants/\[tenantId\]/bot/page.tsx](../../src/app/admin/tenants/[tenantId]/bot/page.tsx)
+- [src/app/admin/terms-templates/\[id\]/page.tsx](../../src/app/admin/terms-templates/[id]/page.tsx)
 
 **후속 권고 (P2)**: Next.js 15+ 업그레이드 시 한꺼번에 정리하는 게 더 자연스러움 (CLAUDE.md 의 vercel:next-upgrade 스킬 사용).
 
@@ -99,7 +99,7 @@ const resolved = (params && typeof (params as { then?: unknown }).then === 'func
 
 **증상**: 콘솔에 `Text content does not match server-rendered HTML. Server: "5. 2. PM 01:40" Client: "5. 2. 오후 01:40"`.
 
-**원인**: [src/app/admin/blog/queue/BlogQueueClient.tsx:308-311](../src/app/admin/blog/queue/BlogQueueClient.tsx#L308-L311)
+**원인**: [src/app/admin/blog/queue/BlogQueueClient.tsx:308-311](../../src/app/admin/blog/queue/BlogQueueClient.tsx#L308-L311)
 의 `new Date(...).toLocaleString('ko-KR', { ... })` 가 서버(en-US 환경) 와 클라이언트(ko-KR) 에서 다르게 렌더.
 
 **적용한 수정**: ISO 문자열 슬라이싱으로 locale-stable 포맷.
@@ -111,7 +111,7 @@ const resolved = (params && typeof (params as { then?: unknown }).then === 'func
 ```
 
 **후속 권고 (P1)**: 코드베이스에 `new Date(x).toLocaleString/DateString` 패턴이 **57개 파일** 에서 발견됨.
-같은 hydration 위험. `src/lib/admin-utils.ts` 의 [`fmtDate`](../src/lib/admin-utils.ts#L35), [`fmtDateTime`](../src/lib/admin-utils.ts#L17) 으로 일괄 치환 권장.
+같은 hydration 위험. `src/lib/admin-utils.ts` 의 [`fmtDate`](../../src/lib/admin-utils.ts#L35), [`fmtDateTime`](../../src/lib/admin-utils.ts#L17) 으로 일괄 치환 권장.
 
 ---
 
@@ -140,13 +140,13 @@ ALTER TABLE bookings ADD CONSTRAINT bookings_customer_receipt_status_check
   CHECK (customer_receipt_status IN ('ISSUED','NOT_ISSUED','NOT_REQUIRED'));
 ```
 
-코드 ([src/app/admin/tax/page.tsx:19-22](../src/app/admin/tax/page.tsx#L19-L22)) 의 type union 과 enum 일치. 검증: `GET /api/tax?month=2026-04` → 200.
+코드 ([src/app/admin/tax/page.tsx:19-22](../../src/app/admin/tax/page.tsx#L19-L22)) 의 type union 과 enum 일치. 검증: `GET /api/tax?month=2026-04` → 200.
 
 ### 2-2. `/api/admin/competitor-prices` 500 — 잘못된 테이블 쿼리 ✅ 해결
 
 **원인**: 코드가 `travel_packages` 의 비존재 컬럼(`is_active`, `selling_price`, `duration_days`)을 조회. 실제 컬럼은 `status`, `price`, `duration`.
 
-**적용한 수정**: [src/app/api/admin/competitor-prices/route.ts:34-58](../src/app/api/admin/competitor-prices/route.ts#L34-L58)
+**적용한 수정**: [src/app/api/admin/competitor-prices/route.ts:34-58](../../src/app/api/admin/competitor-prices/route.ts#L34-L58)
 
 ```ts
 // 실제 컬럼: status (active 식별), price (정수), duration (정수).
@@ -198,7 +198,7 @@ UUID 정규식: `/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
 ### 3-3. 대량의 hydration-risky `Date.toLocaleString` 사용
 
 57 파일에서 `new Date(x).toLocaleString` / `toLocaleDateString` 사용. 클라이언트 컴포넌트에서 hydration mismatch 우려.
-[`fmtDate`](../src/lib/admin-utils.ts#L35), [`fmtDateTime`](../src/lib/admin-utils.ts#L17) 로 일괄 치환 PR 권장.
+[`fmtDate`](../../src/lib/admin-utils.ts#L35), [`fmtDateTime`](../../src/lib/admin-utils.ts#L17) 로 일괄 치환 PR 권장.
 
 대상 (admin 위주):
 - `src/app/admin/payments/PaymentsPageClient.tsx`
@@ -327,7 +327,7 @@ Top 15 느린 페이지는 dev JIT 1회성 컴파일 비용 (prod 영향 없음)
 
 ### 5차 라운드: 인프라 박제 + Hydration 잔여 안전 청산
 
-#### npm 스크립트 등록 ([package.json](../package.json))
+#### npm 스크립트 등록 ([package.json](../../package.json))
 
 ```jsonc
 "audit:pages":         "playwright test --config=tests/audit/playwright.audit.config.ts && node tests/audit/analyze.js",
@@ -534,7 +534,7 @@ EXIT 0
 
 ### 10차 라운드: next/script 정당화 + 추가 audit + 타입 체크
 
-#### `next/script beforeInteractive` 경고 정당화 ([src/components/PartytownInit.tsx](../src/components/PartytownInit.tsx))
+#### `next/script beforeInteractive` 경고 정당화 ([src/components/PartytownInit.tsx](../../src/components/PartytownInit.tsx))
 
 Partytown 라이브러리는 다른 모든 스크립트보다 먼저 초기화돼야 forward 가 동작 (`fbq`, `_fbq`, `kakaoPixel`, `clarity`). Next.js 14 App Router 에서는 `beforeInteractive` 가 안전하지만 ESLint 룰은 pages router 시대 가이드. 인라인 disable + 사유 주석 추가.
 
@@ -542,7 +542,7 @@ Partytown 라이브러리는 다른 모든 스크립트보다 먼저 초기화�
 
 **3건 누락 발견**: `price_markup_rate`, `view_count_snap_at`, `view_count_weekly_snap` (모두 신규 컬럼).
 
-수정 ([db/audit_api_field_drift.js](../db/audit_api_field_drift.js)) — 모두 internal-only:
+수정 ([db/audit_api_field_drift.js](../../db/audit_api_field_drift.js)) — 모두 internal-only:
 - `price_markup_rate` — 내부 가격 마크업율 (cost_price 와 함께 노출 금지)
 - `view_count_snap_at` / `view_count_weekly_snap` — 주간 분석 스냅샷 (분석 내부)
 - `dp_reason` / `dp_triggered_at` — 동적 가격 로그 (내부)

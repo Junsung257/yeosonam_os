@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "tier": 3,
+  "status": "completed",
+  "owner": "ai-platform",
+  "review_file": "verification.md",
+  "verified_commit": "0b8d2021c63f16e8d4d36db4ebd084721eaec2e1",
+  "verification": [
+    {
+      "check": "packet verification record",
+      "result": "pass",
+      "evidence": "verification.md"
+    }
+  ],
+  "evidence_paths": [
+    "verification.md"
+  ]
+}

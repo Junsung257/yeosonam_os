@@ -10,8 +10,8 @@
 - 서버: `next dev` (Windows 11, localhost:3000)
 - 인증: `ys-dev-admin=1` 쿠키로 middleware 통과 (`/api/debug/dev-admin-login`)
 - 페이지당 cold + warm 2회 측정, networkidle 도달까지 (timeout 90s)
-- 측정 스크립트: [db/audit_admin_perf.js](../../db/audit_admin_perf.js)
-- 결과 원본: [db/admin_perf_results.json](../../db/admin_perf_results.json) (스크립트 중단 전 부분 결과)
+- 측정 스크립트: `db/audit_admin_perf.js` (historical path; file removed)
+- 결과 원본: `db/admin_perf_results.json` (historical path; file removed) (스크립트 중단 전 부분 결과)
 
 > ⚠️ dev 모드는 prod 대비 컴파일·번들 처리·소스맵 비용이 5~10배 추가됨. 절대값보다 **비례 관계**에 주목하되, 30초+ timeout 패턴은 prod 에서도 반드시 비례해서 나타난다.
 
@@ -425,7 +425,7 @@
 
 ## 17. 관련 파일
 
-- 측정 스크립트: [db/audit_admin_perf.js](../../db/audit_admin_perf.js)
+- 측정 스크립트: `db/audit_admin_perf.js` (historical path; file removed)
 - AdminLayout 마운트 폭격: [src/components/AdminLayout.tsx:326-365](../../src/components/AdminLayout.tsx#L326-L365)
 - unmatched summary 31s 원인: [src/lib/unmatched-admin-queries.ts:27-63](../../src/lib/unmatched-admin-queries.ts#L27-L63)
 - 거대 페이지 1위: [src/app/admin/customers/page.tsx](../../src/app/admin/customers/page.tsx) (1220줄)

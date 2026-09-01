@@ -1,6 +1,6 @@
 # AI Operations Office Current SSOT
 
-> Updated: 2026-07-29
+> Updated: 2026-08-31
 >
 > Scope: Yeosonam OS의 에이전트 협업, 실행 원장, 승인, 사고, trace, 운영 화면.
 > Domain-specific booking, settlement, affiliate, marketing, product-registration,
@@ -44,7 +44,7 @@ existing primitives.
 ## 3. Current Architecture
 
 ```text
-Jarvis / QA / cron / manual
+Jarvis / QA / cron / manual / research intake
               |
               v
         agent_tasks
@@ -101,6 +101,8 @@ It provides:
 - an observation-only approval ledger;
 - bounded task and incident tables;
 - source degradation warnings;
+- review-only research evidence cards with redacted title/excerpt, source link,
+  collector version, confidence, and explicit publication/product-fact prohibitions;
 - the active safety boundary.
 
 The source API is read-only and bounded:
@@ -122,7 +124,8 @@ Expiry remains available through lifecycle housekeeping.
 
 ## 5. Privacy and Tenancy
 
-- The client never receives `task_context`.
+- The client never receives raw `task_context`. A strict parser may project the
+  bounded `ResearchSignalEnvelopeV1` review summary described above.
 - `userMessage` is never promoted to a workroom title.
 - Free-text titles, errors, approval reasons, and incident messages pass through the
   Korean PII redactor.

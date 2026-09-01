@@ -1,0 +1,380 @@
+[
+  {
+    "id": "route-product-registration",
+    "files": [
+      "AGENTS.md"
+    ],
+    "require": [
+      "docs/product-registration-current-ssot.md"
+    ],
+    "description": "contract 1: route-product-registration",
+    "forbid": []
+  },
+  {
+    "id": "route-blog",
+    "files": [
+      "AGENTS.md"
+    ],
+    "require": [
+      "docs/blog-autopublish-contract.md",
+      "docs/media-generation-current-ssot.md"
+    ],
+    "description": "contract 2: route-blog",
+    "forbid": []
+  },
+  {
+    "id": "route-affiliate",
+    "files": [
+      "AGENTS.md"
+    ],
+    "require": [
+      "docs/affiliate-current-ssot.md"
+    ],
+    "description": "contract 3: route-affiliate",
+    "forbid": []
+  },
+  {
+    "id": "route-settlement",
+    "files": [
+      "AGENTS.md"
+    ],
+    "require": [
+      "docs/settlement-current-ssot.md"
+    ],
+    "description": "contract 4: route-settlement",
+    "forbid": []
+  },
+  {
+    "id": "route-marketing",
+    "files": [
+      "AGENTS.md"
+    ],
+    "require": [
+      "docs/marketing-current-ssot.md"
+    ],
+    "description": "contract 5: route-marketing",
+    "forbid": []
+  },
+  {
+    "id": "route-ai-ops",
+    "files": [
+      "AGENTS.md"
+    ],
+    "require": [
+      "docs/ai-ops-current-ssot.md"
+    ],
+    "description": "contract 6: route-ai-ops",
+    "forbid": []
+  },
+  {
+    "id": "route-research",
+    "files": [
+      "AGENTS.md"
+    ],
+    "require": [
+      "docs/research-node-current-ssot.md"
+    ],
+    "description": "contract 7: route-research",
+    "forbid": []
+  },
+  {
+    "id": "route-harness",
+    "files": [
+      "AGENTS.md"
+    ],
+    "require": [
+      "docs/agent-workflow-current-ssot.md",
+      "docs/ai-agent-doc-automation.md"
+    ],
+    "description": "contract 8: route-harness",
+    "forbid": []
+  },
+  {
+    "id": "route-db",
+    "files": [
+      "AGENTS.md"
+    ],
+    "require": [
+      ".cursor/rules/db-migration-policy.mdc",
+      "db/FIELD_POLICY.md"
+    ],
+    "description": "contract 9: route-db",
+    "forbid": []
+  },
+  {
+    "id": "route-api",
+    "files": [
+      "AGENTS.md"
+    ],
+    "require": [
+      ".cursor/rules/api-response-format.mdc",
+      "인접 route와 test"
+    ],
+    "description": "contract 10: route-api",
+    "forbid": []
+  },
+  {
+    "id": "route-git",
+    "files": [
+      "AGENTS.md"
+    ],
+    "require": [
+      "docs/git-commit-handoff.md"
+    ],
+    "description": "contract 11: route-git",
+    "forbid": []
+  },
+  {
+    "id": "readonly-request",
+    "files": [
+      "AGENTS.md",
+      "docs/agent-workflow-current-ssot.md"
+    ],
+    "require": [
+      "설명·감사 요청은 읽기 전용",
+      "읽기·감사 요청은 외부 상태를 변경하지 않는다"
+    ],
+    "description": "contract 12: readonly-request",
+    "forbid": []
+  },
+  {
+    "id": "implementation-authority",
+    "files": [
+      "AGENTS.md"
+    ],
+    "require": [
+      "구현 요청만 파일이나 외부 상태를 바꾼다"
+    ],
+    "description": "contract 13: implementation-authority",
+    "forbid": []
+  },
+  {
+    "id": "skill-canonical-source",
+    "files": [
+      "AGENTS.md",
+      ".claude/CLAUDE.md"
+    ],
+    "require": [
+      ".agents/skills",
+      "원본"
+    ],
+    "description": "contract 14: skill-canonical-source",
+    "forbid": []
+  },
+  {
+    "id": "skill-generated-mirror",
+    "files": [
+      "AGENTS.md",
+      ".claude/CLAUDE.md"
+    ],
+    "require": [
+      ".claude/skills",
+      "직접 수정하지 않는다"
+    ],
+    "description": "contract 15: skill-generated-mirror",
+    "forbid": []
+  },
+  {
+    "id": "register-explicit-trigger",
+    "files": [
+      ".agents/skills/register/SKILL.md",
+      ".claude/CLAUDE.md"
+    ],
+    "require": [
+      "disable-model-invocation: true",
+      "사용자가 명시적으로 호출"
+    ],
+    "description": "contract 16: register-explicit-trigger",
+    "forbid": []
+  },
+  {
+    "id": "media-no-fallback",
+    "files": [
+      ".agents/skills/blog-media-worker/SKILL.md",
+      ".claude/CLAUDE.md"
+    ],
+    "require": [
+      "OpenAI API",
+      "Pexels",
+      "fallback"
+    ],
+    "description": "contract 17: media-no-fallback",
+    "forbid": []
+  },
+  {
+    "id": "selective-context",
+    "files": [
+      "AGENTS.md",
+      ".claude/CLAUDE.md"
+    ],
+    "require": [
+      "필요한 파일만 읽",
+      "모든 `.mdc`, 모든 SSOT"
+    ],
+    "description": "contract 18: selective-context",
+    "forbid": []
+  },
+  {
+    "id": "subagent-not-mandatory",
+    "files": [
+      ".claude/CLAUDE.md",
+      "docs/agent-workflow-current-ssot.md"
+    ],
+    "require": [
+      "서브에이전트를 강제하지 않는다",
+      "특정 런타임"
+    ],
+    "description": "contract 19: subagent-not-mandatory",
+    "forbid": []
+  },
+  {
+    "id": "production-db-approval",
+    "files": [
+      "AGENTS.md",
+      "docs/agent-workflow-current-ssot.md"
+    ],
+    "require": [
+      "Production DB 적용",
+      "별도 승인"
+    ],
+    "description": "contract 20: production-db-approval",
+    "forbid": []
+  },
+  {
+    "id": "deployment-approval",
+    "files": [
+      ".claude/CLAUDE.md",
+      "docs/agent-workflow-current-ssot.md"
+    ],
+    "require": [
+      "Production 배포",
+      "자동 hook으로 실행하지 않는다"
+    ],
+    "description": "contract 21: deployment-approval",
+    "forbid": []
+  },
+  {
+    "id": "external-publish-approval",
+    "files": [
+      "AGENTS.md",
+      "docs/agent-workflow-current-ssot.md"
+    ],
+    "require": [
+      "외부 발행",
+      "승인"
+    ],
+    "description": "contract 22: external-publish-approval",
+    "forbid": []
+  },
+  {
+    "id": "destructive-git-approval",
+    "files": [
+      "AGENTS.md",
+      "docs/agent-workflow-current-ssot.md"
+    ],
+    "require": [
+      "강제",
+      "사용자 변경 폐기"
+    ],
+    "description": "contract 23: destructive-git-approval",
+    "forbid": []
+  },
+  {
+    "id": "credential-change-approval",
+    "files": [
+      "AGENTS.md",
+      "docs/agent-workflow-current-ssot.md"
+    ],
+    "require": [
+      "자격증명 변경",
+      "토큰·키 폐기"
+    ],
+    "description": "contract 24: credential-change-approval",
+    "forbid": []
+  },
+  {
+    "id": "secret-read-deny",
+    "files": [
+      ".claude/settings.json"
+    ],
+    "require": [
+      "Read(./.env.local)",
+      "Read(**/*.pem)",
+      "Read(./.mcp.json)",
+      "Read(./.codex/**)"
+    ],
+    "forbid": [
+      "Read(**/*token*)"
+    ],
+    "description": "contract 25: secret-read-deny"
+  },
+  {
+    "id": "no-auto-mutation-hook",
+    "files": [
+      ".claude/settings.json",
+      ".cursor/hooks.json"
+    ],
+    "forbid": [
+      "PostToolUse",
+      "vercel --prod 2>&1",
+      "os:inbox"
+    ],
+    "description": "contract 26: no-auto-mutation-hook",
+    "require": []
+  },
+  {
+    "id": "codex-profile-contract",
+    "files": [
+      "docs/agent-mcp-tooling.md"
+    ],
+    "require": [
+      "workspace-write",
+      "on-request",
+      "read-only"
+    ],
+    "description": "contract 27: codex-profile-contract",
+    "forbid": []
+  },
+  {
+    "id": "research-node-boundary",
+    "files": [
+      "CURRENT_STATUS.md",
+      "docs/agent-workflow-current-ssot.md"
+    ],
+    "require": [
+      "Research Node",
+      "Production DB",
+      "예약·결제·발행 권한"
+    ],
+    "description": "contract 28: research-node-boundary",
+    "forbid": []
+  },
+  {
+    "id": "otel-privacy",
+    "files": [
+      "docs/agent-workflow-current-ssot.md"
+    ],
+    "require": [
+      "OTel",
+      "프롬프트·도구 인자·PII",
+      "기본 수집하지 않는다"
+    ],
+    "description": "contract 29: otel-privacy",
+    "forbid": []
+  },
+  {
+    "id": "adapter-single-policy",
+    "files": [
+      "AGENTS.md",
+      ".claude/CLAUDE.md",
+      ".github/copilot-instructions.md"
+    ],
+    "require": [
+      "차이만",
+      "AGENTS.md",
+      "권위"
+    ],
+    "description": "contract 30: adapter-single-policy",
+    "forbid": []
+  }
+]

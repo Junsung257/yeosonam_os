@@ -29,6 +29,18 @@ describe('middleware external API V1 boundary', () => {
   });
 });
 
+describe('middleware research intake boundary', () => {
+  it('lets the exact research intake route reach its dedicated bearer guard', async () => {
+    const response = await middleware(new NextRequest(
+      'https://www.yeosonam.com/api/internal/research/signals',
+      { method: 'POST' },
+    ));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+});
+
 describe('middleware cron resource saver', () => {
   afterEach(() => {
     vi.unstubAllEnvs();

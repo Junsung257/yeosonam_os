@@ -15,14 +15,14 @@ import { runAgentHousekeeping } from '@/lib/agent/housekeeping'
 
 export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
+  const authErr = requireCronBearer(request)
+  if (authErr) return authErr
+
   const startAt = Date.now()
   const log: string[] = []
   const push = (msg: string) => { console.log('[agent-executor]', msg); log.push(msg) }
 
   push('=== 에이전트 액션 실행기 시작 ===')
-
-  const authErr = requireCronBearer(request)
-  if (authErr) return authErr
 
   const isForce = request.nextUrl.searchParams.get('force') === 'true'
 

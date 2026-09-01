@@ -1,6 +1,6 @@
 # 여소남 미디어 생성 현재 SSOT
 
-> 상태: 2026-08-28 `main`(`c8c30b2`)과 Vercel Production 배포 완료. 운영 플래그가 활성이고 로컬 구독형 워커 2건이 ACTIVE다. 구독형 `social_og` 실 canary는 `pending_review`, 현재 생성 대기 큐는 0건이며 다음 자연 발행 블로그가 자동 부착 canary가 된다.
+> 상태: current · 검증일 2026-09-01. 이 문서는 미디어 권한·생성·검수 계약의 SSOT다. 워커 수, 큐 길이, canary 상태처럼 바뀌는 운영 값은 이 문서에 고정하지 않고 `npm run audit:media-generation`과 운영 화면에서 확인한다.
 
 ## 1. 결론
 

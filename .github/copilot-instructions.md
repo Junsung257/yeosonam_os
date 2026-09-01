@@ -1,26 +1,13 @@
-# GitHub Copilot — 여소남 OS 저장소 지시
+# GitHub Copilot — 여소남 OS
 
-<!-- 코드 리뷰용 커스텀 지시는 길이 제한이 있으므로 짧게 유지. 상세는 AGENTS.md / .claude/CLAUDE.md -->
+루트 `AGENTS.md`와 현재 작업 경로의 도메인 SSOT를 따른다. 이 파일은 Copilot 표면의 최소 보조 지침이다.
 
-## 프로젝트
+- 인접 구현과 테스트를 먼저 찾아 기존 패턴을 유지한다.
+- UI에 파싱·정산·권한 로직을 새로 넣지 않는다.
+- API 응답, 인증, tenant 경계는 기존 helper를 재사용한다.
+- DB 변경은 migration과 RLS 검증 없이 제안하지 않는다.
+- Production DB·예약·결제·외부 발행·자격증명 변경을 자동 실행하지 않는다.
+- `docs/audits`와 `docs/archive`를 현재 정책으로 취급하지 않는다.
+- `.agents/skills`가 스킬 원본이고 `.claude/skills`는 생성 사본이다.
 
-Next.js App Router B2B2C 여행 SaaS: 예약 상태 머신, Supabase, 어드민 ERP, 제휴/정산, AI(자비스·QA). 비즈니스 로직은 `src/lib/`, UI는 표시만.
-
-## 반드시 참고
-
-- **진입점:** 루트 `AGENTS.md`
-- **구현 레시피·공개 경로·DB 패턴:** `.claude/CLAUDE.md`
-- **최신 스키마·메뉴 요약:** `CURRENT_STATUS.md`
-- **영역별 현재 계약:** 상품등록 `docs/product-registration-current-ssot.md`, 블로그 `docs/blog-autopublish-contract.md`, 제휴 `docs/affiliate-current-ssot.md`, 정산 `docs/settlement-current-ssot.md`, 마케팅 `docs/marketing-current-ssot.md`, AI Ops `docs/ai-ops-current-ssot.md`
-
-## 코딩 시 주의
-
-- 예약 상태 전이: `src/lib/booking-state-machine.ts`만 따름.
-- A4/모바일 렌더: `renderPackage()` / `render-contract.ts` 계약 준수; 패키지 raw 직파싱 지양.
-- 고객 노출 필드: `db/FIELD_POLICY.md` — 커미션·내부 메모를 고객 텍스트 필드에 넣지 않음.
-- 새 공개 라우트: `middleware.ts`의 공개 경로 목록과 정합성 확인.
-- RLS·마이그레이션 변경 시: `supabase/migrations/`에 반영.
-
-## 스타일
-
-- 사용자 대면 설명이 필요하면 한국어, 쉬운 말 우선(프로젝트 커뮤니케이션 규칙).
+큰 변경은 `docs/agent-workflow-current-ssot.md`, 문서 변경은 `docs/ai-agent-doc-automation.md`를 확인한다.

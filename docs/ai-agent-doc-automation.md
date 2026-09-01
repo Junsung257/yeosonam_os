@@ -1,187 +1,96 @@
-# AI Agent Documentation Automation
+# AI 에이전트 문서 자동화·하네스
 
-Last updated: 2026-06-23
+상태: current
+검증일: 2026-09-01
+권위 영역: 문서 분류, 생성 문서, Spec 검사, CI 하네스
 
-This is the operating system for keeping Yeosonam OS documentation current without asking the user to separately organize documents later.
+## 문서 계층
 
-## Goal
+1. `AGENTS.md`: 공통 최소 계약과 작업 라우터
+2. `CURRENT_STATUS.md`: 현재 권위의 짧은 색인
+3. domain current SSOT: 도메인 계약
+4. runbook·reference: 실행 절차와 상세 참고
+5. roadmap·research: 계획과 외부 검토
+6. audits·archive: 시점 증거와 대체된 기록
 
-Every meaningful improvement should leave behind one of these artifacts automatically:
+현재 정책 검색은 archive와 audits를 제외한다. 역사 문서는 삭제하지 않고 Git 이력과 archive manifest로 추적한다.
 
-- a stricter fixture or test,
-- a clearer SSOT rule,
-- a repeated-mistake entry in `db/error-registry.md`,
-- a short audit note when evidence matters,
-- or no document change when the change is too small and already covered.
+## Registry
 
-The user should not need to remember which document to update.
+`docs/document-registry.yml`은 문서 class, authority domain, owner, status, 검증일, 검토 주기, supersedes를 관리한다. class는 `current`, `runbook`, `reference`, `roadmap`, `research`, `historical`, `superseded`만 사용한다.
 
-## Non-Negotiable Rule
+current·contract 후보는 명시적으로 등록한다. 다른 문서도 collection rule로 유효 메타데이터를 상속하지만, catch-all은 새 current 문서를 숨길 수 없다. 같은 authority domain에 활성 current 문서를 중복 등록하지 않는다.
 
-Do not create a new plan document by default.
+## 생성 문서
 
-First choose the smallest durable artifact:
-
-```text
-new behavior or invariant -> current domain SSOT
-repeated mistake -> db/error-registry.md
-new failed supplier sample -> fixture/golden corpus
-completed investigation -> docs/audits/YYYY-MM-DD-*.md
-temporary note -> no docs; final answer only
-```
-
-A customer-impacting, operationally meaningful, security/privacy, money, booking, settlement, product, marketing, or AI failure is not "resolved" by a manual repair alone. Before closeout, add a prevention artifact such as a fixture, regression test, eval, deterministic gate, SSOT rule, error-registry entry, readiness check, or monitored action queue rule. If no artifact is added, explicitly state why the issue is non-repeatable or too small to guard.
-
-The artifact must be domain-specific. Do not copy product-registration golden corpus, mobile proof, or macro mining into every domain. Do not copy blog editorial gates into settlement, affiliate, or CRM. Use the smallest guard that prevents the same class of failure in that domain.
-
-Exception: Tier 2 and Tier 3 work under `docs/agent-workflow-current-ssot.md` may create a feature packet at `docs/specs/YYYYMMDD-short-slug/` using `docs/specs/_template/`. This is not a default planning note; it is a durable implementation contract for large or high-risk work. Tier 0 and Tier 1 work must still avoid new spec packets unless the user explicitly asks for one.
-
-## Document Hierarchy
-
-Always-loaded entry files stay short:
-
-- `AGENTS.md`: routing table and shortest global rules.
-- `.claude/CLAUDE.md`: deeper harness rules and domain entry points.
-
-Domain SSOT files define current behavior:
-
-- `docs/product-registration-current-ssot.md`: supplier upload, mobile landing, A4 readiness.
-- `docs/product-registration-v3-standard-language.md`: customer-safe notice language.
-- `docs/blog-autopublish-contract.md`: blog generation, publish quality, images, SEO, indexing.
-- `docs/affiliate-current-ssot.md`: affiliate attribution, referral cookies, partner evidence, commission boundary.
-- `docs/settlement-current-ssot.md`: payments, ledger, settlement, payout, reconciliation.
-- `docs/marketing-current-ssot.md`: marketing automation, Ad OS, external publish boundary.
-- `docs/ai-ops-current-ssot.md`: AI provider policy, Jarvis, RAG, prompt/eval boundary.
-- `db/FIELD_POLICY.md`: customer/internal field exposure.
-
-History and evidence files are not current playbooks:
-
-- `docs/audits/*`: investigation evidence. Use `docs/audits/README.md` as the archive index.
-- `docs/register-changelog.md`: decision history.
-- `docs/registration-improvement-plan.md`: historical planning.
-
-When searching for current rules, exclude audit history first:
+[system inventory](generated/system-inventory.md)와 JSON은 코드에서 생성한다. 사람이 라우트·migration 수를 상태 문서에 복사하지 않는다.
 
 ```bash
-rg "keyword" docs AGENTS.md .claude --glob "!docs/audits/**"
+npm run generate:system-inventory
+npm run check:system-inventory
 ```
 
-## Automatic Doc Decision Matrix
+생성물은 결정적이어야 하며 비밀, 환경변수 값, 사용자 절대 경로를 포함하지 않는다.
 
-Choose the smallest domain-specific guard. The examples below are not interchangeable across domains.
+## 스킬 원본
 
-| Change type | Required durable artifact |
-|---|---|
-| New product-registration parser behavior | golden fixture and expected JSON |
-| New price-table shape | price IR parser test and golden corpus if supplier raw failed |
-| New blog generation, prompt, render, publish, indexing, image, SEO, or quality-gate behavior | blog regression test plus `docs/blog-autopublish-contract.md` or `docs/errors/blog.md` update |
-| New affiliate attribution, referral, influencer, or commission behavior | test plus `docs/affiliate-current-ssot.md` or `docs/errors/affiliate.md` update |
-| New payment, ledger, settlement, payout, or reconciliation behavior | test plus `docs/settlement-current-ssot.md` or `docs/errors/settlement.md` update |
-| New marketing automation, Ad OS, external publish, campaign action, or spend behavior | test plus `docs/marketing-current-ssot.md` or `docs/errors/marketing.md` update |
-| New AI provider, Jarvis, RAG, prompt, eval, or learning-loop behavior | eval/test plus `docs/ai-ops-current-ssot.md` or `docs/errors/ai-ops.md` update |
-| New customer-visible rule | current domain SSOT |
-| Repeated operational mistake | `db/error-registry.md` ACTIVE CHECKLIST + full entry |
-| Route/pipeline architecture change | current domain SSOT and boundary test |
-| Render contract change | current domain SSOT and customer render tests |
-| DB schema/guard change | migration + domain SSOT if behavior changes |
-| Tier 2 or Tier 3 agent workflow packet | `docs/specs/YYYYMMDD-short-slug/` with spec, plan, tasks, and verification |
-| One-off investigation | `docs/audits/YYYY-MM-DD-short-title.md` plus one index row in `docs/audits/README.md` |
-| Manual legacy workaround | final answer only unless it becomes repeatable |
+`.agents/skills`가 원본이고 `.claude/skills`는 호환 생성물이다.
 
-## Product Registration Specific Flow
+```bash
+npm run sync:agent-skills
+npm run check:agent-skill-sync
+```
 
-This is a domain-specific example, not a universal playbook.
+동기화 검사는 파일 집합과 바이트 내용을 모두 비교한다. 생성물을 직접 수정한 PR은 실패한다.
 
-For supplier upload registration:
+## Spec 수명주기
+
+Tier 2·3의 active·blocked 작업은 `meta.yml`과 spec, plan, tasks, review를 가진다. completed 작업은 실제로 해석되는 verified commit, 존재하는 검증 증거, 미완료 필수 항목 0건이 필요하다. 요구사항·결정·증거·남은 부채를 `record.md` 하나로 압축할 수 있다.
+
+문구 존재만으로 완전성을 판단하지 않는다. 구조, 상태, commit, evidence path, 체크박스를 검사한다.
+
+## 단일 감사 진입점
+
+```bash
+npm run audit:doc-harness
+npm run check:harness
+```
+
+감사는 registry, 링크·anchor, 감사 인덱스, Spec, 스킬 동기화, 지침 크기, 외부 출처 freshness, 비밀 패턴, 위험 자동 실행, 생성 inventory drift, 신규 위험 패턴을 검사한다.
+
+JSON 인터페이스:
 
 ```text
-source failure
-  -> add full raw fixture
-  -> define expected customer outcome
-  -> update parser/IR or registration object
-  -> run recovery and deliverability tests
-  -> update SSOT only if the invariant changed
-  -> update error registry only if this was a repeated mistake
+schemaVersion
+commit
+baseline
+generatedAt
+summary
+findings[]: id, severity, category, path, line, message, evidence, remediation, status
 ```
 
-Never make the document the only fix. The document records the fix; the fixture/test prevents regression.
+P0·P1과 current·harness 문서 위반은 baseline 예외 없이 차단한다. 기존 저위험 코드 패턴은 baseline에 기록하고 신규 위반만 차단한다.
 
-## Blog Automation Specific Flow
+## 평가 구분
 
-This is a domain-specific example, not a universal playbook.
+- `test:harness-contracts`: 30개 이상의 결정적 구조·정책 계약. 네트워크와 모델 비용 없이 PR에서 실행한다.
+- `eval:harness:promptfoo`: 동일 계약을 고정된 Promptfoo 버전으로 재현한다.
+- `eval:harness:live`: 실제 provider를 사용하는 선택형 행동 평가. 자격증명, 비용, 격리된 read-only 실행 환경이 있을 때만 실행한다.
 
-For blog generation, publishing, rendering, images, SEO, or indexing:
+Promptfoo는 루트 앱 의존성과 분리한 `tools/harness-evals` package lock의 정확한 버전을 사용한다. 2026-09-01 기준 `0.122.2`를 고정하되, 사용하지 않는 provider용 optional dependency는 설치하지 않고 현재 플랫폼의 잠긴 libSQL binding만 추가한다. CI는 설치 결과를 `audit:harness-evals`로 검사한다. 업그레이드는 최신 번호보다 설치 트리의 high/critical 0건과 30개 계약 재통과를 우선한다.
 
-```text
-source failure
-  -> identify whether it is prompt, queue, repair, gate, render, image, SEO, indexing, or cron policy
-  -> add a deterministic ERR-BLOG regression case when feasible
-  -> update `docs/errors/blog.md` for repeated failures
-  -> update `docs/blog-autopublish-contract.md` or the active blog runbook if the invariant changed
-  -> run the narrow unit/regression test and the relevant blog audit command
-  -> deploy only after the live path and document contract agree
-```
+정적 파일 검사를 실제 Codex·Claude·Copilot 행동 결과로 보고하지 않는다. live 평가가 실행되지 않았으면 최종 보고에 명시한다.
 
-Do not call a blog fix complete from a repaired DB row or a one-time manual publish. Completion requires the live publisher, shared publish helper, quality gates, rendered public page, and indexing outbox to enforce the same rule.
+## CI 분리
 
-## Prompt/Harness Best Practices
+- PR `harness-contract`: registry, 내부 링크, Spec, 스킬 동기화, 지침 예산, 비밀, 신규 위험 패턴, inventory drift, deterministic contract eval
+- 주간 전체 감사: 외부 링크, 출처 freshness, 전체 문서, 선택형 live eval
 
-Use stable, cacheable context:
+문서·비밀·권한 P0·P1에는 `continue-on-error`를 사용하지 않는다. 외부 사이트의 일시 장애는 advisory로 분리한다.
 
-- Put stable project rules first.
-- Put volatile user input last.
-- Keep always-loaded memory short.
-- Link to SSOT instead of copying long rules everywhere.
+## 유지 원칙
 
-Use structured outputs for extraction:
-
-- Prefer schema-adherent objects over loose JSON.
-- Validate model output with local types before persistence.
-- Store failure causes as structured codes, not prose-only messages.
-
-Use evals and traces:
-
-- Every previous failure becomes a reproducible dataset item when feasible.
-- Trace/audit logs are evidence; a convincing chat answer is not evidence.
-- Customer deliverability is judged by rendered payload readiness, not parser confidence.
-
-Use MCP/app tools carefully:
-
-- Tools should expose narrow, typed operations.
-- Resources/prompts can provide stable context, but must not silently override repo SSOT.
-- Sensitive credentials or payment data must not be collected through generic in-chat forms.
-
-## 100-Point Documentation Rubric
-
-| Area | Points | Passing standard |
-|---|---:|---|
-| One current SSOT per domain | 20 | Any agent can identify the active rule document in under 30 seconds. |
-| No stale-doc ambiguity | 15 | Historical docs are labeled historical or superseded. |
-| Mistakes become guards | 20 | Meaningful failures enter the right domain-specific guard: tests, fixtures, evals, gates, error registry, readiness checks, or an explicit no-guard rationale. |
-| Customer safety | 15 | Customer-visible rules distinguish evidence, fallback, manual approval, and internal-only data. |
-| Automation fit | 10 | Prompt/cache/eval/structured-output practices are encoded in repo rules. |
-| Minimality | 10 | New docs are rare; existing SSOT is updated first. |
-| Verification | 10 | Required commands and live audits are stated next to the contract. |
-
-Target: 95+ before calling a domain "documented well enough".
-
-## Agent Closeout Contract
-
-At the end of meaningful work, the agent should report:
-
-- what changed,
-- what durable artifact captured it,
-- what verification ran,
-- what remains manual or intentionally deferred.
-- if the work fixed a failure, what domain-specific guard prevents recurrence or why no guard was justified.
-
-If no document was updated, say why: already covered, no behavior change, or temporary investigation.
-
-## External Basis Checked
-
-- [OpenAI Prompt Caching](https://platform.openai.com/docs/guides/prompt-caching): stable prompt prefixes and repeated static context improve cache reuse.
-- [OpenAI Structured Outputs](https://platform.openai.com/docs/guides/structured-outputs): schema-adherent model outputs are preferable to loose JSON when possible.
-- [OpenAI Agent Evals](https://platform.openai.com/docs/guides/agent-evals): reproducible evals and trace grading are the right loop for agent reliability.
-- [OpenAI Prompting](https://platform.openai.com/docs/guides/prompting): long-lived, versioned prompts and templates help teams reuse and test prompts.
-- [Anthropic Claude Code memory](https://docs.anthropic.com/en/docs/claude-code/memory): project memory should be structured, specific, and periodically reviewed.
-- [Model Context Protocol concepts](https://modelcontextprotocol.io/docs/concepts): tools, resources, prompts, and elicitation should be explicit, typed, and user-controlled.
+- 절대 경로, 설치 여부, 개인 토큰 상태는 저장소 SSOT에 기록하지 않는다.
+- 완료 보고서는 current SSOT에 섞지 않고 audits 또는 archive로 이동한다.
+- 링크를 옮기면 호출 문서와 archive manifest를 함께 갱신한다.
+- 날짜만 갱신해 freshness 검사를 우회하지 않는다. 코드·테스트·외부 근거를 다시 확인한다.

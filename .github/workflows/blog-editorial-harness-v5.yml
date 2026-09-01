@@ -44,5 +44,9 @@ jobs:
           src/lib/blog-editorial-harness-v5-migration.test.ts
           src/lib/blog-deepseek-orchestrator-v4.test.ts
           src/app/api/cron/blog-publisher/route.test.ts
+      - name: Install and audit pinned harness evaluator
+        run: |
+          npm run setup:harness-evals
+          npm run audit:harness-evals
       - name: Frozen 33-case Promptfoo challenger
         run: npm run eval:blog-editorial:promptfoo
