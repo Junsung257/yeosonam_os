@@ -25,6 +25,7 @@ dirty 작업 보존 snapshot: `b1e8b9d4b`
 - 단일 `audit-doc-harness`가 registry, 링크, Spec, skill sync, 지침 예산, 비밀·위험 명령, generated inventory를 검사한다.
 - Promptfoo는 `tools/harness-evals`에 격리했다. 잠긴 `0.122.2`를 사용하되 미사용 provider optional dependency는 설치하지 않고 플랫폼별 잠긴 libSQL·esbuild binding만 설치한 뒤 esbuild만 rebuild한다.
 - 모든 GitHub Actions Node runtime을 24로 통일했고, 문서 변경 계약에는 PR base의 명시적 40자 commit SHA를 주입한다.
+- Preview 배포가 Production 공개 데이터 readiness를 실행해 PR을 오염시키던 경계를 분리했다. 엄격한 `www.yeosonam.com` 검사는 Production deployment 또는 수동 실행에서만 유지한다.
 - PR #1217의 Research Node를 통합하면서 distributed limiter 미설정·장애 시 503 fail-closed, 첫 public DNS 응답 transport pinning, credential destination 제한을 적용했다.
 - Codex 기본·audit·elevated profile, Serena cwd 인식, apifable 버전 고정, Claude hook·권한 축소를 host health 검사로 확인한다.
 - Codex host 검사는 계정 범위 Supabase 플러그인 비활성화와 별도 project-scoped read-only hosted MCP의 존재·URL·feature allowlist·credential-free 구성을 함께 검사한다.

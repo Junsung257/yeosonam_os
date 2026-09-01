@@ -15,7 +15,12 @@ concurrency:
 
 jobs:
   readiness:
-    if: github.event_name == 'workflow_dispatch' || github.event.deployment_status.state == 'success'
+    # Preview deployments must not attach Production data-health failures to a PR.
+    # Keep the strict public gate for real Production deployments and manual runs.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+      github.event.deployment.production_environment == true)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:

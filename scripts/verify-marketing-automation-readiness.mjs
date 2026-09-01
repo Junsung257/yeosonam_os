@@ -536,6 +536,7 @@ function staticChecks() {
   ]);
   requireIncludes('ci:open-readiness-deployment-wired', '.github/workflows/open-readiness.yml', [
     'deployment_status:',
+    'github.event.deployment.production_environment == true',
     'npm run verify:marketing-automation:ci',
     'npm run discover:operational-inputs',
     'npm run verify:operational-inputs',
