@@ -353,6 +353,7 @@ export function getExplicitSourceCompareAtPrice(
 export function mapTravelPackageToLandingData(
   pkg: Record<string, unknown>,
   lpHeroImageUrl: string | null,
+  options: { inventoryReferenceDate?: string } = {},
 ): LandingProductData {
   const view = readCanonicalView(pkg);
   const lpProjection = readLpProjection(pkg);
@@ -405,7 +406,7 @@ export function mapTravelPackageToLandingData(
 
   const effectiveDates = getEffectivePriceDates(pkg as Parameters<typeof getEffectivePriceDates>[0]);
   const sortedDates = [...effectiveDates].filter(row => row.date).sort((a, b) => a.date.localeCompare(b.date));
-  const todayStr = formatKstDate();
+  const todayStr = options.inventoryReferenceDate ?? formatKstDate();
   const upcomingDates = getUpcomingPriceDates(sortedDates, todayStr);
   const upcoming = upcomingDates[0] ?? null;
 

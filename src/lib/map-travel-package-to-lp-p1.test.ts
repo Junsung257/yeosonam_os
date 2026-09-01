@@ -74,4 +74,23 @@ describe('mapTravelPackageToLandingData P1 hardening', () => {
     expect(mapped.departureDateLabel).toBe('미정');
     expect(mapped.priceFrom).toBe(0);
   });
+
+  it('supports a pinned inventory date for deterministic historical corpus evaluation', () => {
+    const mapped = mapTravelPackageToLandingData({
+      id: 'pkg-historical-corpus',
+      title: 'Historical corpus test',
+      destination: 'Cebu',
+      duration: 4,
+      price: 799000,
+      price_dates: [{ date: '2026-07-25', price: 799000, confirmed: false }],
+      inclusions: [],
+      excludes: [],
+      itinerary_data: { days: [] },
+    } as unknown as Record<string, unknown>, null, {
+      inventoryReferenceDate: '2026-01-01',
+    });
+
+    expect(mapped.departureFullDate).toBe('2026-07-25');
+    expect(mapped.priceFrom).toBe(799000);
+  });
 });
