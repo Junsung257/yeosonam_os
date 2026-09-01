@@ -48,7 +48,7 @@ dirty 작업 보존 snapshot: `b1e8b9d4b`
 | `npm run audit:harness-evals` | 설치 대상 high/critical 0 |
 | Research signal·route·rate limiter Vitest | 26/26 pass |
 | Research Node Node tests | 9/9 pass |
-| `npm run verify:marketing-automation:ci` | 66/66 pass; package/workflow glob targets expanded and syntax-checked |
+| `npm run verify:marketing-automation:ci` | 72/72 pass; package/workflow glob targets expanded, syntax-checked, Slack v4 immutable/input contract enforced |
 | Vercel Production deployment | `faa045e60` 배포 Ready; `https://www.yeosonam.com` alias 확인 |
 | Production Open Readiness | run `33488965291`; deployment guard pass; strict readiness pass (5m11s) |
 | `npm run type-check` | pass |

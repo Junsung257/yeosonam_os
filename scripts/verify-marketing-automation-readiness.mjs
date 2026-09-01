@@ -547,6 +547,20 @@ function staticChecks() {
     'Marketing automation readiness',
     'npm run verify:marketing-automation:ci',
   ]);
+  for (const workflowPath of [
+    '.github/workflows/semantic-release.yml',
+    '.github/workflows/slack-notifications.yml',
+  ]) {
+    requireIncludes(`ci:slack-v4-immutable:${workflowPath}`, workflowPath, [
+      'slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d',
+      'webhook: ${{ env.SLACK_WEBHOOK }}',
+      'webhook-type: incoming-webhook',
+    ]);
+    requireExcludes(`ci:slack-v4-no-legacy-input:${workflowPath}`, workflowPath, [
+      'slack-github-action@v1',
+      'webhook-url:',
+    ]);
+  }
   requireIncludes('ci:open-readiness-deployment-wired', '.github/workflows/open-readiness.yml', [
     'deployment_status:',
     'production-deployment-guard:',
