@@ -2,7 +2,9 @@
 
 - 기준일: 2026-09-01 (Asia/Seoul)
 - 기준 브랜치: `codex/product-source-mobile-convergence-v2`
-- 기준 main: `abd4afea47e6bac444d47c8d03bfc369f2929eb4`
+- 초기 기준 main: `abd4afea47e6bac444d47c8d03bfc369f2929eb4`
+- 최종 배포 기준 main: `0eedb00339fca3a4198c42ebcab60ebc275ae4ca`
+- 운영 배포 소스: `e7b088ff1220b439eb18a3d030de8d18576a7974`
 - 위험 등급: Tier 3
 
 ## 목표
