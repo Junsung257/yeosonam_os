@@ -1,6 +1,6 @@
 # 2026-09-01 문서·AI 하네스 통합 리팩터링 감사
 
-상태: implementation and credential remediation verified; one ratchet debt, one external-link advisory, one local-history hygiene advisory open
+상태: implementation, credential, and local-history remediation verified; one ratchet debt and one external-link advisory open
 담당: platform-engineering
 기준: `origin/main@421e81bb4f1394b17e8039dba4919a28825b68ba`
 브랜치: `codex/harness-doc-remediation-20260901`
@@ -49,6 +49,7 @@ dirty 작업 보존 snapshot: `b1e8b9d4b`
 | 원래 dirty 작업 보존 대조 | 보존 대상 991개 hash 일치; 정책상 복사 제외한 env 파일 1개만 제외 |
 | Supabase hosted MCP OAuth | `auth_status=o_auth`; project-scoped `read_only=true`; fresh process `get_project_url` 성공; write tool 호출 0 |
 | 공급자 자격증명 정리 | 과거 PAT `14d7b4e188ce33b8` 대시보드 매칭·삭제 성공; 활성 `sb_secret_*` 0; Vercel Production 키 유지 |
+| 로컬 Codex 이력 정리 | session JSONL 45개에서 retired PAT/secret literal 507개 동일 길이 redaction; raw pattern 0; DPAPI 복구 지도·ACL·바이트 위치 검증 통과 |
 
 세 차례 독립 read-only 우회 검토에서 발견한 22개 경계 결함을 모두 수정했다. 여기에는 외부 링크 감사 SSRF, Supabase 설정 문자열·stdio·sibling server·TOML profile/decoy 우회, import alias·주석·dead branch·무관 handler·비지배 인증 가드 통과, push 변경 감지 누락, 공용 문서·무관 테스트 artifact 우회, IPv4-mapped·NAT64·IPv4-embedded IPv6, signed URL 변형, Unicode·전화번호·주민번호 PII 우회가 포함된다. 외부 감사는 공개 HTTPS 주소를 확인하고 DNS 응답을 실제 transport에 pin하며 redirect마다 다시 검증한다. 관련 negative test를 포함한 전체 외부 출처 감사는 0건이다.
 
@@ -66,7 +67,8 @@ live eval의 13개 advisory는 위험 작업 실행이 아니라 staged write의
 - 저장소, `.mcp.example.json`, 현재 로컬 `.mcp.json`, Codex TOML에는 위 과거 fingerprint의 평문 값이나 token-bearing MCP 필드가 없다. 현재 MCP URL은 하나의 project ref, `read_only=true`, `database,debugging,development,docs`만 가진다.
 - Chrome의 로그인 세션으로 hosted OAuth를 승인한 뒤 신선한 `codex mcp list --json`에서 상태 `o_auth`를 확인했다. 새 격리 프로세스의 유일한 MCP 호출 `get_project_url`은 `ixaxnvbmhzjvupissmly` 프로젝트를 반환했고 write tool 호출은 0건이었다.
 - OAuth 동의 UI는 Supabase hosted OAuth의 넓은 account scope를 표시하지만 실제 resource URL은 project ref와 `read_only=true`로 고정된다. Production write probe는 실행하지 않았으며, 공급자 문서의 read-only Postgres role 경계와 host 검사에서 강제하는 URL 계약으로 차단을 검증한다.
-- 로컬 Codex의 과거 session JSONL에는 이미 기록된 legacy PAT literal이 남아 있다. 이는 저장소·현재 설정·MCP credential source가 아니고 공급자 활성 목록의 과거 대상은 폐기됐지만, Codex 작업 이력 삭제는 복구 불가능한 사용자 데이터 변경이므로 자동 수행하지 않았다.
+- 로컬 Codex session JSONL 45개에서 retired PAT/secret literal 507개를 파일 길이와 JSON 바이트 구조를 보존하는 동일 길이 marker로 치환했다. 원래 값과 바이트 위치는 Windows DPAPI CurrentUser로 암호화한 복구 지도에만 저장했고 ACL은 현재 사용자·Administrators·SYSTEM으로 제한했다.
+- redaction 후 raw credential pattern은 0건, marker 위치 실패와 잘린 파일은 0건이었다. 유지한 현재 CLI token은 복구 지도에 0건이었고, redaction 뒤 hosted MCP `auth_status=o_auth`와 `get_project_url` read smoke를 다시 통과했다.
 
 ## 열린 후속 조치
 
@@ -74,7 +76,6 @@ live eval의 13개 advisory는 위험 작업 실행이 아니라 staged write의
 |---|---|---|---|
 | 기존 P2 risk baseline 2,679건 | 신규 위반은 차단되지만 기존 부채는 점진 감축 필요 | 각 domain owner | 매 PR·주간 감사 |
 | OpenAI Harness Engineering 자동 링크 확인 403 | URL은 공식 검색에서 2026-09-01 현재 확인됐지만 자동 감사는 access-controlled 403을 P3로 유지 | platform-engineering | 2026-09-08 주간 감사 |
-| 로컬 Codex 과거 session JSONL의 retired credential literal | 현재 설정·MCP·공급자 활성 키는 아니지만 로컬 이력 백업에는 값이 남음; 작업 이력 삭제·재작성은 별도 사용자 승인과 백업 후 수행 | local operator | 2026-09-08 |
 
 새 Codex 세션에서는 먼저 `npm run check:agent-host`를 실행한다. OAuth read smoke는 완료됐으므로 Production write probe는 실행하지 않으며, project/read-only URL 계약과 공급자 read-only role로 차단을 유지한다.
 
