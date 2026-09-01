@@ -1,4 +1,5 @@
 const ALLOWED_SUPABASE_FEATURES = new Set(['database', 'debugging', 'development', 'docs']);
+const UNPARSED_TOML_VALUE = Symbol('unparsed-toml-value');
 
 function stripTomlComment(line) {
   let quote = null;
@@ -45,13 +46,13 @@ export function parseTomlScalarSections(text) {
       if (!sections.has(section)) sections.set(section, new Map());
       continue;
     }
-    const assignment = line.match(/^([A-Za-z0-9_-]+)\s*=\s*(.+)$/u);
+    const assignment = line.match(/^([^=]+?)\s*=\s*(.+)$/u);
     if (!assignment) continue;
-    const parsed = scalarValue(assignment[2]);
-    if (parsed === undefined) continue;
     const values = sections.get(section);
-    if (values.has(assignment[1])) errors.push(`duplicate TOML key ${section || '<root>'}.${assignment[1]}`);
-    values.set(assignment[1], parsed);
+    const key = assignment[1].trim();
+    if (values.has(key)) errors.push(`duplicate TOML key ${section || '<root>'}.${key}`);
+    const parsed = scalarValue(assignment[2]);
+    values.set(key, parsed === undefined ? UNPARSED_TOML_VALUE : parsed);
   }
   return { sections, errors };
 }
@@ -60,6 +61,7 @@ export function validateCodexTomlText(text, {
   approvalPolicy,
   sandboxMode,
   requireSupabaseDisabled = false,
+  requireScopedSupabase = false,
 } = {}) {
   const { sections, errors } = parseTomlScalarSections(text);
   const failures = [...errors];
@@ -74,6 +76,36 @@ export function validateCodexTomlText(text, {
   if (requireSupabaseDisabled) {
     const plugin = sections.get('plugins."supabase@openai-curated"');
     if (plugin?.get('enabled') !== false) failures.push('account-scoped Supabase plugin must be disabled');
+  }
+  if (requireScopedSupabase) {
+    const server = sections.get('mcp_servers.supabase');
+    const url = server?.get('url');
+    if (typeof url !== 'string') {
+      failures.push('project-scoped Supabase MCP server must be configured');
+    } else {
+      const syntheticConfig = JSON.stringify({ mcpServers: { supabase: { type: 'http', url } } });
+      for (const failure of validateSupabaseMcpConfigText(syntheticConfig)) {
+        failures.push(`Codex Supabase MCP: ${failure}`);
+      }
+    }
+    if (server && [...server.keys()].some((key) => key !== 'url')) {
+      failures.push('Codex Supabase MCP server must not contain headers, tokens, or executable fields');
+    }
+    if ([...sections.keys()].some((name) => name.startsWith('mcp_servers.supabase.'))) {
+      failures.push('Codex Supabase MCP server must not contain nested header, token, or executable tables');
+    }
+    for (const [name, values] of sections) {
+      if (!name.startsWith('mcp_servers.') || name === 'mcp_servers.supabase') continue;
+      const candidateUrl = values.get('url');
+      if (typeof candidateUrl !== 'string') continue;
+      try {
+        if (new URL(candidateUrl).hostname === 'mcp.supabase.com') {
+          failures.push(`additional Supabase MCP alias is not allowed: ${name}`);
+        }
+      } catch {
+        // Other MCP URL validation is outside this Supabase-specific host check.
+      }
+    }
   }
   return failures;
 }

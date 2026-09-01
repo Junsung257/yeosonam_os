@@ -1692,6 +1692,8 @@
     "scripts/lib/harness/doc-change-base.test.mjs",
     "scripts/lib/harness/external-links.mjs",
     "scripts/lib/harness/external-links.test.mjs",
+    "scripts/lib/harness/live-eval-config.mjs",
+    "scripts/lib/harness/live-eval-config.test.mjs",
     "scripts/lib/local-next-server.mjs",
     "scripts/lib/open-readiness-html.mjs",
     "scripts/lib/sapporo-food-budget-research.ts",

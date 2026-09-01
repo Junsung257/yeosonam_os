@@ -66,7 +66,12 @@ if (existsSync(localMcp)) {
 
 if (!repoOnly) {
   const codexConfig = resolve(homedir(), '.codex/config.toml');
-  inspectCodexToml(codexConfig, { approvalPolicy: 'on-request', sandboxMode: 'workspace-write', requireSupabaseDisabled: true });
+  inspectCodexToml(codexConfig, {
+    approvalPolicy: 'on-request',
+    sandboxMode: 'workspace-write',
+    requireSupabaseDisabled: true,
+    requireScopedSupabase: true,
+  });
   inspect(codexConfig, [
     { label: 'Serena derives the project from cwd', pattern: /--project-from-cwd/, expected: true },
     { label: 'apifable is version-pinned', pattern: /apifable@1\.1\.8/, expected: true },
