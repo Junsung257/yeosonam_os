@@ -492,6 +492,7 @@ The blog system is complete only when the admin UI can answer these questions wi
 ## Vercel Cron Bypass Fallback
 
 - `.github/workflows/blog-external-cron.yml` is the Vercel-Cron-independent scheduler.
+- As of 2026-09-01, Vercel keeps only the eight verified blog schedule entries in `vercel.json`. `analytics-delivery` is unscheduled while its durable queues are empty and production requests return an unregistered-key error; the authenticated route remains available for a controlled retry after credential verification. Do not restore the former 10-minute schedule without a non-empty queue and a successful manual delivery proof.
 - It calls the custom domain, not the protected `*.vercel.app` deployment URL:
   - `https://www.yeosonam.com/api/cron/blog-scheduler?force=true` at 08:50 KST to replenish and research publishable queue candidates.
   - `https://www.yeosonam.com/api/cron/blog-publisher` at 12:07, 15:07, 18:07, 21:07, and 22:07 KST.

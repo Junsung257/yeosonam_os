@@ -19,8 +19,6 @@ on:
         options:
           - 'false'
           - 'true'
-  schedule:
-    - cron: '30 19 * * *'
   push:
     branches: [main]
 

@@ -89,6 +89,14 @@ jobs:
           webhook-type: incoming-webhook
 ```
 
+### 9. Cron은 활성 큐와 운영 SLA가 있는 작업만 등록
+
+- `vercel.json`은 현재 운영이 승인된 allowlist만 유지한다. 절전 미들웨어에서 매번 `skipped`로 끝나는 경로를 스케줄에 미리 등록하지 않는다.
+- 일회성 backfill, canary, 전환 watchdog은 작업 기간이 끝나면 스케줄을 제거하고 API·스크립트만 복구용으로 보존한다.
+- 큐 생성 요청이 이미 worker를 깨우는 경로는 2~10분 polling cron을 추가하지 않는다. 별도 안전망이 필요하면 실제 SLA와 backlog 근거를 기록하고 가장 느린 허용 주기로 등록한다.
+- 외부 HTTP cron은 redirect를 따라가고 최종 HTTP 상태와 응답 body의 성공 필드를 모두 검증해야 한다. `curl`이 3xx를 성공으로 본 결과만으로 정상 처리하지 않는다.
+- 새 스케줄을 추가하거나 재활성화할 때는 `src/lib/cron-schedule-policy.test.ts`의 allowlist와 근거 문서를 함께 갱신한다.
+
 이유: secrets 컨텍스트는 step-level `if:` 에서 직접 못 읽음 + step-level `env:` 도
 같은 step 의 `if:` 에서 안전하게 못 읽음. **job-level env 가 유일하게 안전한 패턴**.
 
