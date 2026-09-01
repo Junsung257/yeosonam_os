@@ -1,7 +1,7 @@
-# GitHub Actions Workflow SOP (2026-05-15)
+# GitHub Actions Workflow SOP (2026-09-01)
 
-이 디렉토리에 새 워크플로 추가하거나 기존 워크플로 수정할 때 **반드시** 아래 체크리스트 통과.
-미준수 시 사장님 메일함이 fail 노이즈로 폭격 당함 (실제 발생: 2026-05-12 ~ 2026-05-15).
+이 디렉토리에 새 워크플로를 추가하거나 기존 워크플로를 수정할 때 아래 체크리스트를 통과한다.
+목표는 최소 권한, 재현 가능한 공급망, 결정적인 머지 게이트와 정보성 검사의 분리다.
 
 ## 필수 체크리스트
 
@@ -29,22 +29,19 @@ permissions:
 - name: Post test results
   if: always() && github.event_name == 'pull_request'
   continue-on-error: true   # ← 필수
-  uses: actions/github-script@v7
+  uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
 ```
 
-### 3. 사용 안 하는 워크플로는 **삭제**, `workflow_dispatch:` only 로 두지 말 것
+### 3. `workflow_dispatch`는 실제 수동 실행 경로에만 사용
 
-`on: workflow_dispatch:` 만 남기면 push 이벤트마다 GitHub 가 0-job startup_failure run 을 만들고,
-워크플로 레지스트리에 파일경로가 name 으로 박혀버린다 (지우기 전까진 매 push 마다 fail 메일).
+`workflow_dispatch` 전용 워크플로는 push 실행을 만들지 않는다. 다만 사용하지 않는 워크플로를 비활성화하는 수단으로 남겨두면 소유권과 실행 계약이 불명확해진다.
 
-⚠️ 과거 시도 (PR #66 v2, PR #67 v3) 가 이 함정에 빠졌다. 트리거 제거만 한다고 메일 안 멈춤.
-
-**원칙**: 1주 이상 안 쓰는 워크플로 = `git rm`.
+실제 수동 운영 경로와 owner가 있으면 유지하고, 그렇지 않으면 호출 관계·최근 실행·대체 경로를 확인한 뒤 일반 PR로 제거한다. 파일을 단순히 오래 실행하지 않았다는 이유만으로 자동 삭제하지 않는다.
 
 ### 4. 외부 액션 버전 고정 + deprecated 확인
 
 - `aquasecurity/trivy-action@master` 같은 floating tag 금지 (재현성 깨짐) → 외부 액션은 40자리 commit SHA로, Docker action은 `sha256` image digest로 고정하고 옆에 검증한 release 버전을 주석으로 남긴다.
-- `npm run verify:ci-action-pins`가 `ci.yml`의 floating action을 차단한다.
+- `npm run verify:ci-action-pins`가 모든 workflow의 검토 대상 action을 정확한 승인 SHA로 확인하고, 전체 외부 action·container가 immutable reference인지 검사한다.
 - 매 분기 deprecated 액션 점검:
   - Node 24 기반 최신 major와 GitHub-hosted runner 호환성을 확인한다.
   - major tag를 그대로 쓰지 않고 검증한 tag가 가리키는 commit SHA를 사용한다.
@@ -59,7 +56,7 @@ SARIF 업로드 403 같은 외부 실패가 메인 CI 통과를 막지 않게 �
 ```yaml
 - name: Trivy scan
   continue-on-error: true
-  uses: aquasecurity/trivy-action@master
+  uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
 ```
 
 ### 6. dummy env 시 build/visual 테스트는 `continue-on-error`
@@ -86,9 +83,10 @@ jobs:
     steps:
       - name: Notify release
         if: env.SLACK_WEBHOOK != ''                  # ← 빈 값이면 skip (fail 아님)
-        uses: slackapi/slack-github-action@v1
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
-          webhook-url: ${{ env.SLACK_WEBHOOK }}
+          webhook: ${{ env.SLACK_WEBHOOK }}
+          webhook-type: incoming-webhook
 ```
 
 이유: secrets 컨텍스트는 step-level `if:` 에서 직접 못 읽음 + step-level `env:` 도
@@ -98,7 +96,7 @@ jobs:
 
 ## 검증된 패턴 예시
 
-`ci.yml` (Continuous Integration) — 2026-05-15 박제:
+`ci.yml` (Continuous Integration) — 2026-09-01 검증:
 - Code Quality / Build / Performance / Security 4 잡 분리
 - `status` 잡이 quality+build 만 게이트 (security/performance 는 정보성)
 - Security 잡: `permissions: security-events: write` + `continue-on-error: true` 둘 다
@@ -116,5 +114,4 @@ jobs:
 - **PR #35** (2026-05-12 v1): 데모 워크플로 5개 제거
 - **PR #66** (2026-05-13 v2): 11개 워크플로의 push/PR 트리거 제거 → workflow_dispatch 만 남김
 - **PR #67** (2026-05-14 v3): 6개 schedule 제거
-- **2026-05-15 v4 (현재)**: v2 의 함정 — workflow_dispatch only 가 startup_failure 로 매 push fail 메일.
-  죽은 워크플로 3개 (api-docs / pr-lifecycle / test-quality) 삭제 + ci.yml Security Scan codeql v3 업그레이드.
+- **2026-05-15 v4**: 사용하지 않는 워크플로 3개 (api-docs / pr-lifecycle / test-quality) 삭제 + ci.yml Security Scan codeql v3 업그레이드. 당시 startup failure의 직접 원인은 보존된 실행 기록으로 재확인하기 전까지 `workflow_dispatch` 자체로 단정하지 않는다.

@@ -1,9 +1,9 @@
 # 2026-09-01 문서·AI 하네스 통합 리팩터링 감사
 
-상태: merged to main via PR #1218 and #1219; Production deployment/readiness verified; local isolated-data boundary correction included in PR #1220; non-blocking advisory debt only
+상태: merged to main via PR #1218, #1219, #1220; Production deployment/readiness verified; remaining advisories under final verification; non-blocking advisory debt only
 담당: platform-engineering
-기준: `origin/main@faa045e60dccecbed803d0509fbea157657b7b51`
-브랜치: `codex/harness-doc-remediation-20260901`, `codex/production-readiness-event-fix-20260901`, `codex/local-readiness-data-boundary-20260901`
+기준: `origin/main@d5c2503553604963815ba14cc346842927dcdc2d`
+브랜치: `codex/harness-doc-remediation-20260901`, `codex/production-readiness-event-fix-20260901`, `codex/local-readiness-data-boundary-20260901`, `codex/remaining-harness-advisories-20260901`
 검토 PR: `#1218`, `#1219`, `#1220`
 Research Node 통합: `b08e2ac77`
 dirty 작업 보존 snapshot: `b1e8b9d4b`
@@ -69,6 +69,13 @@ dirty 작업 보존 snapshot: `b1e8b9d4b`
 
 live eval의 13개 advisory는 위험 작업 실행이 아니라 staged write의 mode 표현, Spec 과대·과소 판단, 서로 인접한 agent-workflow/doc-automation SSOT 선택, research/MCP 보조 문서 라우팅, 허용된 로컬 대형 작업의 과도한 차단이었다. raw prompt·tool argument·환경값은 감사 문서에 저장하지 않으며 ignored `artifacts/promptfoo-harness-live-results.json`만 로컬 재현 증거로 남는다.
 
+## 후속 advisory 정리
+
+- 37개 workflow의 `actions/checkout`, `actions/setup-node`, `actions/upload-artifact`, `actions/github-script`를 2026-09-01에 검증한 최신 major의 immutable commit SHA로 갱신했다. Lighthouse action과 기존 OWASP·Slack·create-pull-request·Codecov action도 현재 사용 중인 계약의 검증된 commit으로 고정했고, CLI는 `@lhci/cli@0.15.1`로 고정했다. `verify:ci-action-pins`는 이제 검토한 9종의 정확한 SHA와 전체 workflow의 모든 외부 immutable reference를 검사한다.
+- Lighthouse 계약은 변동이 큰 recommended audit 전체 묶음 대신 category, Core Web Vitals, 접근성 이름, 전송량을 명시적으로 검사한다. navigation-only 실험으로 측정할 수 없는 INP는 CI assertion에서 제거하고 field telemetry 대상으로 분리했다.
+- 첫 방문 동의 배너를 서버 첫 HTML에 렌더하고 analytics·pixel만 지연 로드하도록 경계를 조정했다. 검색 버튼의 보이는 텍스트와 접근성 이름 불일치도 제거했다. 초기 HTML smoke에서 동의 UI와 meta description 존재를 확인했고, 배너 SSR 회귀 테스트 2건을 추가했다.
+- 이전 Lighthouse CI 기준 성능은 약 0.74, LCP 3.21~3.45초였다. 이번 구조 변경의 동일 runner 재측정 전까지 성능 개선을 완료로 단정하지 않으며, 전용 Lighthouse workflow에서 목표 미달을 계속 추적한다.
+
 ## 자격증명·MCP 후속 감사
 
 - 과거 노출 PAT의 SHA-256 prefix는 `14d7b4e188ce33b8`, 과거 MCP secret/service key prefix는 `5e41c8e819022df5`다. 원문 값은 보고서·로그에 복사하지 않았다.
@@ -87,9 +94,11 @@ live eval의 13개 advisory는 위험 작업 실행이 아니라 staged write의
 
 | 항목 | 영향 | 담당 | 다음 확인일 |
 |---|---|---|---|
-| 기존 P2 risk baseline 2,679건 | 신규 위반은 차단되지만 기존 부채는 점진 감축 필요 | 각 domain owner | 매 PR·주간 감사 |
+| API 직접 JSON 응답 2,152건 (325 files) | 신규 위반은 차단되지만 공통 API response helper로 점진 감축 필요 | API platform + route owners | 매 PR·주간 감사 |
+| 기존 `as any` 508건 (164 files) | 신규 위반은 차단되지만 경계 타입·schema 기반으로 점진 감축 필요 | TypeScript/domain owners | 매 PR·주간 감사 |
+| 직접 LLM client 19건 (19 files) | 신규 위반은 차단되지만 model router 경유로 점진 감축 필요 | AI platform | 매 PR·주간 감사 |
 | OpenAI Harness Engineering 자동 링크 확인 403 | URL은 공식 검색에서 2026-09-01 현재 확인됐지만 자동 감사는 access-controlled 403을 P3로 유지 | platform-engineering | 2026-09-08 주간 감사 |
-| GitHub JavaScript actions Node 20 런타임 경고 | 현재 workflow job runtime은 Node 24이나 일부 upstream action bundle은 Node 20을 내장한다. 공급자 major 업데이트 시 고정 SHA를 재검증한다. | platform-engineering | 2026-09-08 주간 감사 |
+| Lighthouse performance 0.80·LCP 2.5초 목표 재측정 | 이전 comparable CI는 performance 약 0.74, LCP 3.21~3.45초다. SSR/preload 변경 뒤 동일 runner 결과를 확인한다. 일반 CI에서는 advisory, 전용 수동 계약에서는 hard gate다. | frontend-platform | 이번 PR CI 및 2026-09-08 주간 감사 |
 
 새 Codex 세션에서는 먼저 `npm run check:agent-host`를 실행한다. OAuth read smoke는 완료됐으므로 Production write probe는 실행하지 않으며, project/read-only URL 계약과 공급자 read-only role로 차단을 유지한다.
 

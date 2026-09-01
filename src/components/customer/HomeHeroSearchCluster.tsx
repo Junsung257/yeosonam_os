@@ -275,7 +275,6 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
           type="button"
           onClick={() => setExpanded(true)}
           className="w-full flex items-center gap-3 bg-white border border-[#E5E7EB] rounded-2xl px-4 py-3.5 shadow-[0_4px_16px_rgba(49,130,246,0.07)] hover:border-brand/40 hover:shadow-[0_4px_20px_rgba(49,130,246,0.13)] transition-all card-touch"
-          aria-label="여행 검색 열기"
         >
           <span className="text-xl flex-shrink-0">🔍</span>
           <span className="flex-1 text-left">

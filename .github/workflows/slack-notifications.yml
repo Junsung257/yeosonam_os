@@ -21,13 +21,14 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Notify deployment start
         if: github.event_name == 'deployment' && env.SLACK_WEBHOOK != ''
-        uses: slackapi/slack-github-action@v1
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
-          webhook-url: ${{ env.SLACK_WEBHOOK }}
+          webhook: ${{ env.SLACK_WEBHOOK }}
+          webhook-type: incoming-webhook
           payload: |
             {
               "channel": "#deployments",
@@ -62,9 +63,10 @@ jobs:
 
       - name: Notify deployment success
         if: github.event.deployment_status.state == 'success' && env.SLACK_WEBHOOK != ''
-        uses: slackapi/slack-github-action@v1
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
-          webhook-url: ${{ env.SLACK_WEBHOOK }}
+          webhook: ${{ env.SLACK_WEBHOOK }}
+          webhook-type: incoming-webhook
           payload: |
             {
               "channel": "#deployments",
@@ -94,9 +96,10 @@ jobs:
 
       - name: Notify deployment failure
         if: github.event.deployment_status.state == 'failure' && env.SLACK_WEBHOOK != ''
-        uses: slackapi/slack-github-action@v1
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
-          webhook-url: ${{ env.SLACK_WEBHOOK }}
+          webhook: ${{ env.SLACK_WEBHOOK }}
+          webhook-type: incoming-webhook
           payload: |
             {
               "channel": "#deployments",
@@ -126,9 +129,10 @@ jobs:
 
       - name: Notify PR merge
         if: github.event_name == 'push' && env.SLACK_WEBHOOK != ''
-        uses: slackapi/slack-github-action@v1
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
-          webhook-url: ${{ env.SLACK_WEBHOOK }}
+          webhook: ${{ env.SLACK_WEBHOOK }}
+          webhook-type: incoming-webhook
           payload: |
             {
               "channel": "#releases",

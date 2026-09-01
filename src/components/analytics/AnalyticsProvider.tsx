@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import ConsentBanner from '@/components/ConsentBanner';
 import {
   installAttributionCapture,
   trackAnalyticsEvent,
@@ -75,7 +74,6 @@ export default function AnalyticsProvider({
           expectedHostname={expectedHostname}
         />
       ) : null}
-      {!isInternal ? <ConsentBanner /> : null}
     </>
   );
 }
