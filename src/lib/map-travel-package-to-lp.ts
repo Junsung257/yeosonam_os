@@ -1,12 +1,12 @@
 import type { PriceListItem } from '@/lib/parser';
 import { normalizeDays } from '@/lib/attraction-matcher';
-import { getEffectivePriceDates } from '@/lib/price-dates';
+import { getEffectivePriceDates, getUpcomingPriceDates } from '@/lib/price-dates';
 import { getKakaoChannelChatUrl } from '@/lib/kakaoChannel';
 import { renderPackage, type CanonicalView } from '@/lib/render-contract';
 import { extractLegalNoticeLinesFromPkg, extractSourcePreparationNoticeLinesFromPkg } from '@/lib/legal-notice';
 import { buildRecommendationDisplay, type PackageScoreDisplayRow, type RecommendationDisplay } from '@/lib/scoring/recommendation-display';
 import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
-import { formatKstDate, isUpcomingKstDate, isValidIsoDateKst } from '@/lib/kst-date';
+import { formatKstDate, isValidIsoDateKst } from '@/lib/kst-date';
 import type { NormalizedOptionalTour } from '@/lib/itinerary-render';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
 import { readRegistrationTermsPolicySnapshot, type NoticeBlock } from '@/lib/standard-terms-client';
@@ -406,16 +406,19 @@ export function mapTravelPackageToLandingData(
   const effectiveDates = getEffectivePriceDates(pkg as Parameters<typeof getEffectivePriceDates>[0]);
   const sortedDates = [...effectiveDates].filter(row => row.date).sort((a, b) => a.date.localeCompare(b.date));
   const todayStr = formatKstDate();
-  const upcoming = sortedDates.find(row => isUpcomingKstDate(row.date, todayStr)) ?? sortedDates[0] ?? null;
+  const upcomingDates = getUpcomingPriceDates(sortedDates, todayStr);
+  const upcoming = upcomingDates[0] ?? null;
 
-  const priceNums = effectiveDates.map(row => row.price).filter((price): price is number => typeof price === 'number' && price > 0);
-  const minPrice = projectionNumber(lpProjection, 'price')
-    ?? (priceNums.length > 0 ? Math.min(...priceNums) : 0);
+  const priceNums = upcomingDates.map(row => row.price).filter((price): price is number => typeof price === 'number' && price > 0);
+  const hasDatedSourcePrices = sortedDates.length > 0;
+  const minPrice = hasDatedSourcePrices
+    ? (priceNums.length > 0 ? Math.min(...priceNums) : 0)
+    : projectionNumber(lpProjection, 'price') ?? 0;
   const customerBudget = readCustomerBudget(pkg, lpProjection);
   // A different departure date's higher selling price is not a crossed-out
   // list price. Show a comparison only when the same source price row carries
   // an explicit list-price -> final-sale relation.
-  const compareAtPrice = getExplicitSourceCompareAtPrice(effectiveDates, minPrice);
+  const compareAtPrice = getExplicitSourceCompareAtPrice(upcomingDates, minPrice);
 
   const held = typeof pkg.seats_held === 'number' ? pkg.seats_held : 0;
   const confirmed = typeof pkg.seats_confirmed === 'number' ? pkg.seats_confirmed : 0;

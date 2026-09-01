@@ -21,7 +21,8 @@ import type { ChannelSource, LandingProductData } from '@/lib/map-travel-package
 import type { NoticeBlock } from '@/lib/standard-terms';
 import { sanitizeNoticeForCustomerSurface } from '@/lib/standard-terms-client';
 import { trackAnalyticsEvent } from '@/lib/analytics';
-import { getPriceScopeLabel } from '@/lib/price-dates';
+import { getPriceScopeLabel, getUpcomingPriceDates } from '@/lib/price-dates';
+import { formatKstDate } from '@/lib/kst-date';
 
 const PriceSectionCard = dynamic(() => import('@/components/lp/PriceSection'));
 const LeadBottomSheet = dynamic(() => import('@/components/lp/LeadBottomSheet'), { ssr: false });
@@ -175,9 +176,13 @@ function PriceSection({ priceFrom, compareAtPrice, deadlineDays, ticketingCondit
           {compareAtPrice != null && compareAtPrice > priceFrom && (
             <p className="text-sm text-[var(--text-muted)] line-through">{fmt(compareAtPrice)}원</p>
           )}
-          <p className="text-3xl font-extrabold text-[var(--text-primary)]">
-            {fmt(priceFrom)}<span className="text-lg font-semibold text-[var(--text-body)]">원~</span>
-          </p>
+          {priceFrom > 0 ? (
+            <p className="text-3xl font-extrabold text-[var(--text-primary)]">
+              {fmt(priceFrom)}<span className="text-lg font-semibold text-[var(--text-body)]">원~</span>
+            </p>
+          ) : (
+            <p className="text-2xl font-extrabold text-[var(--text-primary)]">현재 요금 상담 확인</p>
+          )}
         </div>
         <p className="text-sm text-[var(--text-muted)] pb-1">
           {customerBudget?.fuel_surcharge.status === 'included'
@@ -190,7 +195,8 @@ function PriceSection({ priceFrom, compareAtPrice, deadlineDays, ticketingCondit
                 : '1인 기준 상품가'}
         </p>
       </div>
-      {customerBudget?.calculation === 'base_plus_fuel'
+      {priceFrom > 0
+        && customerBudget?.calculation === 'base_plus_fuel'
         && customerBudget.expected_budget != null
         && customerBudget.fuel_surcharge.amount != null && (
           <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 px-3.5 py-3">
@@ -205,7 +211,7 @@ function PriceSection({ priceFrom, compareAtPrice, deadlineDays, ticketingCondit
             </p>
           </div>
         )}
-      {customerBudget?.calculation === 'fuel_confirmation_required' && (
+      {priceFrom > 0 && customerBudget?.calculation === 'fuel_confirmation_required' && (
         <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-3.5 py-3">
           <p className="text-sm font-bold text-amber-950">예상 부담금액은 유류할증료 확인 후 안내됩니다.</p>
           <p className="mt-1 text-xs text-amber-800">확인되지 않은 금액을 상품가에 임의로 더하지 않습니다.</p>
@@ -233,12 +239,22 @@ function formatShortDate(date: string): string {
 }
 
 function DepartureDatesSummary({ priceDates }: { priceDates?: LandingProductData['price_dates'] }) {
-  const rows = [...(priceDates ?? [])]
+  const upcomingRows = getUpcomingPriceDates(priceDates, formatKstDate())
     .filter(row => row.date && row.price > 0)
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, 5);
-  if (rows.length === 0) return null;
-  const hiddenCount = Math.max(0, (priceDates?.length ?? 0) - rows.length);
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const rows = upcomingRows.slice(0, 5);
+  if (rows.length === 0) {
+    if (!priceDates?.length) return null;
+    return (
+      <section className="border-t border-gray-100 bg-white px-5 py-5">
+        <h3 className="text-base font-bold text-gray-900">출발일 상담 확인</h3>
+        <p className="mt-2 text-sm leading-relaxed text-gray-600">
+          원문에 기재된 출발일이 모두 지났습니다. 희망 일정을 남기면 현재 가능한 날짜와 요금을 다시 확인해 드립니다.
+        </p>
+      </section>
+    );
+  }
+  const hiddenCount = Math.max(0, upcomingRows.length - rows.length);
 
   return (
     <section className="border-t border-gray-100 bg-white px-5 py-5">

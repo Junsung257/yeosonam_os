@@ -32,8 +32,6 @@ function todayYMD(): string {
 }
 
 export default function DepartureCalendar({ priceDates, selectedDate, onSelect, initialMonth }: Props) {
-  const [pastToast, setPastToast] = useState<string | null>(null);
-
   const dateMap = useMemo(() => {
     const m = new Map<string, PriceDate[]>();
     (priceDates || []).forEach(d => {
@@ -185,11 +183,9 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
             <button
               key={i}
               type="button"
+              disabled={!isAvailable || isPast}
               onClick={() => {
-                if (isPast) {
-                  setPastToast(ymd);
-                  setTimeout(() => setPastToast(null), 1800);
-                } else if (isAvailable) {
+                if (isAvailable && !isPast) {
                   onSelect(ymd);
                 }
               }}
@@ -264,12 +260,6 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-500 inline-block" /> 최저가</span>
       </div>
 
-      {/* 과거 날짜 탭 시 토스트 */}
-      {pastToast && (
-        <div className="mt-2 text-center text-xs text-slate-400 animate-pulse">
-          이미 지난 날짜입니다
-        </div>
-      )}
     </div>
   );
 }
