@@ -1,6 +1,6 @@
 # 여소남 OS 현재 상태와 권위 색인
 
-> 검증 기준: 2026-09-01 · 현재 사실은 코드·테스트와 [생성 inventory](docs/generated/system-inventory.md)를 우선한다.
+> 검증 기준: 2026-09-02 · 현재 사실은 코드·테스트와 [생성 inventory](docs/generated/system-inventory.md)를 우선한다.
 
 ## 제품 경계
 
@@ -37,6 +37,7 @@
 - 외부 조사 결과는 시장 반응·주제 후보이며 가격·일정·취소규정의 최종 사실 근거가 아니다.
 - Supabase MCP는 프로젝트 범위·읽기 전용·최소 feature group이 기본이다. 계정 범위 플러그인은 기본 비활성으로 둔다.
 - 문서 감사와 에이전트 설정은 Production DB나 배포를 자동 실행하지 않는다.
+- 블로그 모델 비교는 DeepSeek champion을 유지하는 비용 승인형 advisory lane이다. NVIDIA NIM과 고정 OpenRouter 모델만 3건 smoke 후 V5 33건을 두 번 평가할 수 있으며, 결과는 production provider나 DB enum을 자동 변경하지 않는다.
 - Vercel 정기 실행은 검증된 블로그 핵심 8개와 만료된 승인·AI 작업을 정리하는 일 1회 `agent-housekeeping`만 allowlist로 유지한다. 상품등록 backfill·watchdog와 비활성 기능은 API 코드를 보존하되 상시 스케줄에 선등록하지 않는다.
 
 ## 운영 검증

@@ -229,6 +229,8 @@ logs/
 .promptfoo/
 promptfoo-results/
 /artifacts/
+# Live model prompts and responses are private evidence, never repository artifacts.
+/artifacts/private/blog-model-eval/
 
 # 세션 작업 파일 (git에 포함 금지)
 .commit-msg.txt

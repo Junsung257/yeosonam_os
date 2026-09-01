@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+description: Yeosonam advisory blog editorial model comparison (3-case smoke, then 33 cases twice)
+
+prompts:
+  - id: people-first-editorial-judge-v1
+    raw: |
+      You are an independent Korean travel-blog editorial judge. Do not rewrite the article.
+      Evaluate only the candidate text against the reader intent and title.
+
+      Return exactly one JSON object with this shape and no markdown:
+      {"passed":true,"dimensions":{"usefulness":true,"naturalness":true,"completeness":true,"originality":true,"source_honesty":true},"reasons":[]}
+
+      `passed` must equal the logical AND of all five boolean dimensions.
+      Reject content that does not directly answer the reader, leaks internal labels or repetitive instructions,
+      invents completeness, copies commodity prose, or calls crowd/pricing sources official evidence.
+
+      Reader intent: {{intent}}
+      Title: {{title}}
+      Candidate article:
+      {{candidate_answer}}
+
+providers:
+  - file://providers/blog-model-eval-provider.mjs
+
+defaultTest:
+  options:
+    disableVarExpansion: true
+  assert:
+    - type: javascript
+      value: file://assertions/blog-model-eval-live.cjs
+      metric: people-first-live-judge
+
+tests: file://load-blog-editorial-live-tests.cjs
+
+commandLineOptions:
+  share: false
+  cache: false
+  write: false
+  maxConcurrency: 1

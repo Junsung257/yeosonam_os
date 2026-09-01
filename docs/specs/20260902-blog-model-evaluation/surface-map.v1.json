@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "taskId": "20260902-blog-model-evaluation",
+  "agents": [
+    {
+      "id": "model-eval-owner",
+      "role": "implementation",
+      "write": [
+        ".gitignore",
+        "CURRENT_STATUS.md",
+        "config/blog-model-evaluation-policy.json",
+        "config/external-tool-adoption-policy.json",
+        "docs/ai-ops-current-ssot.md",
+        "docs/document-registry.yml",
+        "docs/generated/system-inventory.json",
+        "docs/generated/system-inventory.md",
+        "docs/specs/20260902-blog-model-evaluation/**",
+        "evals/blog-model/latest-summary.json",
+        "package.json",
+        "promptfoo/blog-editorial-live.yaml",
+        "promptfoo/assertions/blog-model-eval-live.cjs",
+        "promptfoo/load-blog-editorial-live-tests.cjs",
+        "promptfoo/providers/blog-model-eval-provider.mjs",
+        "scripts/check-blog-model-eval-contract.mjs",
+        "scripts/promote-blog-model-eval-summary.mjs",
+        "scripts/run-blog-model-eval.mjs",
+        "scripts/lib/blog-model-eval/**"
+      ],
+      "readOnly": [
+        "promptfoo/load-blog-editorial-tests.cjs",
+        "promptfoo/assertions/blog-editorial-contract.cjs",
+        "src/lib/blog-deepseek-orchestrator-v4.ts",
+        "tools/harness-evals/package.json",
+        "tools/harness-evals/package-lock.json"
+      ],
+      "forbidden": ["src/lib/ai-provider-policy.ts", "supabase/migrations/**", ".github/**"]
+    },
+    {
+      "id": "model-eval-reviewer",
+      "role": "review",
+      "write": [],
+      "readOnly": ["**"],
+      "forbidden": ["**"]
+    }
+  ]
+}

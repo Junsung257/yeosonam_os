@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "verifiedAt": "2026-09-02",
+  "precedence": [
+    "repository SSOT",
+    "approval state machines",
+    "delivery evidence",
+    "external tool"
+  ],
+  "tools": [
+    {
+      "id": "zapier-mcp",
+      "status": "peripheral_low_frequency_only",
+      "allowed": ["owner Gmail convenience", "owner Notion convenience"],
+      "forbidden": ["booking", "payment", "deposit", "product publication", "PII", "external publication"],
+      "economics": {
+        "freePlanTasksPerMonth": 100,
+        "tasksPerSuccessfulMcpCall": 2,
+        "verifyBeforeUse": true
+      },
+      "sources": [
+        "https://help.zapier.com/hc/en-us/articles/32337438839565-What-s-included-in-Zapier-s-Free-plan",
+        "https://help.zapier.com/hc/en-us/articles/48308034391821-What-is-Zapier-MCP"
+      ]
+    },
+    {
+      "id": "fluidvoice",
+      "status": "personal_productivity_only_deferred",
+      "repositoryIntegrationAllowed": false,
+      "reason": "Official project remains macOS-first and says Windows is on the way.",
+      "source": "https://github.com/altic-dev/FluidVoice"
+    },
+    {
+      "id": "conductor-build",
+      "status": "not_adopted",
+      "repositoryIntegrationAllowed": false,
+      "reason": "The named coding-agent worktree app officially instructs users to run it on Mac and overlaps Yeosonam's existing worktree and agent-office controls.",
+      "source": "https://www.conductor.build/docs"
+    },
+    {
+      "id": "bytez",
+      "status": "not_adopted",
+      "repositoryIntegrationAllowed": false,
+      "reason": "Its hosted model routing duplicates the existing provider-policy and cost-ledger boundary.",
+      "source": "https://docs.bytez.com/http-reference/model/run"
+    },
+    {
+      "id": "headcount-bulk-skills",
+      "status": "bulk_install_forbidden",
+      "repositoryIntegrationAllowed": false,
+      "reason": "Only individually reviewed and Yeosonam-rewritten skills may enter the repository."
+    }
+  ]
+}
