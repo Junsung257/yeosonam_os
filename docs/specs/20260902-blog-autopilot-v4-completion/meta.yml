@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "tier": 3,
-  "status": "completed",
+  "status": "active",
   "owner": "content-operations",
   "review_file": "review.md",
   "verified_commit": "b001d2b8d",
