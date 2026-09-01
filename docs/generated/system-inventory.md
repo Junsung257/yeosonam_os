@@ -8,8 +8,8 @@ This file is generated from the repository. Do not edit it directly.
 |---|---:|
 | API routes | 724 |
 | App pages | 212 |
-| Supabase migrations | 556 |
-| GitHub workflows | 37 |
+| Supabase migrations | 558 |
+| GitHub workflows | 34 |
 | Repository scripts | 314 |
 
 ## API routes
@@ -745,7 +745,6 @@ This file is generated from the repository. Do not edit it directly.
 - .github/workflows/api-contract.yml
 - .github/workflows/api-security.yml
 - .github/workflows/attractions-ssot-guard.yml
-- .github/workflows/baseline-refresh.yml
 - .github/workflows/blog-editorial-harness-v5.yml
 - .github/workflows/blog-external-cron.yml
 - .github/workflows/blog-mobile-proof-refresh.yml
@@ -759,13 +758,11 @@ This file is generated from the repository. Do not edit it directly.
 - .github/workflows/db-query-performance.yml
 - .github/workflows/disaster-recovery.yml
 - .github/workflows/harness-weekly.yml
-- .github/workflows/high-freq-crons.yml
 - .github/workflows/lighthouse-ci.yml
 - .github/workflows/local-release-readiness.yml
 - .github/workflows/marketing-release-readiness.yml
 - .github/workflows/migration-safety.yml
 - .github/workflows/open-readiness.yml
-- .github/workflows/ota-alias-enrichment.yml
 - .github/workflows/performance-budget.yml
 - .github/workflows/pr-quality-gate.yml
 - .github/workflows/register-pipeline-tests.yml
@@ -781,8 +778,6 @@ This file is generated from the repository. Do not edit it directly.
 
 ## Recent migrations
 
-- supabase/migrations/20260817040000_product_registration_snapshot_search_embeddings.sql
-- supabase/migrations/20260817043000_blog_automated_atomic_replacement_v1.sql
 - supabase/migrations/20260817121500_add_danang_itinerary_decision_sources.sql
 - supabase/migrations/20260818080000_blog_deepseek_auto_repair_budget_v1.sql
 - supabase/migrations/20260823235147_correct_clobe_refund_outflow_600500.sql
@@ -811,5 +806,7 @@ This file is generated from the repository. Do not edit it directly.
 - supabase/migrations/20260831120000_add_kakao_guam_taxi_faq_research_source.sql
 - supabase/migrations/20260831123000_add_visit_guam_transportation_research_source.sql
 - supabase/migrations/20260831131500_add_guam_transport_reviewed_source_snapshots.sql
+- supabase/migrations/20260901091853_retire_broken_expire_products_cron.sql
+- supabase/migrations/20260901092023_deactivate_orphaned_cron_policies.sql
 
 The complete deterministic inventory is stored in docs/generated/system-inventory.json.
