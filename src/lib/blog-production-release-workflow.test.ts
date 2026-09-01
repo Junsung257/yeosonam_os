@@ -38,6 +38,15 @@ describe('blog V4 protected production release workflow', () => {
     );
   });
 
+  it('installs and audits the pinned evaluator before the editorial release gate', () => {
+    const setup = source.indexOf('npm run setup:harness-evals');
+    const audit = source.indexOf('npm run audit:harness-evals');
+    const evaluate = source.indexOf('npm run eval:blog-editorial:offline');
+    expect(setup).toBeGreaterThan(0);
+    expect(setup).toBeLessThan(audit);
+    expect(audit).toBeLessThan(evaluate);
+  });
+
   it('verifies protected candidate URLs and fails closed around live promotion', () => {
     expect(source).toContain('VERCEL_AUTOMATION_BYPASS_SECRET');
     expect(source).toContain('SUPABASE_ACCESS_TOKEN');
