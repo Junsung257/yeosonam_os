@@ -97,6 +97,8 @@ jobs:
           npm ci
           npm run verify:blog-release-bundle-v4
           npm run test:blog-autopilot-v4
+          npm run setup:harness-evals
+          npm run audit:harness-evals
           npm run eval:blog-editorial:offline
           npm run type-check
           npx vitest run \
