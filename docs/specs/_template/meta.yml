@@ -4,6 +4,7 @@
   "status": "template",
   "owner": "<team-or-role>",
   "review_file": "review.md",
+  "surface_map_version": 1,
   "verified_commit": null,
   "verification": [],
   "evidence_paths": []

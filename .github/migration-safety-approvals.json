@@ -389,6 +389,15 @@
       "approvedIssueCounts": {
         "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 1
       }
+    },
+    "20260901114420_blog_autopilot_v4_truth_and_lifecycle.sql": {
+      "sha256": "f6273013b2ba7b863d72f36e263fa0bf1eb5a9a21842f09b650872bf8b3732ed",
+      "status": "A",
+      "rationale": "The exception is limited to two replay-safe lifecycle indexes on existing production tables. A read-only pre-release probe measured indexing_reports at approximately 4,712 rows / 3.8 MB and blog_visibility_snapshots at approximately 9,396 rows / 10 MB. The transactional migration sets lock_timeout to 5 seconds and fails closed instead of waiting indefinitely; Supabase migration transactions cannot use CREATE INDEX CONCURRENTLY.",
+      "evidence": "docs/specs/20260902-blog-autopilot-v4-completion/verification.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 2
+      }
     }
   }
 }

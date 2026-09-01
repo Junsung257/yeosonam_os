@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "taskId": "20260902-external-tool-foundation",
+  "agents": [
+    {
+      "id": "foundation-owner",
+      "role": "implementation",
+      "write": [
+        ".agents/skills/yeosonam-external-skill-intake/**",
+        ".claude/skills/yeosonam-external-skill-intake/**",
+        "config/agent-skill-sources.json",
+        "scripts/check-agent-surfaces.mjs",
+        "scripts/check-external-skill-sources.mjs",
+        "scripts/lib/harness/agent-surfaces.mjs",
+        "scripts/lib/harness/agent-surfaces.test.mjs",
+        "scripts/lib/harness/external-skill-sources.test.mjs",
+        "docs/specs/_template/**",
+        "docs/specs/20260902-external-tool-foundation/**",
+        "docs/agent-workflow-current-ssot.md",
+        "docs/ai-agent-doc-automation.md",
+        "docs/generated/system-inventory.md",
+        "docs/generated/system-inventory.json",
+        "package.json"
+      ],
+      "readOnly": ["AGENTS.md", "CURRENT_STATUS.md"],
+      "forbidden": ["src/**", "supabase/**", ".github/**"]
+    }
+  ]
+}

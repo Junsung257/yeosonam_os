@@ -187,8 +187,8 @@ describe('blog ops quality summary', () => {
 
       expect(summary.publish).toMatchObject({
         configured_daily_target: 5,
-        effective_daily_target: 1,
-        daily_publish_cap: 1,
+        effective_daily_target: 5,
+        daily_publish_cap: 5,
         autopublish_mode: 'draft_only',
         public_publication_enabled: false,
         daily_target: 0,

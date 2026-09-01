@@ -20,6 +20,7 @@ interface OpsSummary {
   };
   health_sections?: {
     quality?: { level: OpsLevel; failed: boolean; checks: string[] };
+    seo_operations?: { level: OpsLevel; failed: boolean; checks: string[] };
   };
   preflight?: { status?: 'pass' | 'warn' | 'block'; score?: number };
   canary_preflight?: { status?: 'pass' | 'warn' | 'block'; ready_count?: number; requested?: number };
@@ -52,6 +53,7 @@ const CHECK_LABELS: Record<string, string> = {
   canary_candidates_unavailable: 'Canary 후보 부족',
   current_day_publisher_failure: '오늘 발행자 실패',
   google_url_unknown: '구글 미인지 URL',
+  seo_weekly_audit_failed_or_critical: '주간 SEO 감사',
 };
 
 function checkLabels(checks: string[]) {

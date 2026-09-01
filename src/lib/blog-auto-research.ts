@@ -33,6 +33,14 @@ import {
 } from '@/lib/blog-generation-research';
 import { inspectBlogInformationClaimTypeCompatibility } from '@/lib/blog-information-claim-validator';
 import { matchesBlogResearchDestinationScope } from '@/lib/blog-research-destination-scope';
+import {
+  classifyBlogResearchSourceFormatV4,
+  extractWithCrawl4AiV4,
+  extractWithDoclingV4,
+  type BlogExternalAdapterBenchmarkRowV4,
+  type BlogExternalAdapterIdV4,
+} from '@/lib/blog-research-source-adapters-v4';
+import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin } from '@/lib/supabase';
 
 const AUTO_RESEARCH_MODEL = BLOG_DEEPSEEK_MODELS.rewrite;
@@ -242,7 +250,7 @@ export type ReviewedDirectPage = {
   url: string;
   title: string;
   text: string;
-  acquisition?: 'reviewed_direct_fetch' | 'reviewed_registry_snapshot';
+  acquisition?: 'reviewed_direct_fetch' | 'reviewed_registry_snapshot' | 'crawl4ai_fallback' | 'docling_fallback';
 };
 
 export type ReviewedRegistrySnapshotRow = {
@@ -401,14 +409,10 @@ async function fetchReviewedDirectPage(input: {
     if (!response.ok) throw new Error(`http_${response.status}:${input.entry.hostname}`);
 
     const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
-    const isPdf = contentType.includes('application/pdf');
-    const isStructuredText = contentType.includes('application/json')
-      || contentType.includes('application/xml')
-      || contentType.includes('text/xml');
-    if (!contentType.includes('text/html')
-      && !contentType.includes('text/plain')
-      && !isStructuredText
-      && !isPdf) {
+    const sourceFormat = classifyBlogResearchSourceFormatV4({ contentType, url: currentUrl });
+    const isPdf = sourceFormat === 'pdf';
+    const isStructuredText = sourceFormat === 'structured_text';
+    if (!['html', 'structured_text', 'pdf'].includes(sourceFormat)) {
       throw new Error(`unsupported_content_type:${input.entry.hostname}`);
     }
     const contentLength = Number(response.headers.get('content-length') ?? 0);
@@ -476,10 +480,74 @@ async function fetchReviewedDirectPageWithRetry(input: {
   try {
     return await fetchReviewedDirectPage(input);
   } catch (error) {
-    if (!isRetryableReviewedDirectFetchError(error)) throw error;
+    if (!isRetryableReviewedDirectFetchError(error)) {
+      return fetchReviewedDirectPageWithBenchmarkedFallback(input, error);
+    }
     await new Promise((resolve) => setTimeout(resolve, 100));
-    return fetchReviewedDirectPage(input);
+    try {
+      return await fetchReviewedDirectPage(input);
+    } catch (retryError) {
+      return fetchReviewedDirectPageWithBenchmarkedFallback(input, retryError);
+    }
   }
+}
+
+const adapterBenchmarkCache = new Map<BlogExternalAdapterIdV4, Promise<BlogExternalAdapterBenchmarkRowV4 | null>>();
+
+async function loadLatestExternalAdapterBenchmark(
+  adapter: BlogExternalAdapterIdV4,
+): Promise<BlogExternalAdapterBenchmarkRowV4 | null> {
+  const existing = adapterBenchmarkCache.get(adapter);
+  if (existing) return existing;
+  const request = (async () => {
+    const { data, error } = await supabaseAdmin
+      .from('blog_adapter_benchmarks')
+      .select('adapter,adapter_version,sample_size,extraction_success_count,factual_fidelity_count,ssrf_security_passed,latency_p95_ms,passed')
+      .eq('adapter', adapter)
+      .order('evaluated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return null;
+    return data as BlogExternalAdapterBenchmarkRowV4;
+  })();
+  adapterBenchmarkCache.set(adapter, request);
+  return request;
+}
+
+async function fetchReviewedDirectPageWithBenchmarkedFallback(input: {
+  entry: Pick<BlogInformationOfficialSourceRegistryEntry, 'hostname' | 'allowSubdomains' | 'researchUrls'>;
+  url: string;
+}, originalError: unknown): Promise<ReviewedDirectPage> {
+  if (!input.entry.researchUrls?.includes(input.url) || !urlMatchesRegistryEntry(input.url, input.entry)) {
+    throw originalError;
+  }
+  const inferred = classifyBlogResearchSourceFormatV4({ contentType: '', url: input.url });
+  const format = inferred === 'unsupported' ? 'html' : inferred;
+  if (format === 'html') {
+    const endpoint = getSecret('BLOG_CRAWL4AI_ENDPOINT');
+    const token = getSecret('BLOG_CRAWL4AI_BEARER_TOKEN');
+    if (!endpoint || !token) throw originalError;
+    const extracted = await extractWithCrawl4AiV4({
+      sourceUrl: input.url,
+      endpoint,
+      bearerToken: token,
+      benchmark: await loadLatestExternalAdapterBenchmark('crawl4ai'),
+    });
+    return { url: extracted.url, title: extracted.title, text: extracted.text, acquisition: 'crawl4ai_fallback' };
+  }
+  if (format === 'pdf' || format === 'office_document') {
+    const endpoint = getSecret('BLOG_DOCLING_ENDPOINT');
+    if (!endpoint) throw originalError;
+    const extracted = await extractWithDoclingV4({
+      sourceUrl: input.url,
+      format,
+      endpoint,
+      apiKey: getSecret('BLOG_DOCLING_API_KEY'),
+      benchmark: await loadLatestExternalAdapterBenchmark('docling'),
+    });
+    return { url: extracted.url, title: extracted.title, text: extracted.text, acquisition: 'docling_fallback' };
+  }
+  throw originalError;
 }
 
 function fetchReviewedDirectPageShared(input: {
@@ -1008,7 +1076,7 @@ export function buildBlogResearchBundleFromGrounding(input: {
   directSourceUrls?: string[];
   sourceAcquisitionByUrl?: Record<
     string,
-    'reviewed_direct_fetch' | 'reviewed_registry_snapshot'
+    'reviewed_direct_fetch' | 'reviewed_registry_snapshot' | 'crawl4ai_fallback' | 'docling_fallback'
   >;
   officialRegistry?: BlogInformationOfficialSourceRegistryEntry[];
   reputableRegistry?: BlogInformationReputableSourceRegistryEntry[];

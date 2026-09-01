@@ -1,0 +1,58 @@
+name: Blog Browser Preview V4
+
+on:
+  schedule:
+    # Generation runs at KST 01:05-06:05. Audit drafts shortly after each run,
+    # before the first KST 09:00 publication slot.
+    - cron: '20 16,17,18,19,20,21 * * *'
+    # Re-audit the real public URL after each publication slot to detect cache,
+    # canonical, font, hydration, schema, image, and script differences.
+    - cron: '35 0,3,6,9,12 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blog-browser-preview-v4
+  cancel-in-progress: false
+
+jobs:
+  audit-pending-drafts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BLOG_PREVIEW_BASE_URL: https://www.yeosonam.com
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - name: Check pending browser surface count
+        id: pending
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$(curl --silent --show-error --fail --max-time 30 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${BLOG_PREVIEW_BASE_URL}/api/internal/blog-preview/pending?limit=5")"
+          count="$(jq -r '.count // 0' <<<"$payload")"
+          if ! [[ "$count" =~ ^[0-9]+$ ]]; then
+            echo "Invalid pending preview response" >&2
+            exit 1
+          fi
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "Pending browser surfaces: $count"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.pending.outputs.count != '0'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.pending.outputs.count != '0'
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install dependencies
+        if: steps.pending.outputs.count != '0'
+        run: npm ci --ignore-scripts
+      - name: Install Chromium
+        if: steps.pending.outputs.count != '0'
+        run: npx playwright install --with-deps chromium
+      - name: Audit and record draft/public rendering
+        if: steps.pending.outputs.count != '0'
+        run: npm run audit:blog-draft-preview-v4

@@ -10,6 +10,14 @@ import {
   canonicalizeBlogIndexingJobUrl,
   resolveBlogCanonicalOrigin,
 } from '@/lib/blog-canonical-url';
+import {
+  BLOG_AUTOPILOT_PIPELINE_VERSION,
+  BLOG_AUTOPILOT_SCHEMA_MIGRATION_VERSION,
+  BLOG_SEARCH_CLASSIFICATION_VERSION,
+  readBlogDeploymentCommitShaV4,
+  resolveBlogSearchLifecycleStatus,
+  resolveProviderReceiptStatus,
+} from '@/lib/blog-autopilot-v4-contract';
 
 export {
   blogIndexingUrlForSlug,
@@ -141,6 +149,13 @@ export async function persistBlogIndexingReport(
   job: Pick<BlogIndexingJobRow, 'content_creative_id' | 'slug'>,
   report: IndexingReport,
 ): Promise<void> {
+  const providerAccepted = report.google === 'success'
+    || report.indexnow === 'success'
+    || report.sitemap_pings.some((ping) => ping.ok);
+  const providerReceiptStatus = resolveProviderReceiptStatus({
+    requestStatus: 'requested',
+    providerOk: providerAccepted,
+  });
   await supabaseAdmin.from('indexing_reports').insert({
     url: report.url,
     content_creative_id: job.content_creative_id,
@@ -150,6 +165,16 @@ export async function persistBlogIndexingReport(
     indexnow_error: report.indexnow_error ?? null,
     sitemap_pings: report.sitemap_pings,
     duration_ms: report.duration_ms,
+    search_lifecycle_status: resolveBlogSearchLifecycleStatus({
+      requestStatus: 'requested',
+      providerReceiptStatus,
+    }),
+    provider_receipt_status: providerReceiptStatus,
+    classification_version: BLOG_SEARCH_CLASSIFICATION_VERSION,
+    provider_raw_response: report,
+    pipeline_version: BLOG_AUTOPILOT_PIPELINE_VERSION,
+    deployment_commit_sha: readBlogDeploymentCommitShaV4(),
+    schema_migration_version: BLOG_AUTOPILOT_SCHEMA_MIGRATION_VERSION,
   });
 
   const naverIndexNowOk = report.sitemap_pings.some(

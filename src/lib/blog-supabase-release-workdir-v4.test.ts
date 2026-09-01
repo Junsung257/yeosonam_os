@@ -40,6 +40,20 @@ describe('Blog V4 isolated Supabase release workdir', () => {
     expect(() => parseLinkedMigrationVersionsV4(JSON.stringify({
       rows: [{ evidence: { versions: ['not-a-version'] } }],
     }))).toThrow('blog_v4_remote_migration_version_invalid');
+    expect(parseLinkedMigrationVersionsV4(JSON.stringify({
+      migrations: [
+        { local: '20260101000000', remote: '20260101000000' },
+        { local: '20260102000000', remote: '' },
+        { local: '', remote: '20260103000000' },
+      ],
+      message: 'Migrations listed',
+    }))).toEqual(['20260101000000', '20260103000000']);
+    expect(() => parseLinkedMigrationVersionsV4(JSON.stringify({
+      migrations: [
+        { remote: '20260101000000' },
+        { remote: '20260101000000' },
+      ],
+    }))).toThrow('blog_v4_remote_migration_versions_duplicate');
   });
 
   it('copies only applied placeholders and the exact pinned release set', () => {
@@ -54,8 +68,10 @@ describe('Blog V4 isolated Supabase release workdir', () => {
     const files = readdirSync(migrationDir).sort();
     expect(summary.remoteAppliedCount).toBe(2);
     expect(summary.placeholderCount).toBe(1);
-    expect(summary.pendingReleaseVersions).toHaveLength(12);
-    expect(files).toHaveLength(14);
+    expect(summary.pendingReleaseVersions).toHaveLength(14);
+    expect(summary.pendingReleaseVersions).toContain('20260901114420');
+    expect(summary.pendingReleaseVersions).toContain('20260901155821');
+    expect(files).toHaveLength(16);
     expect(files).toContain('20260101000000_remote_history_placeholder.sql');
     expect(files.filter((file) => file.startsWith(`${alreadyAppliedRelease}_`))).toHaveLength(1);
     expect(readFileSync(join(migrationDir, '20260101000000_remote_history_placeholder.sql'), 'utf8'))

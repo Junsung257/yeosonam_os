@@ -316,7 +316,7 @@ async function runDailySummary(request: NextRequest) {
   );
   const policy = policyRow?.[0];
   const autopublishPolicy = readBlogAutopublishPolicyV3();
-  const dailyTarget = normalizeDailyPostTarget(policy?.posts_per_day ?? process.env.BLOG_DAILY_PUBLISH_TARGET);
+  const dailyTarget = normalizeDailyPostTarget(policy?.posts_per_day);
   const publicDailyTarget = policy?.enabled === false || autopublishPolicy.mode === 'draft_only'
     ? 0
     : dailyTarget;

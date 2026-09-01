@@ -17,6 +17,8 @@ const EXPECTED_ACTIVE_CRONS: ScheduledCron[] = [
   { path: '/api/cron/blog-scheduler', schedule: '50 23 * * *' },
   { path: '/api/cron/blog-generate', schedule: '5 16,17,18,19,20,21 * * *' },
   { path: '/api/cron/blog-publication-controller', schedule: '5 0,3,6,9,12 * * *' },
+  { path: '/api/cron/blog-search-lifecycle', schedule: '45 2 * * *' },
+  { path: '/api/cron/blog-seo-weekly-audit', schedule: '30 18 * * 0' },
   { path: '/api/cron/blog-regenerate-zero-click', schedule: '45 12 * * *' },
   { path: '/api/cron/rank-tracking', schedule: '0 3 * * *' },
   { path: '/api/cron/blog-daily-summary', schedule: '45 13 * * *' },
@@ -30,7 +32,7 @@ describe('scheduled cron policy', () => {
     const crons = vercelConfig.crons ?? [];
 
     expect(crons).toEqual(EXPECTED_ACTIVE_CRONS);
-    expect(crons).toHaveLength(9);
+    expect(crons).toHaveLength(11);
     expect(new Set(crons.map(cron => cron.path)).size).toBe(crons.length);
     expect(crons.every(cron => cron.path.startsWith('/api/cron/'))).toBe(true);
   });

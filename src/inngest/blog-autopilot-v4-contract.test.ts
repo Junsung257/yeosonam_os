@@ -1,0 +1,43 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+const source = (path: string) => readFileSync(join(process.cwd(), path), 'utf8');
+
+describe('Inngest blog autopilot V4 contract', () => {
+  it('uses a stable event id, a three-retry ceiling, and per-queue concurrency', () => {
+    const dispatcher = source('src/app/api/cron/blog-generate/route.ts');
+    const workflow = source('src/inngest/functions/blog-autopilot-v4.ts');
+    expect(dispatcher).toContain('createBlogPipelineEventId');
+    expect(dispatcher).toContain('contentVersion');
+    expect(workflow).toContain('retries: 3');
+    expect(workflow).toContain("idempotency: 'event.id'");
+    expect(workflow).toContain("key: 'event.data.queueId'");
+  });
+
+  it('keeps deterministic quality/browser failure terminal and leaves publishing to the slot controller', () => {
+    const workflow = source('src/inngest/functions/blog-autopilot-v4.ts');
+    expect(workflow).toContain("step.run('preview'");
+    expect(workflow).toContain("verified.run.status !== 'approved_for_slot'");
+    expect(workflow).toContain('publicationDispatched: false');
+    expect(workflow).not.toContain('blog-publication-controller?force=true');
+  });
+
+  it('checkpoints all ten V4 stages with atomic publication deferred to the five-slot controller', () => {
+    const workflow = source('src/inngest/functions/blog-autopilot-v4.ts');
+    for (const stage of ['research', 'brief', 'draft', 'verify', 'edit', 'quality', 'preview', 'publish', 'indexing', 'observe']) {
+      expect(workflow).toContain(`step.run('${stage}'`);
+    }
+    expect(workflow).toContain('publicationQueuedForScheduledSlot: true');
+  });
+
+  it('dispatches approved manual shadow runs through Inngest and release wiring never enables the legacy generator', () => {
+    const dispatcher = source('src/app/api/cron/blog-generate/route.ts');
+    const release = source('.github/workflows/blog-v4-production-release.yml');
+    expect(dispatcher).toContain('if (durableWorkflowEnabled)');
+    expect(dispatcher).toContain('forcedManualDispatch: forcedManualRun');
+    expect(release).toContain('update_env INNGEST_BLOG_AUTOPILOT_ENABLED true');
+    expect(release).toContain('npx vercel env update INNGEST_BLOG_AUTOPILOT_ENABLED production --value true');
+    expect(release).not.toContain('npx vercel env update BLOG_GENERATION_CRON_ENABLED production --value true');
+  });
+});
