@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import { buildPublicPackageSnapshot } from '@/lib/package-publication/public-snapshot';
 import type { ResolvedTransportForSnapshot } from './shared-fact-orchestrator';
-import { applyResolvedTransport, applySafeLodgingCopy, degradedPackageCopy, productRegistrationProofScreenshotPath, productRegistrationProofSuiteVersion } from './snapshot-publication';
+import {
+  applyResolvedTransport,
+  applySafeLodgingCopy,
+  classifyProductRegistrationBrowserProofFailure,
+  degradedPackageCopy,
+  productRegistrationProofScreenshotPath,
+  productRegistrationProofSuiteVersion,
+} from './snapshot-publication';
 
 function packageWithFlight() {
   return {
@@ -238,5 +245,61 @@ describe('productRegistrationProofSuiteVersion', () => {
     });
     expect(failed).not.toBe(passed);
     expect(failed).toMatch(/^product-registration-v6-mobile-chrome-3\+result\.[0-9a-f]{24}$/);
+  });
+});
+
+describe('classifyProductRegistrationBrowserProofFailure', () => {
+  const baseSurface = {
+    surface: 'packages' as const,
+    url: 'https://example.test/proof',
+    status: 'failed' as const,
+    responseStatus: 200,
+    snapshotHash: 'a'.repeat(64),
+    rendererBuildId: 'build-1',
+    screenshotHash: 'b'.repeat(64),
+    screenshotPng: null,
+    screenshotState: 'customer-first-viewport-before-cta' as const,
+    bodyTextHash: 'c'.repeat(64),
+    koreanFontReady: true,
+    imageCount: 1,
+    brokenImageCount: 0,
+    ctaOpened: true,
+    requiredTextChecked: [],
+    missingRequiredText: [],
+    forbiddenTextFound: [],
+    hydrationErrors: [],
+    failures: [] as string[],
+  };
+
+  it('separates lineage failures from customer-content failures', () => {
+    const taxonomy = classifyProductRegistrationBrowserProofFailure({
+      status: 'failed',
+      browserMode: 'local-chrome',
+      viewport: { width: 390, height: 844, deviceScaleFactor: 3 },
+      checkedAt: '2026-09-01T00:00:00Z',
+      surfaces: [
+        { ...baseSurface, failures: ['REQUIRED_CUSTOMER_FACTS_MISSING_1'] },
+        { ...baseSurface, surface: 'lp', failures: ['SNAPSHOT_HASH_LINEAGE_MISMATCH'] },
+      ],
+    });
+    expect(taxonomy.primaryCategory).toBe('lineage');
+    expect(taxonomy.failures).toEqual(expect.arrayContaining([
+      expect.objectContaining({ surface: 'packages', category: 'customer_content' }),
+      expect.objectContaining({ surface: 'lp', category: 'lineage' }),
+    ]));
+  });
+
+  it('marks navigation timeouts as infrastructure instead of an opaque proof failure', () => {
+    const taxonomy = classifyProductRegistrationBrowserProofFailure({
+      status: 'failed',
+      browserMode: 'serverless-chromium',
+      viewport: { width: 390, height: 844, deviceScaleFactor: 3 },
+      checkedAt: '2026-09-01T00:00:00Z',
+      surfaces: [
+        { ...baseSurface, failures: ['BROWSER_ASSERTION:Navigation timeout of 60000 ms exceeded'] },
+        { ...baseSurface, surface: 'lp', failures: ['BROWSER_ASSERTION:Navigation timeout of 60000 ms exceeded'] },
+      ],
+    });
+    expect(taxonomy.primaryCategory).toBe('infrastructure');
   });
 });

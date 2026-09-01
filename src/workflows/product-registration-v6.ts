@@ -1200,18 +1200,25 @@ async function blockFailedWorkflowStep(
   // benchmark-approved retry, but terminate the upload as an actionable
   // business block instead of sending it to the dead-letter system queue.
   const cohortQualityBlock = error.includes('REGISTRATION_PUBLICATION_COHORT_NOT_ELIGIBLE');
-  const expectedPublicationBlock = expectedIdentityBlock || cohortQualityBlock;
+  const proofEvidenceBlock = error.includes('V6_BROWSER_PROOF_FAILED:');
+  const expectedPublicationBlock = expectedIdentityBlock || cohortQualityBlock || proofEvidenceBlock;
+  const proofCategory = proofEvidenceBlock
+    ? error.split(':')[1]?.replace(/[^A-Z0-9_]/giu, '_').toUpperCase() || 'CONTRACT'
+    : null;
+  const workflowBlocker = expectedIdentityBlock
+    ? 'IDENTITY_BINDING_AMBIGUOUS'
+    : cohortQualityBlock
+      ? 'V6_COHORT_QUALITY_INCOMPLETE'
+      : proofEvidenceBlock
+        ? `V6_BROWSER_PROOF_${proofCategory}`
+        : `WORKFLOW_FAILED:${error}`;
   const decision: ProductRegistrationV6Decision = {
     outcome: 'blocked',
     terminalOutcome: expectedPublicationBlock
       ? 'blocked_action_required'
       : 'quarantined_system_failure',
     degradedReasons: [],
-    blockers: expectedIdentityBlock
-      ? ['IDENTITY_BINDING_AMBIGUOUS']
-      : cohortQualityBlock
-        ? ['V6_COHORT_QUALITY_INCOMPLETE']
-      : [`WORKFLOW_FAILED:${error}`],
+    blockers: [workflowBlocker],
     packageIds: [],
     revisionIds: [],
   };
@@ -1265,7 +1272,7 @@ async function blockFailedWorkflowStep(
       policy_version: input.policyVersion,
       degraded_reasons: decision.degradedReasons,
       blockers: decision.blockers,
-      publication_blockers: cohortQualityBlock ? ['V6_COHORT_QUALITY_INCOMPLETE'] : [],
+      publication_blockers: expectedPublicationBlock ? [workflowBlocker] : [],
     },
   });
   if (terminalError) throw new FatalError(terminalError.message);

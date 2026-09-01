@@ -8,6 +8,7 @@ import { isBlogSlugRedirectTombstone, resolveBlogSlugRedirect } from '@/lib/blog
 import { safeEqualString } from '@/lib/timing-safe';
 import { maybeSkipCronForResourceSaver } from '@/lib/cron-resource-saver';
 import { requireAdminRequest } from '@/lib/admin-guard';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 
 function safeDecodeRouteValue(value: string): string {
   let decoded = value;
@@ -461,6 +462,16 @@ function getSupabaseRestConfig(): { url: string; key: string } | null {
   return { url: url.replace(/\/+$/, ''), key };
 }
 
+function getSupabaseServiceRestConfig(): { url: string; key: string } | null {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || getSecret('SUPABASE_URL');
+  const key = getSecret('SUPABASE_SERVICE_ROLE_KEY')
+    || getSecret('SUPABASE_SERVICE_KEY')
+    || getSecret('SUPABASE_SECRET_KEY')
+    || getSecret('SUPABASE_SECRET_DEFAULT_KEY');
+  if (!url || !/^https?:\/\//.test(url) || !key || url.includes('your_supabase_url')) return null;
+  return { url: url.replace(/\/+$/, ''), key };
+}
+
 async function supabaseRowExists(table: string, filters: Record<string, string>): Promise<boolean | null> {
   const config = getSupabaseRestConfig();
   if (!config) return null;
@@ -636,7 +647,10 @@ async function publicDestinationExists(destinationOrSlug: string): Promise<boole
 async function getPublicPackageAvailabilityResponse(pathname: string): Promise<NextResponse | null> {
   const match = pathname.match(/^\/(?:packages|lp)\/([^/]+)\/?$/);
   if (!match) return null;
-  const config = getSupabaseRestConfig();
+  // The route-state RPC is a deliberately service-role-only read boundary.
+  // Never fall back to an anonymous or publishable key for internal pointer
+  // and availability state.
+  const config = getSupabaseServiceRestConfig();
   if (!config) return NextResponse.json(
     { code: 'PACKAGE_AVAILABILITY_UNAVAILABLE' },
     { status: 503, headers: { 'Cache-Control': 'no-store' } },
@@ -648,58 +662,40 @@ async function getPublicPackageAvailabilityResponse(pathname: string): Promise<N
     authorization: `Bearer ${config.key}`,
     accept: 'application/json',
   };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 2500);
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 1500);
-    let packageId = packageRef;
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(packageId)) {
-      const identityUrl = new URL(`${config.url}/rest/v1/travel_packages`);
-      identityUrl.searchParams.set('short_code', `eq.${packageRef}`);
-      identityUrl.searchParams.set('select', 'id');
-      identityUrl.searchParams.set('limit', '1');
-      const identityResponse = await fetch(identityUrl, { headers, cache: 'no-store', signal: controller.signal });
-      if (!identityResponse.ok) throw new Error('PACKAGE_IDENTITY_LOOKUP_FAILED');
-      const identities = await identityResponse.json();
-      packageId = Array.isArray(identities) && typeof identities[0]?.id === 'string' ? identities[0].id : '';
-      if (!packageId) return null;
-    }
-    const pointerUrl = new URL(`${config.url}/rest/v1/product_registration_v5_publication_pointers`);
-    pointerUrl.searchParams.set('package_id', `eq.${packageId}`);
-    pointerUrl.searchParams.set('channel', 'eq.customer');
-    pointerUrl.searchParams.set('locale', 'eq.ko-KR');
-    pointerUrl.searchParams.set('state', 'eq.published');
-    pointerUrl.searchParams.set('select', 'catalog_product_id');
-    pointerUrl.searchParams.set('limit', '1');
-    const pointerResponse = await fetch(pointerUrl, { headers, cache: 'no-store', signal: controller.signal });
-    if (!pointerResponse.ok) throw new Error('PACKAGE_POINTER_LOOKUP_FAILED');
-    const pointers = await pointerResponse.json();
-    const catalogProductId = Array.isArray(pointers) && typeof pointers[0]?.catalog_product_id === 'string'
-      ? pointers[0].catalog_product_id
-      : null;
-    if (!catalogProductId) return null;
-    const overlayResponse = await fetch(`${config.url}/rest/v1/rpc/get_product_registration_availability_overlays`, {
+    const routeStateUrl = new URL(`${config.url}/rest/v1/rpc/get_product_registration_customer_route_state`);
+    const routeStateResponse = await fetch(routeStateUrl, {
       method: 'POST',
       headers: { ...headers, 'content-type': 'application/json' },
-      body: JSON.stringify({ p_catalog_product_ids: [catalogProductId], p_channel: 'customer' }),
+      body: JSON.stringify({
+        p_tenant_id: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+        p_route_ref: packageRef,
+        p_channel: 'customer',
+        p_locale: 'ko-KR',
+      }),
       cache: 'no-store',
       signal: controller.signal,
     });
-    clearTimeout(timer);
-    if (!overlayResponse.ok) throw new Error('PACKAGE_AVAILABILITY_LOOKUP_FAILED');
-    const overlays = await overlayResponse.json();
-    if (Array.isArray(overlays) && overlays.some(row =>
-      ['closed', 'sold_out', 'suspended'].includes(String(row?.sale_state ?? '')))) {
+    if (!routeStateResponse.ok) throw new Error(`PACKAGE_ROUTE_STATE_LOOKUP_FAILED:${routeStateResponse.status}`);
+    const routeState = await routeStateResponse.json() as { state?: unknown };
+    if (routeState?.state === 'SALE_UNAVAILABLE') {
       return NextResponse.json(
         { code: 'PACKAGE_SALE_UNAVAILABLE' },
         { status: 410, headers: { 'Cache-Control': 'no-store, max-age=0' } },
       );
     }
-    return null;
+    if (routeState?.state === 'NOT_FOUND') return plainNotFound();
+    if (routeState?.state === 'PUBLIC') return null;
+    throw new Error(`PACKAGE_ROUTE_STATE_INVALID:${String(routeState?.state ?? '')}`);
   } catch {
     return NextResponse.json(
       { code: 'PACKAGE_AVAILABILITY_UNAVAILABLE' },
       { status: 503, headers: { 'Cache-Control': 'no-store, max-age=0' } },
     );
+  } finally {
+    clearTimeout(timer);
   }
 }
 

@@ -223,7 +223,7 @@ describe('middleware package availability preflight credentials', () => {
     vi.restoreAllMocks();
   });
 
-  it('uses the server-only Supabase key before public keys for internal publication reads', async () => {
+  it('uses one service-only RPC for customer route state', async () => {
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co');
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY', 'publishable-key');
     // The CI release gate provides a dummy service-role key globally. Override
@@ -231,7 +231,14 @@ describe('middleware package availability preflight credentials', () => {
     // precedence over the public publishable key.
     vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'server-secret-key');
     vi.stubEnv('SUPABASE_SECRET_KEY', 'server-secret-key');
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('[]', {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      state: 'PUBLIC',
+      package_id: 'fbca42ad-50cd-4622-bde0-5dc13009e833',
+      catalog_product_id: '64af7a2d-6f01-43ae-8a0b-dc801fcd89d7',
+      revision_id: '6ab6bb12-ffd4-4f4b-a1f8-1d665b993ef4',
+      snapshot_id: '43e69df4-e6aa-4b0a-ba22-eca91dd11501',
+      pointer_version: 4,
+    }), {
       status: 200,
       headers: { 'content-type': 'application/json' },
     }));
@@ -244,13 +251,68 @@ describe('middleware package availability preflight credentials', () => {
     expect(response.headers.get('x-middleware-next')).toBe('1');
     const [requestUrl, requestInit] = fetchSpy.mock.calls[0] ?? [];
     expect(requestUrl).toBeInstanceOf(URL);
-    expect((requestUrl as URL).pathname).toBe('/rest/v1/product_registration_v5_publication_pointers');
+    expect((requestUrl as URL).pathname).toBe('/rest/v1/rpc/get_product_registration_customer_route_state');
     expect(requestInit).toEqual(expect.objectContaining({
+      method: 'POST',
       headers: expect.objectContaining({
         apikey: 'server-secret-key',
         authorization: 'Bearer server-secret-key',
       }),
     }));
+    expect(JSON.parse(String((requestInit as RequestInit).body))).toMatchObject({
+      p_tenant_id: '00000000-0000-0000-0000-000000000001',
+      p_route_ref: 'fbca42ad-50cd-4622-bde0-5dc13009e833',
+      p_channel: 'customer',
+      p_locale: 'ko-KR',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('never falls back to a public key for the customer route-state RPC', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY', 'publishable-key');
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', '');
+    vi.stubEnv('SUPABASE_SECRET_KEY', '');
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const response = await middleware(new NextRequest(
+      'https://www.yeosonam.com/packages/fbca42ad-50cd-4622-bde0-5dc13009e833',
+    ));
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({ code: 'PACKAGE_AVAILABILITY_UNAVAILABLE' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('returns 410 for a published pointer with a sale-blocking overlay', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co');
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'server-secret-key');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      JSON.stringify({ state: 'SALE_UNAVAILABLE' }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    ));
+
+    const response = await middleware(new NextRequest(
+      'https://www.yeosonam.com/lp/2624427e-8e9c-45d3-90e5-a0af602a22d3',
+    ));
+    expect(response.status).toBe(410);
+    await expect(response.json()).resolves.toMatchObject({ code: 'PACKAGE_SALE_UNAVAILABLE' });
+  });
+
+  it('returns a hard 404 when the route-state boundary has no published pointer', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co');
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'server-secret-key');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      JSON.stringify({ state: 'NOT_FOUND' }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    ));
+
+    const response = await middleware(new NextRequest(
+      'https://www.yeosonam.com/packages/00000000-0000-4000-8000-000000000001',
+    ));
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
   });
 });
 
