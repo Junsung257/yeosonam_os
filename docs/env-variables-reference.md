@@ -20,6 +20,9 @@
 | `INNGEST_BLOG_AUTOPILOT_ENABLED` | 없음 (`false`) | `true`/`1`일 때만 `blog_topic_queue` 이벤트를 Inngest V4 함수로 전환. 전환 전 기존 cron은 호환 진입점 |
 | `BLOG_PREVIEW_SECRET` | `CRON_SECRET` fallback | 15분 이하 `noindex` 초안 미리보기 HMAC. 반드시 server-only |
 | `BLOG_AUTOPILOT_INTERNAL_ORIGIN` | `NEXT_PUBLIC_SITE_URL` fallback | Inngest가 공통 cron 진입점을 호출할 HTTPS 원점. 로컬만 localhost HTTP 허용 |
+| `BLOG_CRAWL4AI_ENDPOINT` / `BLOG_CRAWL4AI_BEARER_TOKEN` | 없음 | 기존 HTML 추출 실패 시에만 쓰는 self-hosted Crawl4AI `/crawl`. 30건 벤치마크 통과 원장이 없으면 설정돼 있어도 호출 금지 |
+| `BLOG_DOCLING_ENDPOINT` / `BLOG_DOCLING_API_KEY` | 없음 | 기존 PDF·DOCX·XLSX·PPTX 추출 실패 시에만 쓰는 Docling `/v1/convert/source`. 30건 벤치마크 통과 원장이 없으면 호출 금지 |
+| `BLOG_KOREAN_NLP_ENDPOINT` / `BLOG_KOREAN_NLP_BEARER_TOKEN` | 없음 | 후속 Kiwi/KSS worker 호환 예약 키. 현재 V4 운영 게이트는 버전 고정 로컬 임베딩과 100건 precision/recall 원장을 사용 |
 | `BLOG_CORPUS_APPLY_CONFIRM` | 없음 | corpus quarantine apply 이중 확인; 평소 설정 금지 |
 | `BLOG_SEARCH_IMPORT_APPLY_CONFIRM` | 없음 | 관측 검색성과 import apply 이중 확인; 평소 설정 금지 |
 | `BLOG_SNAPSHOT_APPLY_CONFIRM` | 없음 | public snapshot DB refresh 이중 확인; 평소 설정 금지 |
@@ -39,6 +42,8 @@
 | `BLOG_GSC_BACKFILL_CHUNK_DAYS` | `7` | 한 번의 rank-tracking에서 추가로 보강할 과거 날짜 수(최대 7). 실패 시 cursor 전진 금지 |
 
 운영 최초 반영은 반드시 `BLOG_AUTOPUBLISH_MODE=draft_only`로 시작합니다. DB 절전 모드가 운영 기본값인 동안에는 검증된 배포에서만 `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS=1`을 함께 설정하고, draft canary 전후의 발행·공개·색인 건수를 비교한 뒤 `live`를 승인합니다. apply confirmation 값은 상시 환경 변수로 두지 않고 승인된 일회성 change window에서만 사용합니다.
+
+`INNGEST_BLOG_AUTOPILOT_ENABLED=1`은 자동 생성 실행을 켜지만 즉시 공개 권한을 주지 않습니다. 성공한 실행은 `approved_for_slot`에 저장되고, DB `publishing_policies`의 5개 슬롯에서만 `blog-publication-controller`가 원자 공개와 색인 아웃박스를 생성합니다. Crawl4AI·Docling·한국어 의미 중복기는 각각 최신 `blog_adapter_benchmarks` 통과 행이 있어야 활성화됩니다.
 
 ### V3 staging runtime verifier 전용
 

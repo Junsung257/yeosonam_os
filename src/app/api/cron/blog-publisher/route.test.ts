@@ -7,6 +7,14 @@ describe('blog publisher quota recovery contract', () => {
     join(process.cwd(), 'src/app/api/cron/blog-publisher/route.ts'),
     'utf8',
   );
+  const corpusDiversitySource = () => readFileSync(
+    join(process.cwd(), 'src/lib/blog-corpus-diversity-repository-v4.ts'),
+    'utf8',
+  );
+  const publisherBriefSource = () => readFileSync(
+    join(process.cwd(), 'src/lib/blog-publisher-brief-v4.ts'),
+    'utf8',
+  );
 
   it('does not override DeepSeek Pro thinking mode on rewrite calls', () => {
     expect(routeSource()).not.toMatch(
@@ -60,7 +68,8 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain("resource.scope === 'publish' || resource.scope === 'delivery'");
     expect(source).toContain('!schemaReadiness.publishReady || !schemaReadiness.deliveryReady');
     expect(source).toContain("reason: 'blog_quality_v3_runtime_schema_not_ready'");
-    expect(source).toContain('evaluateBlogCorpusCandidateV3');
+    expect(source).toContain('loadBlogCorpusDiversityV4');
+    expect(corpusDiversitySource()).toContain('evaluateBlogCorpusCandidateV3');
     expect(source).toContain('evaluateBlogQualityV3');
     expect(source).toContain("gate.gate === 'image_quality'");
     expect(source).toContain("gate.gate === 'links'");
@@ -244,12 +253,13 @@ describe('blog publisher quota recovery contract', () => {
 
   it('excludes the in-place replacement draft from its own duplicate check', () => {
     const source = routeSource();
+    const corpusSource = corpusDiversitySource();
 
     expect(source).toContain('excludeContentCreativeId: item.content_creative_id ?? null');
     expect(source).toContain('skipDuplicateCheck: isPublishedBlogAtomicUpgradeRequest(');
-    expect(source).toContain('belongsToBlogReplacementLineage');
     expect(source).toContain('replacementTargetCreativeId: privateRegenerationRequest?.contentCreativeId ?? null');
-    expect(source).toContain('row.canonical_creative_id === input.replacementTargetCreativeId');
+    expect(corpusSource).toContain('belongsToBlogReplacementLineage');
+    expect(corpusSource).toContain('row.canonical_creative_id === input.replacementTargetCreativeId');
   });
 
   it('supports an authenticated single-item private regeneration without quota refill', () => {
@@ -377,7 +387,8 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('private_regeneration_research_preflight:');
     expect(source).toContain('private_regeneration_research_persistence:');
     expect(source).toContain('markBlogInformationResearchClaimsSupported({');
-    expect(source).toContain("delete safeMeta[BLOG_INFORMATION_RESEARCH_META_KEY]");
+    expect(source).toContain('queueMetaWithoutResearchBundleV4 as queueMetaWithoutResearchBundle');
+    expect(publisherBriefSource()).toContain("delete safeMeta[BLOG_INFORMATION_RESEARCH_META_KEY]");
     expect(source).toContain('researchPromptBlock,');
   });
 

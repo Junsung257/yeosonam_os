@@ -65,6 +65,7 @@ const CHECK_LABELS: Record<string, string> = {
   google_url_unknown: '구글 미인지 URL 존재',
   v4_quality_or_browser_gate: 'V4 품질 또는 브라우저 검사 차단',
   publish_ready_candidates_zero: '발행 준비 후보 없음',
+  seo_weekly_audit_failed_or_critical: '주간 SEO 감사 실패 또는 치명 항목',
 };
 
 function checkLabel(check: string) {
@@ -154,7 +155,7 @@ export default async function BlogAdminPage(
 
       {ops && (
         <>
-          <section className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+          <section className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
             {metricCard({
               label: '오늘 발행',
               value: `${ops.publish.published_today}/${ops.publish.daily_target}`,
@@ -202,6 +203,18 @@ export default async function BlogAdminPage(
               icon: Activity,
               href: '/admin/blog/system',
               tone: ops.cron.unhealthy_count ? 'bad' : 'good',
+            })}
+            {metricCard({
+              label: '주간 SEO 감사',
+              value: ops.seo_operations.latest_audit
+                ? Number(ops.seo_operations.latest_audit.summary?.critical || 0).toLocaleString('ko-KR')
+                : '-',
+              hint: ops.seo_operations.latest_audit
+                ? `${ops.seo_operations.latest_audit.status} · 어댑터 ${Object.values(ops.seo_operations.adapter_readiness).filter(Boolean).length}/3`
+                : '기준선 감사 실행 필요',
+              icon: BarChart3,
+              href: '/admin/blog/system',
+              tone: ops.seo_operations.level === 'risk' ? 'bad' : ops.seo_operations.latest_audit ? 'good' : 'neutral',
             })}
           </section>
 

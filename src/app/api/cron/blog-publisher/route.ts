@@ -90,7 +90,12 @@ import {
   buildInformationalWriterPrompt,
 } from '@/lib/blog-informational-writer-prompt';
 import { buildFreshnessPromptBlock, classifyBlogFreshnessRisk } from '@/lib/blog-freshness-risk';
-import { buildBlogContentBrief } from '@/lib/blog-content-brief';
+import {
+  buildQueueContentBriefV4 as buildQueueContentBrief,
+  getQueueMicroAngleV4 as getQueueMicroAngle,
+  microAngleForInformationIntentV4 as microAngleForInformationIntent,
+  queueMetaWithoutResearchBundleV4 as queueMetaWithoutResearchBundle,
+} from '@/lib/blog-publisher-brief-v4';
 import {
   BLOG_INFORMATION_RESEARCH_META_KEY,
   buildBlogGenerationResearchPromptBlock,
@@ -252,12 +257,7 @@ import {
   BLOG_RUNTIME_RESOURCES_V3,
   probeBlogRuntimeSchemaWithSupabaseV3,
 } from '@/lib/blog-runtime-readiness-v3';
-import {
-  evaluateBlogCorpusCandidateV3,
-  type BlogCorpusCandidateV3,
-  type BlogCorpusDiversityEvaluationV3,
-} from '@/lib/blog-corpus-diversity-v3';
-import { belongsToBlogReplacementLineage } from '@/lib/blog-corpus-lineage-v3';
+import { loadBlogCorpusDiversityV4 } from '@/lib/blog-corpus-diversity-repository-v4';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 import { buildRecentInfoDuplicateScope } from '@/lib/blog-info-duplicate-scope';
 import {
@@ -438,102 +438,6 @@ async function loadBlogPortfolioSaturationV3(archetype: string, isWeatherContent
   };
 }
 
-async function loadBlogCorpusDiversityV3(input: {
-  queueItemId: string;
-  excludeCreativeId?: string | null;
-  replacementTargetCreativeId?: string | null;
-  title: string;
-  body: string;
-  destination?: string | null;
-}): Promise<{ report: BlogCorpusDiversityEvaluationV3 | null; error: string | null }> {
-  const [creativesResult, queueResult, representativesResult] = await Promise.all([
-    supabaseAdmin
-      .from('content_creatives')
-      .select('id, seo_title, title, blog_html, destination, status, generation_meta')
-      .eq('channel', 'naver_blog')
-      .in('status', ['published', 'draft']),
-    supabaseAdmin
-      .from('blog_topic_queue')
-      .select('id, topic, destination, status, meta')
-      .in('status', ['queued', 'generating', 'pending_review']),
-    supabaseAdmin
-      .from('blog_information_representatives')
-      .select('canonical_creative_id, canonical_slug, destination_id, status')
-      .eq('status', 'active'),
-  ]);
-  const failures = [creativesResult.error, queueResult.error, representativesResult.error]
-    .filter(Boolean)
-    .map((error) => error?.message || 'unknown_error');
-  if (failures.length) return { report: null, error: `corpus_lookup_failed:${failures.join('|')}` };
-
-  const corpus: BlogCorpusCandidateV3[] = [];
-  for (const row of creativesResult.data || []) {
-    if (input.excludeCreativeId && row.id === input.excludeCreativeId) continue;
-    if (belongsToBlogReplacementLineage({
-      id: row.id,
-      meta: row.generation_meta,
-      replacementTargetCreativeId: input.replacementTargetCreativeId,
-    })) continue;
-    corpus.push({
-      title: String(row.seo_title || row.title || ''),
-      body: typeof row.blog_html === 'string' ? row.blog_html : null,
-      destination: typeof row.destination === 'string' ? row.destination : null,
-      source: row.status === 'draft' ? 'draft' : 'published',
-    });
-  }
-  for (const row of queueResult.data || []) {
-    if (row.id === input.queueItemId) continue;
-    if (belongsToBlogReplacementLineage({
-      meta: row.meta,
-      replacementTargetCreativeId: input.replacementTargetCreativeId,
-    })) continue;
-    corpus.push({
-      title: String(row.topic || ''),
-      destination: typeof row.destination === 'string' ? row.destination : null,
-      source: 'queued',
-    });
-  }
-  for (const row of representativesResult.data || []) {
-    if (!row.canonical_slug) continue;
-    if (row.canonical_creative_id === input.replacementTargetCreativeId) continue;
-    corpus.push({
-      title: String(row.canonical_slug).replace(/-/g, ' '),
-      destination: typeof row.destination_id === 'string' ? row.destination_id : null,
-      source: 'representative',
-    });
-  }
-  return {
-    report: evaluateBlogCorpusCandidateV3({
-      title: input.title,
-      body: input.body,
-      destination: input.destination,
-    }, corpus.filter((row) => row.title.trim().length > 0)),
-    error: null,
-  };
-}
-
-function getQueueMicroAngle(item: any): string | null {
-  const value = item?.meta?.micro_angle;
-  return typeof value === 'string' && value.trim() ? value.trim() : null;
-}
-
-function microAngleForInformationIntent(intent: unknown): string | null {
-  const normalized = typeof intent === 'string' ? intent.trim() : '';
-  return ({
-    food_budget: 'food_budget',
-    monthly_weather: 'weather_packing',
-    airport_transport: 'airport_arrival',
-    local_transport: 'transport_cost',
-    hotel_areas: 'hotel_area',
-    family_budget: 'budget_family',
-    itinerary: 'itinerary',
-    shopping_souvenirs: 'shopping_souvenirs',
-    currency_payment: 'currency_payment',
-    entry_requirements: 'entry_requirements',
-    travel_insurance: 'travel_insurance',
-  } as Record<string, string>)[normalized] ?? null;
-}
-
 function getGeneratedQualityMicroAngle(generated: GeneratedBlog, item: any): string | null {
   const explicitGenerated = generated.generation_meta?.micro_angle;
   if (typeof explicitGenerated === 'string' && explicitGenerated.trim()) return explicitGenerated.trim();
@@ -542,24 +446,6 @@ function getGeneratedQualityMicroAngle(generated: GeneratedBlog, item: any): str
     ? (contentBrief as Record<string, unknown>).intent_type
     : null;
   return getQueueMicroAngle(item) ?? microAngleForInformationIntent(intent);
-}
-
-function buildQueueContentBrief(item: any) {
-  const queuedKeywords = Array.isArray(item.meta?.keywords) ? item.meta.keywords as string[] : [];
-  return buildBlogContentBrief({
-    topic: item.topic,
-    destination: item.destination,
-    primaryKeyword: item.primary_keyword || item.destination || item.topic.split(' ')[0],
-    category: item.category,
-    source: item.source,
-    keywords: queuedKeywords,
-    microAngle: getQueueMicroAngle(item),
-    audience: typeof item.meta?.audience === 'string' ? item.meta.audience : null,
-    locale: typeof item.meta?.locale === 'string' ? item.meta.locale : null,
-    travelerNationality: typeof item.meta?.traveler_nationality === 'string'
-      ? item.meta.traveler_nationality
-      : null,
-  });
 }
 
 function buildResearchBackedContentBriefV3(input: {
@@ -620,13 +506,6 @@ function buildResearchBackedContentBriefV3(input: {
     destinationDecisionDetails,
     serpResearch: input.serpResearch,
   });
-}
-
-function queueMetaWithoutResearchBundle(meta: unknown): Record<string, unknown> {
-  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return {};
-  const safeMeta = { ...(meta as Record<string, unknown>) };
-  delete safeMeta[BLOG_INFORMATION_RESEARCH_META_KEY];
-  return safeMeta;
 }
 
 async function findOrGenerateBlogCover(input: {
@@ -3472,7 +3351,7 @@ async function processQueueItem(
     const sourceFreshness = Number.isFinite(latestMetricMs)
       ? Math.max(0, 1 - (Date.now() - latestMetricMs) / (90 * 24 * 60 * 60 * 1000))
       : (demandPreflight.acceptedProviders.length > 0 ? 1 : 0);
-    const corpusDiversity = await loadBlogCorpusDiversityV3({
+    const corpusDiversity = await loadBlogCorpusDiversityV4({
       queueItemId: item.id,
       excludeCreativeId: promoteDraftId,
       replacementTargetCreativeId: privateRegenerationRequest?.contentCreativeId ?? null,

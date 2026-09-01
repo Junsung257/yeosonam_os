@@ -1,8 +1,12 @@
 # Blog Autopublish Contract
 
-> 2026-09-01 Autopilot V4 truth override: `publishing_policies` 전역 행의 `posts_per_day=5`, `slot_times=09:00/12:00/15:00/18:00/21:00` 만 발행량 SSOT로 사용한다. `BLOG_DAILY_PUBLISH_CAP` 및 기존 3/10/30 단계는 발행량을 바꾸지 못하며, 내구성 원장의 frozen 상태만 비상 차단으로 유지한다. Inngest는 `blog_topic_queue` ID+콘텐츠 버전 이벤트로 연구→브리프→초안→검증→편집→품질→미리보기→원자 발행/색인 아웃박스를 내구적으로 실행한다. 연구 브리프 DB 저장, 주장 해시 보존, V4 품질 결정, 실제 공개 컴포넌트를 사용한 `noindex` Playwright 95점을 모두 통과하기 전에는 공개하지 않는다.
+> 2026-09-02 Autopilot V4 completion override: `publishing_policies` 전역 행의 `posts_per_day=5`, `slot_times=09:00/12:00/15:00/18:00/21:00` 만 발행량 SSOT로 사용한다. `BLOG_DAILY_PUBLISH_CAP` 및 기존 3/10/30 단계는 발행량을 바꾸지 못하며, 내구성 원장의 frozen 상태만 비상 차단으로 유지한다. Inngest는 `blog_topic_queue` ID+콘텐츠 버전 이벤트를 `research → brief → draft → verify → edit → quality → preview → publish → indexing → observe` 체크포인트로 실행한다. 여기서 `publish`는 승인 초안을 슬롯 큐에 확정하는 단계이며 즉시 공개하지 않는다. 원자 공개와 색인 아웃박스 생성은 09/12/15/18/21시 단일 `blog-publication-controller`만 수행한다. 연구 브리프 DB 저장, 주장 해시 보존, V4 품질 결정, 실제 공개 컴포넌트를 사용한 `noindex` Playwright 95점을 모두 통과하기 전에는 공개하지 않는다.
 >
 > 검색 생명주기는 `queued → submitted → received → discovered → crawled → indexed → ranking`이다. Sitemap·IndexNow 2xx는 `received`일 뿐 `indexed`가 아니다. 일반 `/blog` URL은 Google Indexing API를 절대 호출하지 않고 D+1/3/7 URL Inspection을 실행한다. D+3 미발견은 Sitemap 1회만 재제출하고, D+7 미색인은 기술/콘텐츠 보정 큐로 종료한다. 공급자 원본은 불변으로 보존하고 `classification_version` 기반 파생 판정만 append-only로 추가한다. CI 회귀 기준은 100건(72 safe, 12 product, 16 failure-edge) Promptfoo 골든셋이다.
+>
+> 사이트 전체 SEO 관측은 주 1회 공개 카탈로그·Sitemap·실제 HTML·GSC 56일·CrUX·PageSpeed를 같은 append-only 원장에 저장하고 metadata/render drift, query cannibalization, 28일 content decay를 분리 판정한다. 이 감사는 콘텐츠를 자동 수정하거나 비공개 전환하지 않는다. Crawl4AI는 기존 HTML 추출 실패, Docling은 기존 PDF/Office 추출 실패에만 사용하며 30건 벤치마크(추출 90%, 숫자·날짜·주장 보존 100%, SSRF 통과, p95 30초) 전에는 fail-closed다. 한국어 로컬 임베딩은 100건 precision/recall 각 0.90 통과 원장이 있을 때만 whole-corpus 중복 사전검사에 참여한다.
+>
+> `claude-blog`/`claude-seo`는 설치형 생성기나 프로덕션 모델 경로가 아니다. 라이선스가 허용하는 범위에서 키워드 브리프, people-first QA, canonical/schema/robots 기술 점검, 네이버 표면 QA 패턴만 독립 구현한 네 개의 repo Skill을 사용한다. DeepSeek가 작성자이고 Skill은 개발·검수 계약이다.
 
 > 2026-08-11 V3 override: 자동발행의 fail-closed 정책은 `docs/runbooks/blog-publishing-v3.md`가 우선합니다. 누락/잘못된 `BLOG_AUTOPUBLISH_MODE`는 `draft_only`이고, coverage gap만으로 발행하지 않으며, deterministic fallback과 content-creating repair는 공개 불가입니다.
 >
@@ -22,7 +26,7 @@
 
 > 2026-08-31 editorial-judge durability addendum: 편집 심사 호출은 생성 호출과 별도 원장에 기록하고 API의 JSON 응답 모드를 강제한다. 공급자 응답이 과금됐지만 JSON 파싱에 실패한 과거 text-mode attempt는 `editorial_judge_retry`, 이미 그 retry까지 소진한 attempt는 `editorial_judge_structured_retry`를 각각 최대 1회만 허용하며 일일 비용 상한을 그대로 적용한다. 구조화 JSON의 안전한 스키마 변형(중첩·배열·명시적 문자열 불리언)은 필수 5차원 판정을 유지한 채 정규화하고, 기존 구조화 호출까지 소진된 attempt는 `editorial_judge_normalized_retry`를 1회만 사용할 수 있다. 필수 5차원의 명시적 불리언이 최종 판정 SSOT이며, 중복 top-level `passed`가 세부 판정과 모순되면 5차원 판정을 따른다. 따라서 top-level true는 실패 차원을 숨길 수 없고 top-level false도 통과한 5차원을 뒤집을 수 없다. 통과한 심사 보고서는 공급자 receipt의 비밀 없는 audit 필드에 저장해 재실행 시 모델 호출 없이 재사용한다. 파싱 실패 시 응답 해시·제한된 진단 미리보기만 receipt에 남기며, 끝까지 계약에 맞지 않으면 자동발행은 계속 차단한다.
 
-Last updated: 2026-09-01
+Last updated: 2026-09-02
 
 This document defines the required contract for automatic blog generation, publishing, and indexing. Publishing and indexing must be treated as separate responsibilities. It exists because one-off repairs to already published rows do not prevent the same defect from recurring in live autopublishing.
 

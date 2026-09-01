@@ -667,3 +667,18 @@ If `empty_heading` still repeats after the markdown and rendered-content boundar
 For the Sapporo food-budget canary, bounded diagnostics identified `H2 자주 묻는 질문 -> H3 FAQ -> H3 Q1` as the remaining failure. A standalone Q heading must remain the question H3; renderer recovery must not invent an empty `FAQ` parent when the prefix is empty. Treat `자주 묻는 질문`, `FAQ`, and `Q&A` as the same canonical parent when removing duplicates, while preserving every evidence-backed question and answer.
 
 After a candidate passes and moves to `pending_review` or `published`, queue and creative generation metadata must reflect the current success rather than a previous repair attempt. Preserve research and private-regeneration contracts, replace `last_qa` and `last_publish_quality` with the passing reports, record `last_succeeded_at`, and remove current failure, quarantine, and self-heal markers. Historical failures remain available in durable logs; stale current-state flags must not make a successful review handoff look failed.
+
+## 2026-09-02 Autopilot V4 completion rollout
+
+The production workflow is `.github/workflows/blog-v4-production-release.yml`. It is the only approved path for the V4 truth/search lifecycle and SEO observation migrations. The release bundle pins both `20260901114420` and `20260901155821` plus a non-content rollback. Do not run an unscoped repository-wide `supabase db push`.
+
+1. Run `npm run verify:blog-release-bundle-v4`, `npm run test:blog-autopilot-v4`, `npm run eval:blog-editorial:offline`, `npm run type-check`, and `npm run build` on the exact reviewed main SHA.
+2. Dry-run the linked release workdir and require no unexpected migration version. Apply only the pinned forward set.
+3. Run `npm run benchmark:blog-korean-semantic-v4 -- --apply`; the script refuses to persist a row unless the versioned 100-case precision and recall are both at least 0.90.
+4. Deploy the candidate with `BLOG_AUTOPUBLISH_MODE=draft_only`, `INNGEST_BLOG_AUTOPILOT_ENABLED=true`, and `BLOG_GENERATION_CRON_ENABLED=false`. Inngest is the only scheduled generation engine; the legacy flag stays off.
+5. Run the release-scope weekly SEO audit. Critical canonical, robots, H1, JSON-LD, Sitemap, or public HTTP findings block promotion. The audit never edits or unpublishes content.
+6. Accumulate 35 shadow drafts over 7 days with zero critical quality/PII/evidence failures and preview score at least 95. `publish` workflow checkpoints mean `approved_for_slot`, not public publication.
+7. Release 15 canaries over 3 days. Any duplicate publication, PII, claim loss, or incorrect indexing classification returns `BLOG_AUTOPUBLISH_MODE` to `draft_only` and disables Inngest.
+8. Observe 70 DB policy slots over 14 days, then approve normal 5/day live operation. The publication controller remains the only atomic public commit and indexing-outbox owner.
+
+Crawl4AI and Docling remain inactive until `npm run benchmark:blog-source-adapters-v4 -- --adapter=... --fixture=... --version=... --apply` passes a reviewed 30-source failure corpus. Endpoint credentials alone never activate them. A failed or stale latest benchmark closes the adapter again. The common HTML/PDF extractor remains authoritative while a fallback is closed.

@@ -116,3 +116,132 @@ export function resolveBlogResearchAdapterCandidateV4(input: {
   if (input.format === 'pdf' || input.format === 'office_document') return 'docling';
   return 'reject';
 }
+
+export type BlogExternalAdapterIdV4 = 'crawl4ai' | 'docling';
+
+export type BlogExternalAdapterBenchmarkRowV4 = {
+  adapter: BlogExternalAdapterIdV4;
+  adapter_version: string;
+  sample_size: number;
+  extraction_success_count: number | null;
+  factual_fidelity_count: number | null;
+  ssrf_security_passed: boolean | null;
+  latency_p95_ms: number | null;
+  passed: boolean;
+};
+
+export function isExternalAdapterBenchmarkPassingV4(row: BlogExternalAdapterBenchmarkRowV4 | null): boolean {
+  if (!row) return false;
+  return row.passed && evaluateBlogResearchAdapterBenchmarkV4({
+    sampleSize: row.sample_size,
+    extractionSuccessCount: Number(row.extraction_success_count || 0),
+    factualFidelityCount: Number(row.factual_fidelity_count || 0),
+    ssrfSecurityPassed: row.ssrf_security_passed === true,
+    latencyP95Ms: Number(row.latency_p95_ms ?? Number.POSITIVE_INFINITY),
+  }).passed;
+}
+
+function externalServiceUrl(endpoint: string, pathname: string): string {
+  const base = new URL(endpoint);
+  const local = base.hostname === 'localhost' || base.hostname === '127.0.0.1';
+  if (base.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && local && base.protocol === 'http:')) {
+    throw new Error('blog_external_adapter_https_endpoint_required');
+  }
+  if (base.username || base.password || base.search || base.hash) throw new Error('blog_external_adapter_endpoint_invalid');
+  return new URL(pathname.replace(/^\//, ''), `${base.toString().replace(/\/$/, '')}/`).toString();
+}
+
+function findText(value: unknown, preferredKeys: readonly string[]): string | null {
+  if (typeof value === 'string') return value.trim() || null;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findText(item, preferredKeys);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  for (const key of preferredKeys) {
+    const found = findText(record[key], preferredKeys);
+    if (found) return found;
+  }
+  for (const nested of Object.values(record)) {
+    if (!nested || typeof nested !== 'object') continue;
+    const found = findText(nested, preferredKeys);
+    if (found) return found;
+  }
+  return null;
+}
+
+export async function extractWithCrawl4AiV4(input: {
+  sourceUrl: string;
+  endpoint: string;
+  bearerToken: string;
+  benchmark: BlogExternalAdapterBenchmarkRowV4 | null;
+  fetchImpl?: typeof fetch;
+}): Promise<BlogResearchExtractedSourceV4> {
+  const { isSafePublicBlogSourceUrl } = await import('@/lib/blog-official-source-url');
+  if (!isSafePublicBlogSourceUrl(input.sourceUrl)) throw new Error('blog_crawl4ai_source_url_rejected');
+  if (!input.bearerToken.trim()) throw new Error('blog_crawl4ai_token_missing');
+  if (!isExternalAdapterBenchmarkPassingV4(input.benchmark) || input.benchmark?.adapter !== 'crawl4ai') {
+    throw new Error('blog_crawl4ai_benchmark_gate_closed');
+  }
+  const response = await (input.fetchImpl ?? fetch)(externalServiceUrl(input.endpoint, '/crawl'), {
+    method: 'POST',
+    headers: { authorization: `Bearer ${input.bearerToken}`, 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({
+      urls: [input.sourceUrl],
+      browser_config: { type: 'BrowserConfig', params: { headless: true } },
+      crawler_config: { type: 'CrawlerRunConfig', params: { stream: false, cache_mode: 'bypass' } },
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) throw new Error(`blog_crawl4ai_http_${response.status}`);
+  const payload = await response.json() as unknown;
+  const text = findText(payload, ['markdown', 'fit_markdown', 'raw_markdown', 'content', 'text']);
+  if (!text) throw new Error('blog_crawl4ai_empty_extraction');
+  return {
+    url: input.sourceUrl,
+    title: findText(payload, ['title']) || new URL(input.sourceUrl).hostname,
+    text,
+    format: 'html',
+    extractorVersion: `crawl4ai:${input.benchmark.adapter_version}`,
+  };
+}
+
+export async function extractWithDoclingV4(input: {
+  sourceUrl: string;
+  format: 'pdf' | 'office_document';
+  endpoint: string;
+  apiKey?: string | null;
+  benchmark: BlogExternalAdapterBenchmarkRowV4 | null;
+  fetchImpl?: typeof fetch;
+}): Promise<BlogResearchExtractedSourceV4> {
+  const { isSafePublicBlogSourceUrl } = await import('@/lib/blog-official-source-url');
+  if (!isSafePublicBlogSourceUrl(input.sourceUrl)) throw new Error('blog_docling_source_url_rejected');
+  if (!isExternalAdapterBenchmarkPassingV4(input.benchmark) || input.benchmark?.adapter !== 'docling') {
+    throw new Error('blog_docling_benchmark_gate_closed');
+  }
+  const response = await (input.fetchImpl ?? fetch)(externalServiceUrl(input.endpoint, '/v1/convert/source'), {
+    method: 'POST',
+    headers: {
+      ...(input.apiKey ? { 'x-api-key': input.apiKey } : {}),
+      'content-type': 'application/json',
+      accept: 'application/json',
+    },
+    body: JSON.stringify({ http_sources: [{ url: input.sourceUrl }], options: { to_formats: ['md'] } }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) throw new Error(`blog_docling_http_${response.status}`);
+  const payload = await response.json() as unknown;
+  const text = findText(payload, ['md_content', 'markdown', 'content', 'text']);
+  if (!text) throw new Error('blog_docling_empty_extraction');
+  return {
+    url: input.sourceUrl,
+    title: findText(payload, ['title', 'filename']) || new URL(input.sourceUrl).pathname.split('/').pop() || new URL(input.sourceUrl).hostname,
+    text,
+    format: input.format,
+    extractorVersion: `docling:${input.benchmark.adapter_version}`,
+  };
+}

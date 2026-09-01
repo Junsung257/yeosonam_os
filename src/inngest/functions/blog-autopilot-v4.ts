@@ -1,9 +1,14 @@
 import { blogPipelineRequestedEvent, inngest } from '../client';
 import { isInngestBlogAutopilotEnabled } from '@/inngest/runtime-policy';
 import { getSecret } from '@/lib/secret-registry';
-import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
-import { readBlogBrowserPreviewEvidenceV4 } from '@/lib/blog-browser-preview-v4';
+import { isSupabaseAdminConfigured } from '@/lib/supabase';
 import { BLOG_AUTOPILOT_PIPELINE_VERSION } from '@/lib/blog-autopilot-v4-contract';
+import {
+  buildBlogPipelineObservationV4,
+  readBlogGenerationArtifactsV4,
+  readBlogPipelineCandidateV4,
+  readBlogQualityAndPreviewGatesV4,
+} from '@/lib/blog-autopilot-stage-services-v4';
 
 type CronPayload = Record<string, unknown>;
 
@@ -63,94 +68,87 @@ export const blogAutopilotV4Fn = inngest.createFunction(
       return { skipped: true, reason: 'supabase_admin_not_configured' };
     }
 
-    const { queueId, contentVersion, mode } = event.data;
-    const initial = await step.run('research-and-brief-contract', async () => {
-      const { data, error } = await supabaseAdmin
-        .from('blog_topic_queue')
-        .select('id,status,updated_at,meta')
-        .eq('id', queueId)
-        .maybeSingle();
-      if (error) throw new Error(`blog_queue_read_failed:${error.message}`);
-      if (!data) throw new Error('blog_queue_missing');
-      if (!['queued', 'pending_review', 'generating'].includes(String(data.status))) {
-        return { terminal: true, status: String(data.status), reason: 'queue_not_generation_eligible' };
-      }
-      return { terminal: false, status: String(data.status), updatedAt: data.updated_at };
+    const { queueId, contentVersion } = event.data;
+    const initial = await step.run('research', async () => {
+      const candidate = await readBlogPipelineCandidateV4(queueId);
+      return candidate.eligible
+        ? { terminal: false, status: String(candidate.status), researchPersisted: candidate.researchPersisted }
+        : { terminal: true, status: String(candidate.status), reason: 'queue_not_generation_eligible' };
     });
     if (initial.terminal) return { ...initial, queueId, contentVersion };
 
-    const generation = await step.run('draft-verify-edit-quality', () => invokeAuthorizedCron(
+    const brief = await step.run('brief', async () => {
+      const candidate = await readBlogPipelineCandidateV4(queueId);
+      return { topic: candidate.topic, destination: candidate.destination, primaryKeyword: candidate.primary_keyword };
+    });
+
+    const generation = await step.run('draft', () => invokeAuthorizedCron(
       `/api/cron/blog-publisher?phase=generate_only&pipelineQueueId=${encodeURIComponent(queueId)}`,
     ));
 
-    const run = await step.run('persisted-quality-decision', async () => {
-      const { data, error } = await supabaseAdmin
-        .from('blog_generation_runs')
-        .select('id,status,content_creative_id,selected_attempt_id,latest_quality_score,disposition,last_error')
-        .eq('queue_id', queueId)
-        .eq('generation_key', `queue:${queueId}`)
-        .maybeSingle();
-      if (error) throw new Error(`blog_generation_run_read_failed:${error.message}`);
-      if (!data) throw new Error('blog_generation_run_missing_after_generation');
-      return data;
-    });
+    const verified = await step.run('verify', () => readBlogGenerationArtifactsV4(queueId));
+    const edited = await step.run('edit', async () => ({
+      selectedAttemptId: verified.run.selected_attempt_id,
+      route: verified.attempt?.route ?? null,
+      claimPacketHash: verified.attempt?.claim_packet_hash ?? verified.attempt?.claim_fingerprint ?? null,
+      promptTraceComplete: Boolean(
+        verified.attempt?.prompt_hash
+        && verified.attempt?.prompt_template_version
+        && verified.attempt?.prompt_trace_version
+      ),
+      hardBlockers: verified.attempt?.hard_blockers ?? [],
+    }));
+    const gates = await step.run('quality', () => readBlogQualityAndPreviewGatesV4(verified.run.content_creative_id));
+    const preview = await step.run('preview', async () => ({
+      passed: gates.passed,
+      reason: gates.reason,
+      evidence: gates.preview,
+    }));
 
-    if (mode === 'generate_only' || run.status !== 'approved_for_slot') {
+    if (verified.run.status !== 'approved_for_slot' || !verified.researchPersisted || !gates.passed) {
       return {
         queueId,
         contentVersion,
         pipelineVersion: BLOG_AUTOPILOT_PIPELINE_VERSION,
+        brief,
         generation,
-        run,
-        publicationDispatched: false,
-      };
-    }
-
-    const preview = await step.run('browser-preview-gate', async () => {
-      if (!run.content_creative_id) {
-        return { passed: false as const, reason: 'blog_preview_creative_missing', evidence: null };
-      }
-      const { data, error } = await supabaseAdmin
-        .from('content_creatives')
-        .select('generation_meta')
-        .eq('id', run.content_creative_id)
-        .eq('status', 'draft')
-        .maybeSingle();
-      if (error) throw new Error(`blog_preview_evidence_read_failed:${error.message}`);
-      const evidence = readBlogBrowserPreviewEvidenceV4(data?.generation_meta);
-      if (!evidence || !evidence.passed || evidence.score < 95) {
-        return { passed: false as const, reason: 'blog_browser_preview_gate_not_passed', evidence };
-      }
-      return { passed: true as const, reason: null, evidence };
-    });
-
-    // A deterministic quality/browser failure is terminal for this content
-    // version. Throwing here would make Inngest retry a non-transient failure.
-    if (!preview.passed) {
-      return {
-        queueId,
-        contentVersion,
-        pipelineVersion: BLOG_AUTOPILOT_PIPELINE_VERSION,
-        generation,
-        run,
+        run: verified.run,
+        edited,
         preview,
         publicationDispatched: false,
       };
     }
 
-    const publication = await step.run('atomic-publish-and-index-outbox', () => invokeAuthorizedCron(
-      `/api/cron/blog-publication-controller?force=true&runId=${encodeURIComponent(String(run.id))}`,
-    ));
+    const publication = await step.run('publish', async () => ({
+      queuedForScheduledSlot: true,
+      runId: verified.run.id,
+      scheduledPublishAt: verified.run.scheduled_publish_at,
+      controller: 'blog-publication-controller',
+    }));
+    const indexing = await step.run('indexing', async () => ({
+      state: 'deferred_until_atomic_publication',
+      outboxCreatedBy: 'blog-publication-controller',
+    }));
+    const observation = await step.run('observe', async () => buildBlogPipelineObservationV4({
+      queueId,
+      contentVersion,
+      runId: String(verified.run.id),
+    }));
 
     return {
       queueId,
       contentVersion,
       pipelineVersion: BLOG_AUTOPILOT_PIPELINE_VERSION,
       generation,
-      run,
+      brief,
+      run: verified.run,
+      edited,
       preview,
       publication,
-      publicationDispatched: true,
+      indexing,
+      observation,
+      publicationDispatched: false,
+      publicationQueuedForScheduledSlot: true,
     };
   },
 );

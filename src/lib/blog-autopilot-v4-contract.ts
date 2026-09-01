@@ -4,7 +4,7 @@ export const BLOG_AUTOPILOT_PIPELINE_VERSION = 'blog-autopilot-v4.0.0' as const;
 export const BLOG_SEARCH_CLASSIFICATION_VERSION = 'blog-search-lifecycle-v4.0.0' as const;
 export const BLOG_QUALITY_DECISION_VERSION = 'blog-quality-decision-v4.0.0' as const;
 export const BLOG_QUALITY_RUBRIC_VERSION = 'blog-promptfoo-rubric-v4.0.0' as const;
-export const BLOG_AUTOPILOT_SCHEMA_MIGRATION_VERSION = '20260901114420' as const;
+export const BLOG_AUTOPILOT_SCHEMA_MIGRATION_VERSION = '20260901155821' as const;
 
 export function readBlogDeploymentCommitShaV4(): string {
   return String(

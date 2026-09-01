@@ -35,7 +35,7 @@ async function runBlogGenerate(request: NextRequest) {
   if (!forcedManualRun && !isBlogGenerationWindowKstV4(new Date())) {
     return { skipped: true, reason: 'outside_kst_offpeak_generation_window' };
   }
-  if (durableWorkflowEnabled && !forcedManualRun) {
+  if (durableWorkflowEnabled) {
     if (!isSupabaseAdminConfigured) {
       return { skipped: true, reason: 'supabase_admin_not_configured' };
     }
@@ -69,6 +69,7 @@ async function runBlogGenerate(request: NextRequest) {
       durableWorkflow: 'blog-autopilot-v4',
       queueIds: candidates.map((candidate) => candidate.id),
       modelCalls: 0,
+      forcedManualDispatch: forcedManualRun,
     };
   }
   url.pathname = '/api/cron/blog-publisher';

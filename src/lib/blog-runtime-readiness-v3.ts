@@ -150,6 +150,30 @@ export const BLOG_RUNTIME_RESOURCES_V3: readonly BlogRuntimeResourceV3[] = [
     columns: 'id,content_creative_id,followup_job_id,correction_type,status',
     scope: 'delivery',
   },
+  {
+    key: 'seo_audit_runs_v4',
+    table: 'blog_seo_audit_runs',
+    columns: 'id,audit_key,audit_version,scope,status,pipeline_version,deployment_commit_sha,schema_migration_version',
+    scope: 'measurement',
+  },
+  {
+    key: 'seo_observations_v4',
+    table: 'blog_seo_observations',
+    columns: 'id,run_id,content_creative_id,slug,url,http_status,canonical_url,robots_directive,render_hash,metadata_hash',
+    scope: 'measurement',
+  },
+  {
+    key: 'seo_audit_findings_v4',
+    table: 'blog_seo_audit_findings',
+    columns: 'id,run_id,category,severity,code,action,fingerprint,evidence',
+    scope: 'measurement',
+  },
+  {
+    key: 'adapter_benchmarks_v4',
+    table: 'blog_adapter_benchmarks',
+    columns: 'id,adapter,adapter_version,benchmark_version,sample_size,extraction_success_count,factual_fidelity_count,ssrf_security_passed,latency_p95_ms,precision,recall,passed',
+    scope: 'publish',
+  },
   { key: 'search_performance', table: 'blog_search_performance', columns: 'id', scope: 'measurement' },
   { key: 'analytics_outbox', table: 'analytics_server_event_outbox', columns: 'id,status', scope: 'measurement' },
   {

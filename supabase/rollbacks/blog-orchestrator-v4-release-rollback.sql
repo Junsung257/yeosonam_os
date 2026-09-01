@@ -3,6 +3,36 @@
 -- not restore content rows and intentionally does not mutate published posts.
 begin;
 
+-- V4 completion observations are append-only and contain no public content.
+drop table if exists public.blog_seo_audit_findings;
+drop table if exists public.blog_seo_observations;
+drop table if exists public.blog_seo_audit_runs;
+drop table if exists public.blog_adapter_benchmarks;
+
+drop table if exists public.blog_search_correction_queue;
+drop table if exists public.blog_search_followup_jobs;
+drop table if exists public.blog_indexing_classification_revisions;
+
+alter table if exists public.blog_generation_runs
+  drop column if exists pipeline_version,
+  drop column if exists deployment_commit_sha,
+  drop column if exists schema_migration_version;
+alter table if exists public.indexing_reports
+  drop column if exists search_lifecycle_status,
+  drop column if exists provider_receipt_status,
+  drop column if exists classification_version,
+  drop column if exists provider_raw_response,
+  drop column if exists pipeline_version,
+  drop column if exists deployment_commit_sha,
+  drop column if exists schema_migration_version;
+alter table if exists public.blog_visibility_snapshots
+  drop column if exists search_lifecycle_status,
+  drop column if exists provider_receipt_status,
+  drop column if exists classification_version,
+  drop column if exists pipeline_version,
+  drop column if exists deployment_commit_sha,
+  drop column if exists schema_migration_version;
+
 drop function if exists public.replace_blog_information_automated_draft_atomically(
   uuid,uuid,uuid,uuid,char,jsonb,jsonb,text,text
 );

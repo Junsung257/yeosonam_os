@@ -17,6 +17,8 @@ import { classifyDestinationlessInfoCandidate } from '@/lib/blog-destinationless
 import { evaluateBlogEngineV2 } from '@/lib/blog-engine-v2';
 import { inspectBlogFleetPhraseDrift } from '@/lib/blog-fleet-phrase-drift';
 import { BLOG_INFORMATION_RESEARCH_META_KEY } from '@/lib/blog-generation-research';
+import { isExternalAdapterBenchmarkPassingV4, type BlogExternalAdapterBenchmarkRowV4 } from '@/lib/blog-research-source-adapters-v4';
+import { isKoreanSemanticBenchmarkPassingV4, type BlogKoreanSemanticBenchmarkRowV4 } from '@/lib/blog-korean-semantic-v4';
 
 export type BlogOpsLevel = 'healthy' | 'watch' | 'risk' | 'blocked';
 
@@ -131,6 +133,28 @@ type RankRow = {
   source: string | null;
   impressions: number | null;
   clicks: number | null;
+};
+
+type SeoAuditRunRow = {
+  id: string;
+  status: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  summary: Record<string, unknown> | null;
+};
+
+type AdapterBenchmarkRow = {
+  adapter: 'crawl4ai' | 'docling' | 'korean_semantic';
+  adapter_version: string;
+  sample_size: number;
+  extraction_success_count: number | null;
+  factual_fidelity_count: number | null;
+  ssrf_security_passed: boolean | null;
+  latency_p95_ms: number | null;
+  precision: number | null;
+  recall: number | null;
+  passed: boolean;
+  evaluated_at?: string | null;
 };
 
 function countBy<T>(rows: T[], pick: (row: T) => string | null | undefined): Record<string, number> {
@@ -474,6 +498,8 @@ export async function buildBlogOpsSummary(supabase: any) {
     generationRuns,
     searchFollowups,
     searchCorrections,
+    seoAuditRuns,
+    adapterBenchmarks,
   ] = await Promise.all([
     settle<QueueRow>('blog_topic_queue', supabase.from('blog_topic_queue').select('*').order('created_at', { ascending: false }).limit(500), warnings),
     settle<PostRow>(
@@ -528,6 +554,16 @@ export async function buildBlogOpsSummary(supabase: any) {
     settle<SearchCorrectionRow>(
       'blog_search_correction_queue',
       supabase.from('blog_search_correction_queue').select('correction_type,status').order('created_at', { ascending: false }).limit(500),
+      warnings,
+    ),
+    settle<SeoAuditRunRow>(
+      'blog_seo_audit_runs',
+      supabase.from('blog_seo_audit_runs').select('id,status,started_at,completed_at,summary').order('started_at', { ascending: false }).limit(2),
+      warnings,
+    ),
+    settle<AdapterBenchmarkRow>(
+      'blog_adapter_benchmarks',
+      supabase.from('blog_adapter_benchmarks').select('adapter,adapter_version,sample_size,extraction_success_count,factual_fidelity_count,ssrf_security_passed,latency_p95_ms,precision,recall,passed,evaluated_at').order('evaluated_at', { ascending: false }).limit(20),
       warnings,
     ),
   ]);
@@ -633,6 +669,25 @@ export async function buildBlogOpsSummary(supabase: any) {
   const browserPublicPasses = browserPublicEvidence.filter((evidence) => (
     evidence.passed === true && asNumber(evidence.score) >= 95
   )).length;
+  const latestSeoAudit = seoAuditRuns[0] ?? null;
+  const seoAuditCritical = asNumber(latestSeoAudit?.summary?.critical);
+  const seoAuditLevel: BlogOpsLevel = !latestSeoAudit
+    ? 'watch'
+    : latestSeoAudit.status === 'failed' || seoAuditCritical > 0
+      ? 'risk'
+      : latestSeoAudit.status === 'partial'
+        ? 'watch'
+        : 'healthy';
+  const latestBenchmarkByAdapter = new Map<string, AdapterBenchmarkRow>();
+  for (const row of adapterBenchmarks) if (!latestBenchmarkByAdapter.has(row.adapter)) latestBenchmarkByAdapter.set(row.adapter, row);
+  const crawl4aiBenchmark = latestBenchmarkByAdapter.get('crawl4ai') ?? null;
+  const doclingBenchmark = latestBenchmarkByAdapter.get('docling') ?? null;
+  const koreanSemanticBenchmark = latestBenchmarkByAdapter.get('korean_semantic') ?? null;
+  const adapterReadiness = {
+    crawl4ai: isExternalAdapterBenchmarkPassingV4(crawl4aiBenchmark as BlogExternalAdapterBenchmarkRowV4 | null),
+    docling: isExternalAdapterBenchmarkPassingV4(doclingBenchmark as BlogExternalAdapterBenchmarkRowV4 | null),
+    korean_semantic: isKoreanSemanticBenchmarkPassingV4(koreanSemanticBenchmark as BlogKoreanSemanticBenchmarkRowV4 | null),
+  };
 
   const blogCronNames = new Set([
     'blog-daily-summary',
@@ -641,6 +696,7 @@ export async function buildBlogOpsSummary(supabase: any) {
     'blog-generate',
     'blog-publication-controller',
     'blog-search-lifecycle',
+    'blog-seo-weekly-audit',
     'blog-scheduler',
     'gsc-index-rank',
     'rank-tracking',
@@ -785,7 +841,7 @@ export async function buildBlogOpsSummary(supabase: any) {
   const generatedCanaryLevel: BlogOpsLevel = generatedCanaryQuality.status === 'block' ? 'risk' : generatedCanaryQuality.status === 'warn' ? 'watch' : 'healthy';
   const fleetPhraseLevel: BlogOpsLevel = fleetPhraseDrift.status === 'block' ? 'risk' : fleetPhraseDrift.status === 'warn' ? 'watch' : 'healthy';
   const candidateContractLevel: BlogOpsLevel = candidateContractBlocked > 0 ? 'watch' : 'healthy';
-  const overallLevel = maxLevel(dailyLevel, queueLevel, indexingLevel, cronLevel, qualityLevel, v4QualityLevel, candidateReadinessLevel, preflightLevel, canaryLevel, generatedCanaryLevel, fleetPhraseLevel, currentDayPublisherLevel, candidateContractLevel);
+  const overallLevel = maxLevel(dailyLevel, queueLevel, indexingLevel, cronLevel, qualityLevel, v4QualityLevel, candidateReadinessLevel, preflightLevel, canaryLevel, generatedCanaryLevel, fleetPhraseLevel, currentDayPublisherLevel, candidateContractLevel, seoAuditLevel);
 
   const nextActions: Array<{ severity: BlogOpsLevel; title: string; detail: string; href: string; action?: string }> = [];
   if (!publicPublicationEnabled) {
@@ -817,6 +873,16 @@ export async function buildBlogOpsSummary(supabase: any) {
       severity: 'risk',
       title: '실제 브라우저 검사 차단',
       detail: `검사 대기 ${previewPendingRuns}건, 공개 전 실패 ${browserPreviewFailures}건, 공개 후 실패 ${browserPublicFailures}건입니다.`,
+      href: '/admin/blog/system',
+    });
+  }
+  if (!latestSeoAudit || latestSeoAudit.status === 'failed' || seoAuditCritical > 0) {
+    nextActions.push({
+      severity: latestSeoAudit ? 'risk' : 'watch',
+      title: latestSeoAudit ? '주간 SEO 감사 조치 필요' : '주간 SEO 감사 증거 없음',
+      detail: latestSeoAudit
+        ? `최신 감사 상태 ${latestSeoAudit.status}, critical ${seoAuditCritical}건입니다. 자동 수정 없이 finding 원장을 확인하세요.`
+        : '첫 주간 SEO 감사를 실행해 canonical·Sitemap·렌더·GSC·CrUX 기준선을 만드세요.',
       href: '/admin/blog/system',
     });
   }
@@ -1001,6 +1067,7 @@ export async function buildBlogOpsSummary(supabase: any) {
         ...(fleetPhraseDrift.status === 'block' ? ['fleet_phrase_drift'] : []),
         ...(currentDayPublisherHealth.status === 'risk' ? ['current_day_publisher_failure'] : []),
         ...(googleUnknownUrls > 0 ? ['google_url_unknown'] : []),
+        ...(seoAuditLevel === 'risk' ? ['seo_weekly_audit_failed_or_critical'] : []),
       ],
     },
     health_sections: {
@@ -1048,6 +1115,15 @@ export async function buildBlogOpsSummary(supabase: any) {
         level: cronLevel,
         failed: cronLevel === 'risk' || cronLevel === 'blocked',
         checks: unhealthyCrons.map((row) => row.cron_name).filter(Boolean),
+      },
+      seo_operations: {
+        level: seoAuditLevel,
+        failed: seoAuditLevel === 'risk',
+        checks: [
+          ...(!latestSeoAudit ? ['seo_audit_missing'] : []),
+          ...(latestSeoAudit?.status === 'failed' ? ['seo_audit_failed'] : []),
+          ...(seoAuditCritical > 0 ? ['seo_audit_critical_findings'] : []),
+        ],
       },
     },
     publish: {
@@ -1162,6 +1238,13 @@ export async function buildBlogOpsSummary(supabase: any) {
         required_score: 95,
       },
       level: maxLevel(candidateReadinessLevel, v4QualityLevel),
+    },
+    seo_operations: {
+      latest_audit: latestSeoAudit,
+      level: seoAuditLevel,
+      adapter_readiness: adapterReadiness,
+      latest_adapter_benchmarks: Object.fromEntries(latestBenchmarkByAdapter),
+      automatic_content_changes: 0,
     },
     indexing: {
       job_counts: indexingCounts,
