@@ -123,6 +123,8 @@ jobs:
           npx --yes supabase@2.116.0 link "${supabase_link_args[@]}"
           mkdir -p .vercel
           printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID" > .vercel/project.json
+          npx vercel project inspect "$VERCEL_PROJECT_ID" \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN" >/dev/null
 
       - name: Prove exact Supabase dry-run set
         shell: bash
@@ -179,8 +181,10 @@ jobs:
           set -euo pipefail
           update_env() {
             local name="$1" value="$2"
-            npx vercel env update "$name" production --value "$value" --yes --token "$VERCEL_TOKEN" >/dev/null 2>&1 \
-              || npx vercel env add "$name" production --value "$value" --yes --token "$VERCEL_TOKEN" >/dev/null
+            npx vercel env update "$name" production --value "$value" --yes \
+              --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN" >/dev/null 2>&1 \
+              || npx vercel env add "$name" production --value "$value" --yes \
+                --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN" >/dev/null
           }
           catalog_path="$(node -p "require('./public/blog-snapshots/v3/manifest.json').catalog.relative_path")"
           catalog_sha="$(node -p "require('./public/blog-snapshots/v3/manifest.json').catalog.sha256")"
@@ -206,7 +210,8 @@ jobs:
         run: |
           set -euo pipefail
           npm run build
-          candidate_url="$(npx vercel deploy --prod --skip-domain --yes --token "$VERCEL_TOKEN")"
+          candidate_url="$(npx vercel deploy --prod --skip-domain --yes \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN")"
           echo "url=${candidate_url}" >> "$GITHUB_OUTPUT"
           echo "Candidate: ${candidate_url}"
 
@@ -244,7 +249,9 @@ jobs:
             --header "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
             "${CANDIDATE_URL}/blog/__blog_v4_missing_probe__)"
           test "$missing_status" = "404"
-          npx vercel logs "$CANDIDATE_URL" --no-follow --since 30m --json --token "$VERCEL_TOKEN" > .tmp/blog-v4-release/candidate-logs.jsonl || true
+          npx vercel logs "$CANDIDATE_URL" --no-follow --since 30m --json \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN" \
+            > .tmp/blog-v4-release/candidate-logs.jsonl || true
           db_errors="$(grep -c 'BLOG_DATABASE_UNAVAILABLE' .tmp/blog-v4-release/candidate-logs.jsonl || true)"
           npm run collect:blog-production-evidence-v4 -- \
             --base="$CANDIDATE_URL" \
@@ -266,10 +273,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx vercel env update BLOG_AUTOPUBLISH_MODE production --value live --yes --token "$VERCEL_TOKEN"
-          npx vercel env update BLOG_GENERATION_CRON_ENABLED production --value false --yes --token "$VERCEL_TOKEN"
-          npx vercel env update INNGEST_BLOG_AUTOPILOT_ENABLED production --value true --yes --token "$VERCEL_TOKEN"
-          live_url="$(npx vercel deploy --prod --skip-domain --yes --token "$VERCEL_TOKEN")"
+          npx vercel env update BLOG_AUTOPUBLISH_MODE production --value live --yes \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN"
+          npx vercel env update BLOG_GENERATION_CRON_ENABLED production --value false --yes \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN"
+          npx vercel env update INNGEST_BLOG_AUTOPILOT_ENABLED production --value true --yes \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN"
+          live_url="$(npx vercel deploy --prod --skip-domain --yes \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN")"
           echo "url=${live_url}" >> "$GITHUB_OUTPUT"
           curl --fail --silent --show-error --location \
             --header "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
@@ -282,7 +293,9 @@ jobs:
       - name: Promote verified live candidate
         if: inputs.promote_live
         shell: bash
-        run: npx vercel promote "${{ steps.live_candidate.outputs.url }}" --yes --token "$VERCEL_TOKEN"
+        run: >-
+          npx vercel promote "${{ steps.live_candidate.outputs.url }}" --yes
+          --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN"
 
       - name: Verify promoted production surfaces
         if: inputs.promote_live
@@ -300,7 +313,8 @@ jobs:
             --header "Authorization: Bearer ${CRON_SECRET}" \
             https://www.yeosonam.com/api/cron/blog-data-readiness >/dev/null
           npx vercel logs --environment production --no-branch --no-follow --since 10m \
-            --query BLOG_DATABASE_UNAVAILABLE --json --token "$VERCEL_TOKEN" \
+            --query BLOG_DATABASE_UNAVAILABLE --json \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN" \
             > .tmp/blog-v4-release/post-promote-errors.jsonl || true
           test "$(grep -c 'BLOG_DATABASE_UNAVAILABLE' .tmp/blog-v4-release/post-promote-errors.jsonl || true)" = "0"
 
@@ -309,11 +323,16 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          npx vercel env update BLOG_AUTOPUBLISH_MODE production --value draft_only --yes --token "$VERCEL_TOKEN"
-          npx vercel env update BLOG_GENERATION_CRON_ENABLED production --value false --yes --token "$VERCEL_TOKEN"
-          npx vercel env update INNGEST_BLOG_AUTOPILOT_ENABLED production --value false --yes --token "$VERCEL_TOKEN"
-          safe_url="$(npx vercel deploy --prod --skip-domain --yes --token "$VERCEL_TOKEN")"
-          npx vercel promote "$safe_url" --yes --token "$VERCEL_TOKEN"
+          npx vercel env update BLOG_AUTOPUBLISH_MODE production --value draft_only --yes \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN"
+          npx vercel env update BLOG_GENERATION_CRON_ENABLED production --value false --yes \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN"
+          npx vercel env update INNGEST_BLOG_AUTOPILOT_ENABLED production --value false --yes \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN"
+          safe_url="$(npx vercel deploy --prod --skip-domain --yes \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN")"
+          npx vercel promote "$safe_url" --yes \
+            --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN"
 
       - name: Upload release evidence
         if: always()
