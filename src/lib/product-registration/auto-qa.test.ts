@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StandardProductRegistrationObject } from './types';
 import { runMicroAutoQA } from './auto-qa';
 
@@ -95,6 +95,15 @@ function registration(overrides: Partial<StandardProductRegistrationObject> = {}
 }
 
 describe('runMicroAutoQA', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-07T00:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('passes a clean publishable registration and still records the full three-step verification ledger', () => {
     const result = runMicroAutoQA({
       uploadId: 'upload-1',

@@ -160,7 +160,13 @@ function assertRenderInputsReady(input: {
       excludes: ['개인경비'],
     };
     const view = renderPackage(pkg);
-    const landing = mapTravelPackageToLandingData(pkg, null);
+    // Golden fixtures are immutable historical source documents. Pin the
+    // inventory clock so the corpus continues to measure parsing/rendering
+    // fidelity instead of expiring as wall-clock time advances. Production
+    // callers omit this option and remain pinned to the current KST date.
+    const landing = mapTravelPackageToLandingData(pkg, null, {
+      inventoryReferenceDate: '2026-01-01',
+    });
     if (!Array.isArray(view.days) || view.days.length === 0) return 'renderPackage:days:0';
     if (!landing.priceFrom || landing.priceFrom <= 0) return 'landing:priceFrom:0';
     if (!Array.isArray(landing.price_dates) || landing.price_dates.length === 0) return 'landing:price_dates:0';

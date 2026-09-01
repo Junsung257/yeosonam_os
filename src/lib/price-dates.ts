@@ -25,6 +25,20 @@ export interface PriceDate {
   price_note?: string;
 }
 
+/**
+ * Customer-selectable departure rows, pinned to the Korea business date.
+ * Expired source prices remain in the immutable snapshot for provenance, but
+ * must not be presented as currently selectable inventory.
+ */
+export function getUpcomingPriceDates(
+  dates: PriceDate[] | null | undefined,
+  today: string = formatKstDate(),
+): PriceDate[] {
+  return [...(dates ?? [])]
+    .filter(item => isUpcomingKstDate(item.date, today))
+    .sort((left, right) => left.date.localeCompare(right.date) || left.price - right.price);
+}
+
 export function getPriceScopeLabel(price: Pick<PriceDate, 'min_travelers' | 'max_travelers' | 'price_note'>): string | null {
   if (price.price_note?.trim()) return price.price_note.trim();
   if (price.min_travelers == null) return null;

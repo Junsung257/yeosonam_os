@@ -18,6 +18,76 @@ import type { ResolvedTransportForSnapshot } from './shared-fact-orchestrator';
 
 type JsonObject = Record<string, unknown>;
 
+export type ProductRegistrationV6BrowserProofFailureCategory =
+  | 'lineage'
+  | 'customer_content'
+  | 'customer_interaction'
+  | 'visual_asset'
+  | 'runtime'
+  | 'infrastructure'
+  | 'contract';
+
+export type ProductRegistrationV6BrowserProofFailureTaxonomy = {
+  primaryCategory: ProductRegistrationV6BrowserProofFailureCategory;
+  failures: Array<{
+    surface: 'packages' | 'lp' | 'proof';
+    category: ProductRegistrationV6BrowserProofFailureCategory;
+    codes: string[];
+  }>;
+};
+
+function browserProofFailureCategory(code: string): ProductRegistrationV6BrowserProofFailureCategory {
+  if (/SNAPSHOT_HASH_LINEAGE_MISMATCH|RENDERER_BUILD_LINEAGE_MISMATCH/u.test(code)) return 'lineage';
+  if (/REQUIRED_CUSTOMER_FACTS_MISSING|UNVERIFIED_CUSTOMER_FACTS_VISIBLE|CUSTOMER_BODY_TOO_SHORT|CUSTOMER_NOT_FOUND_RENDERED/u.test(code)) {
+    return 'customer_content';
+  }
+  if (/CUSTOMER_CTA_NOT_ACTIONABLE|CTA/u.test(code)) return 'customer_interaction';
+  if (/BROKEN_IMAGES|KOREAN_WEBFONT_NOT_READY/u.test(code)) return 'visual_asset';
+  if (/HYDRATION_OR_RUNTIME_ERROR/u.test(code)) return 'runtime';
+  if (/HTTP_STATUS|BROWSER_ASSERTION|NAVIGATION|TIMEOUT|CONNECTION|TARGET_CLOSED/u.test(code.toUpperCase())) {
+    return 'infrastructure';
+  }
+  return 'contract';
+}
+
+export function classifyProductRegistrationBrowserProofFailure(
+  proof: Awaited<ReturnType<typeof runProductRegistrationV6ChromeProof>>,
+): ProductRegistrationV6BrowserProofFailureTaxonomy {
+  const failures: ProductRegistrationV6BrowserProofFailureTaxonomy['failures'] = [];
+  for (const surface of proof.surfaces) {
+    const grouped = new Map<ProductRegistrationV6BrowserProofFailureCategory, string[]>();
+    const codes = surface.failures.length > 0
+      ? [...surface.failures]
+      : surface.status === 'failed'
+        ? ['SURFACE_FAILED_WITHOUT_CODE']
+        : [];
+    if (!surface.ctaOpened && surface.status === 'failed') codes.push('CTA_NOT_OPENED');
+    for (const code of [...new Set(codes)]) {
+      const category = browserProofFailureCategory(code);
+      grouped.set(category, [...(grouped.get(category) ?? []), code]);
+    }
+    for (const [category, categoryCodes] of grouped) {
+      failures.push({ surface: surface.surface, category, codes: categoryCodes });
+    }
+  }
+  if (proof.surfaces.length !== 2) {
+    failures.push({ surface: 'proof', category: 'contract', codes: ['PROOF_SURFACE_COUNT_MISMATCH'] });
+  }
+  const priority: ProductRegistrationV6BrowserProofFailureCategory[] = [
+    'lineage',
+    'customer_content',
+    'customer_interaction',
+    'runtime',
+    'visual_asset',
+    'infrastructure',
+    'contract',
+  ];
+  return {
+    primaryCategory: priority.find(category => failures.some(failure => failure.category === category)) ?? 'contract',
+    failures,
+  };
+}
+
 export function productRegistrationProofScreenshotPath(input: {
   tenantId: string;
   snapshotId: string;
@@ -477,19 +547,31 @@ export async function proveProductRegistrationV6Snapshot(input: {
     packages: `${baseUrl}/product-registration-proof/packages/${input.snapshot.snapshotId}`,
     lp: `${baseUrl}/product-registration-proof/lp/${input.snapshot.snapshotId}`,
   };
-  const chromeProof = await runProductRegistrationV6ChromeProof({
-    surfaceUrls,
-    proofToken: token,
-    expectedSnapshotHash: input.snapshot.snapshotHash,
-    expectedRendererBuildId: input.snapshot.rendererBuildId,
-    requiredText: input.snapshot.proofAssertions.requiredText,
-    forbiddenText: input.snapshot.proofAssertions.forbiddenText,
-  });
-  const persistedChromeProof = await persistPrivateProofScreenshots({
-    supabase: input.supabase,
-    snapshot: input.snapshot,
-    chromeProof,
-  });
+  let chromeProof: Awaited<ReturnType<typeof runProductRegistrationV6ChromeProof>>;
+  try {
+    chromeProof = await runProductRegistrationV6ChromeProof({
+      surfaceUrls,
+      proofToken: token,
+      expectedSnapshotHash: input.snapshot.snapshotHash,
+      expectedRendererBuildId: input.snapshot.rendererBuildId,
+      requiredText: input.snapshot.proofAssertions.requiredText,
+      forbiddenText: input.snapshot.proofAssertions.forbiddenText,
+    });
+  } catch (error) {
+    const detail = (error instanceof Error ? error.message : String(error)).replace(/\s+/gu, ' ').slice(0, 500);
+    throw new Error(`V6_BROWSER_PROOF_INFRASTRUCTURE_FAILED:${detail}`);
+  }
+  let persistedChromeProof: Awaited<ReturnType<typeof persistPrivateProofScreenshots>>;
+  try {
+    persistedChromeProof = await persistPrivateProofScreenshots({
+      supabase: input.supabase,
+      snapshot: input.snapshot,
+      chromeProof,
+    });
+  } catch (error) {
+    const detail = (error instanceof Error ? error.message : String(error)).replace(/\s+/gu, ' ').slice(0, 500);
+    throw new Error(`V6_BROWSER_PROOF_ARTIFACT_PERSIST_FAILED:${detail}`);
+  }
   const passed = chromeProof.status === 'passed'
     && chromeProof.surfaces.length === 2
     && chromeProof.surfaces.every(surface => surface.status === 'passed'
@@ -498,6 +580,7 @@ export async function proveProductRegistrationV6Snapshot(input: {
       && surface.ctaOpened
       && surface.hydrationErrors.length === 0)
     && persistedChromeProof.surfaces.every(surface => Boolean(surface.screenshotStorage));
+  const failureTaxonomy = passed ? null : classifyProductRegistrationBrowserProofFailure(chromeProof);
   const persisted = await persistProductRegistrationV5ProofRun({
     supabase: input.supabase,
     proof: {
@@ -523,11 +606,18 @@ export async function proveProductRegistrationV6Snapshot(input: {
         tokenBound: true,
         legacyPackageMutation: false,
         screenshotArtifactsPrivate: true,
+        failureTaxonomy,
       },
       checkedAt: new Date().toISOString(),
     },
   });
-  if (!passed) throw new Error('V6_BROWSER_PROOF_FAILED');
+  if (!passed) {
+    const summary = failureTaxonomy?.failures
+      .flatMap(failure => failure.codes.map(code => `${failure.surface}:${code}`))
+      .join(',')
+      .slice(0, 900) || 'proof:UNKNOWN';
+    throw new Error(`V6_BROWSER_PROOF_FAILED:${failureTaxonomy?.primaryCategory ?? 'contract'}:${summary}`);
+  }
   return { proofRunId: persisted.proofRunId, token };
 }
 
