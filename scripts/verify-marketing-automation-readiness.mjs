@@ -77,6 +77,16 @@ function requireIncludes(name, path, needles) {
   });
 }
 
+function requireExcludes(name, path, needles) {
+  const text = readText(path);
+  if (!text) return;
+  const forbidden = needles.filter((needle) => text.includes(needle));
+  addCheck(name, forbidden.length ? 'fail' : 'pass', {
+    file: path,
+    forbidden,
+  });
+}
+
 function requireCommandPass(name, command, args = []) {
   const result = spawnSync(command, args, {
     cwd: process.cwd(),
@@ -238,16 +248,16 @@ function requireActiveDevServerBuildPrecheckSmoke() {
   }
 }
 
-function requireJsonCron(path) {
+function requireJsonCronUnscheduled(path) {
   try {
     const vercel = JSON.parse(readText('vercel.json'));
     const paths = new Set((vercel.crons || []).map((cron) => cron.path));
-    addCheck(`cron:${path}`, paths.has(path) ? 'pass' : 'fail', {
+    addCheck(`cron-unscheduled:${path}`, paths.has(path) ? 'fail' : 'pass', {
       file: 'vercel.json',
-      missing: paths.has(path) ? [] : [path],
+      forbidden: paths.has(path) ? [path] : [],
     });
   } catch (err) {
-    addCheck(`cron:${path}`, 'fail', { error: err instanceof Error ? err.message : String(err) });
+    addCheck(`cron-unscheduled:${path}`, 'fail', { error: err instanceof Error ? err.message : String(err) });
   }
 }
 
@@ -392,12 +402,12 @@ function staticChecks() {
     'Google keyword pause blocked: account is not configured',
   ]);
 
-  requireJsonCron('/api/cron/sync-creative-performance');
-  requireJsonCron('/api/cron/meta-optimize');
-  requireJsonCron('/api/cron/ad-optimizer');
-  requireJsonCron('/api/cron/ad-os-safe-pipelines');
-  requireJsonCron('/api/cron/marketing-rules');
-  requireJsonCron('/api/cron/marketing-asset-snapshot');
+  requireJsonCronUnscheduled('/api/cron/sync-creative-performance');
+  requireJsonCronUnscheduled('/api/cron/meta-optimize');
+  requireJsonCronUnscheduled('/api/cron/ad-optimizer');
+  requireJsonCronUnscheduled('/api/cron/ad-os-safe-pipelines');
+  requireJsonCronUnscheduled('/api/cron/marketing-rules');
+  requireJsonCronUnscheduled('/api/cron/marketing-asset-snapshot');
 
   requireIncludes('cron:creative-performance-auth-and-engine', 'src/app/api/cron/sync-creative-performance/route.ts', [
     'isCronAuthorized',
@@ -612,7 +622,6 @@ function staticChecks() {
   requireIncludes('ci:local-release-readiness-wired', '.github/workflows/local-release-readiness.yml', [
     'Local Release Readiness',
     'workflow_dispatch:',
-    'schedule:',
     'push:',
     'npm run verify:local-release',
     'npm run discover:operational-inputs',
@@ -667,10 +676,12 @@ function staticChecks() {
     'actions/upload-artifact@v4',
     'LOCAL_RELEASE_OPEN_READY_TIMEOUT_MS',
   ]);
+  requireExcludes('ci:local-release-readiness-unscheduled', '.github/workflows/local-release-readiness.yml', [
+    '\n  schedule:',
+  ]);
   requireIncludes('ci:marketing-release-readiness-wired', '.github/workflows/marketing-release-readiness.yml', [
     'Marketing Release Readiness',
     'workflow_dispatch:',
-    'schedule:',
     'push:',
     'strict',
     'skip_runtime',
@@ -723,6 +734,9 @@ function staticChecks() {
     'GOOGLE_ADS_DEVELOPER_TOKEN',
     'SLACK_WEBHOOK_URL',
     'CRON_SECRET',
+  ]);
+  requireExcludes('ci:marketing-release-readiness-unscheduled', '.github/workflows/marketing-release-readiness.yml', [
+    '\n  schedule:',
   ]);
   requireIncludes('script:runtime-env-workflow-wiring', 'scripts/verify-runtime-env-workflow-wiring.mjs', [
     'runtime-env-readiness.json',

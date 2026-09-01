@@ -47,6 +47,8 @@ Repeated failures belong in `docs/errors/marketing.md`.
 - Preview deployment success must not run the strict `www.yeosonam.com` data-health gate or receive Production readiness failures.
 - A Production deployment may enter the secret-bearing public readiness job only after a secret-free guard verifies a successful Production environment signal and proves that the deployed SHA belongs to the repository default-branch history. Provider-specific `production_environment` metadata is supporting evidence, not the sole authority, because Vercel can report `environment=Production` with that flag false.
 - Local release CI runs against an isolated dummy database. A Production-discovered package or blog identifier that is absent there is `blocked`, not `fail`; this downgrade is local-only and must never weaken Preview or Production public-surface verification.
+- Marketing/Ad OS routes remain manual or event-driven unless provider credentials, an actionable queue, a response-time objective, and rollback evidence justify a recurring schedule. Re-enabling one requires a dry-run, explicit allowlist entry, stop condition, and owner.
+- Local and marketing release-readiness workflows run on default-branch changes or operator dispatch. They are validation gates, not daily operational cron jobs.
 
 ## External Write Boundary
 
