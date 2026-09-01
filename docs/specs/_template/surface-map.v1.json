@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "taskId": "replace-with-task-id",
+  "agents": [
+    {
+      "id": "implementation-owner",
+      "role": "implementation",
+      "write": ["replace/with/owned/path/**"],
+      "readOnly": ["docs/**"],
+      "forbidden": ["supabase/migrations/**"]
+    },
+    {
+      "id": "reviewer",
+      "role": "review",
+      "write": [],
+      "readOnly": ["**"],
+      "forbidden": []
+    }
+  ]
+}

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "tier": 2,
-  "status": "template",
-  "owner": "<team-or-role>",
+  "status": "active",
+  "owner": "platform-engineering",
   "review_file": "review.md",
   "surface_map_version": 1,
   "verified_commit": null,
