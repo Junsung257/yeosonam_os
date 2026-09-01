@@ -49,6 +49,7 @@ Repeated failures belong in `docs/errors/marketing.md`.
 - Local release CI runs against an isolated dummy database. A Production-discovered package or blog identifier that is absent there is `blocked`, not `fail`; this downgrade is local-only and must never weaken Preview or Production public-surface verification.
 - Marketing/Ad OS routes remain manual or event-driven unless provider credentials, an actionable queue, a response-time objective, and rollback evidence justify a recurring schedule. Re-enabling one requires a dry-run, explicit allowlist entry, stop condition, and owner.
 - Local and marketing release-readiness workflows run on default-branch changes or operator dispatch. They are validation gates, not daily operational cron jobs.
+- Release/deployment Slack notifications are optional operational telemetry, not a publish or readiness authority. They must skip when the job-scoped webhook secret is absent, remain non-blocking where used as an informational step, and invoke the reviewed action through an immutable commit SHA with the matching major-version input contract.
 
 ## External Write Boundary
 

@@ -5,6 +5,7 @@
 
 import dynamic from 'next/dynamic';
 import { usePathname } from 'next/navigation';
+import ConsentBanner, { type InitialConsentPreferences } from '@/components/ConsentBanner';
 
 const ChatWidget = dynamic(() => import('@/components/ChatWidget'), { ssr: false });
 const BottomTabBar = dynamic(() => import('@/components/customer/BottomTabBar'), { ssr: false });
@@ -13,6 +14,7 @@ const JarvisFloatingWidget = dynamic(() => import('@/components/JarvisFloatingWi
 
 export default function LayoutClientWidgets({
   analytics,
+  initialConsent,
 }: {
   analytics: {
     containerId: string | null;
@@ -20,6 +22,7 @@ export default function LayoutClientWidgets({
     runtimeEnabled: boolean;
     expectedHostname: string;
   };
+  initialConsent: InitialConsentPreferences;
 }) {
   const pathname = usePathname();
   const isFocusedLanding = pathname?.startsWith('/lp/');
@@ -29,6 +32,7 @@ export default function LayoutClientWidgets({
 
   return (
     <>
+      {!isAdminSurface ? <ConsentBanner initialConsent={initialConsent} /> : null}
       <LayoutTrackers analytics={analytics} />
       {!isFocusedLanding && <JarvisFloatingWidget />}
       {showCustomerWidgets && (
