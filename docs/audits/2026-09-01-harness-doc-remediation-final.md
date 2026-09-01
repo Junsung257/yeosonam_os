@@ -1,10 +1,10 @@
 # 2026-09-01 문서·AI 하네스 통합 리팩터링 감사
 
-상태: merged to main via PR #1218, #1219, #1220; Production deployment/readiness verified; remaining advisories under final verification; non-blocking advisory debt only
+상태: merged to main via PR #1218, #1219, #1220; Production deployment/readiness verified; remaining advisory remediation tracked via PR #1223; non-blocking advisory debt only
 담당: platform-engineering
 기준: `origin/main@d5c2503553604963815ba14cc346842927dcdc2d`
 브랜치: `codex/harness-doc-remediation-20260901`, `codex/production-readiness-event-fix-20260901`, `codex/local-readiness-data-boundary-20260901`, `codex/remaining-harness-advisories-20260901`
-검토 PR: `#1218`, `#1219`, `#1220`
+검토 PR: `#1218`, `#1219`, `#1220`, `#1223`
 Research Node 통합: `b08e2ac77`
 dirty 작업 보존 snapshot: `b1e8b9d4b`
 
@@ -52,6 +52,9 @@ dirty 작업 보존 snapshot: `b1e8b9d4b`
 | Vercel Production deployment | `faa045e60` 배포 Ready; `https://www.yeosonam.com` alias 확인 |
 | Production Open Readiness | run `33488965291`; deployment guard pass; strict readiness pass (5m11s) |
 | `npm run type-check` | pass |
+| `npm run lint` | pass |
+| 동의 배너 SSR·cookie fallback Vitest | 7/7 pass |
+| GitHub Action pin policy | 검토 action 9종; 37개 workflow의 모든 외부 reference immutable |
 | agent workflow·doc automation | pass |
 | secret lint·CI action pin·automation runtime·LLM telemetry | pass |
 | 내부 current/harness 링크 | 오류 0 |
@@ -106,7 +109,7 @@ live eval의 13개 advisory는 위험 작업 실행이 아니라 staged write의
 
 - 하네스 통합 main 기준점: `abd4afea47e6bac444d47c8d03bfc369f2929eb4`
 - Production readiness 경계 기준점: `faa045e60dccecbed803d0509fbea157657b7b51`
-- 통합 검토 기록: GitHub PR `#1218`, `#1219`, `#1220`
+- 통합 검토 기록: GitHub PR `#1218`, `#1219`, `#1220`, `#1223`
 - Research Node merge 기준점: `b08e2ac77`
 - 이전 격리 스냅샷: `codex/harness-doc-refactor-20260901`
 - dirty 작업 보존 commit: `b1e8b9d4b`
