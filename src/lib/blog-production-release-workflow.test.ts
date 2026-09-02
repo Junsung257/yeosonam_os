@@ -86,6 +86,11 @@ describe('blog V4 protected production release workflow', () => {
     expect(source).toContain('run_shadow_smoke requires an unaliased candidate deployment');
     expect(source).toContain('run_shadow_smoke is draft-only and cannot be combined with live promotion');
     expect(source).toContain('Dispatch exactly one draft-only Inngest shadow event');
+    expect(source).toContain('/api/cron/blog-scheduler');
+    expect(source).toContain('shadow-scheduler-response.json');
+    expect(source.indexOf('/api/cron/blog-scheduler')).toBeLessThan(
+      source.indexOf('/api/cron/blog-generate?force=1&limit=1'),
+    );
     expect(source).toContain('/api/cron/blog-generate?force=1&limit=1');
     expect(source).toContain("payload.dispatched !== 1");
     expect(source).toContain("payload.durableWorkflow !== 'blog-autopilot-v4'");

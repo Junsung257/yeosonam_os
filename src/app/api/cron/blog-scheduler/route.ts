@@ -14,6 +14,7 @@ import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { logError } from '@/lib/sentry-logger';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { prepareDailyInformationResearch } from '@/lib/blog-queue-research';
+import { promotePendingTopics } from '@/lib/programmatic-seo';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +29,10 @@ const handleSchedule = async (request: NextRequest) => {
   try {
     const policy = await getBlogPublishingPolicy('global');
     const postsPerDay = normalizeDailyPostTarget(policy.posts_per_day);
+    const result = await refillWeeklyQueue({ postsPerDay });
+    const programmaticRefill = await promotePendingTopics({
+      limit: postsPerDay * MIN_PUBLISHABLE_BUFFER_DAYS,
+    });
     const queuePreparation = await ensureDailyPublishableQueue({ postsPerDay });
     const researchPreparation = await prepareDailyInformationResearch({
       targetReady: postsPerDay * MIN_PUBLISHABLE_BUFFER_DAYS,
@@ -35,7 +40,6 @@ const handleSchedule = async (request: NextRequest) => {
     });
     const slotAssignment = await assignPublishSlots(postsPerDay);
     const pillarResult = await ensureAllDestinationsHavePillar();
-    const result = await refillWeeklyQueue({ postsPerDay });
 
     return {
       ok: true,
@@ -43,6 +47,7 @@ const handleSchedule = async (request: NextRequest) => {
       queue_preparation: queuePreparation,
       pillars: pillarResult,
       refill: result,
+      programmatic_refill: programmaticRefill,
       research_preparation: researchPreparation,
       slot_assignment: slotAssignment,
       ranAt: new Date().toISOString(),

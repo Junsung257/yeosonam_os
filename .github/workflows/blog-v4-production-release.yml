@@ -291,6 +291,20 @@ jobs:
           CANDIDATE_URL: ${{ steps.candidate.outputs.url }}
         run: |
           set -euo pipefail
+          scheduler_path=.tmp/blog-v4-release/shadow-scheduler-response.json
+          scheduler_status="$(curl --silent --show-error --location --retry 2 --max-time 300 \
+            --output "$scheduler_path" --write-out '%{http_code}' \
+            --header "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            "${CANDIDATE_URL}/api/cron/blog-scheduler")"
+          test "$scheduler_status" = "200"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync('.tmp/blog-v4-release/shadow-scheduler-response.json', 'utf8'));
+          if (payload.ok !== true) {
+            throw new Error(`Shadow scheduler preparation failed: ${JSON.stringify(payload)}`);
+          }
+          NODE
           response_path=.tmp/blog-v4-release/shadow-dispatch-response.json
           http_status="$(curl --silent --show-error --location --retry 2 --max-time 300 \
             --output "$response_path" --write-out '%{http_code}' \

@@ -1,6 +1,8 @@
 # Blog Autopublish Contract
 
 > 2026-09-02 Autopilot V4 completion override: `publishing_policies` 전역 행의 `posts_per_day=5`, `slot_times=09:00/12:00/15:00/18:00/21:00` 만 생성·발행량 SSOT로 사용한다. `BLOG_DAILY_PUBLISH_CAP`, 별도 30건 후보 상한 및 기존 3/10/30 단계는 발행량을 바꾸지 못하며, 내구성 원장의 frozen 상태만 비상 차단으로 유지한다. Inngest는 `blog_topic_queue` ID+콘텐츠 버전 이벤트를 `research → brief → draft → verify → edit → quality → preview → publish → indexing → observe` 체크포인트로 실행한다. `INNGEST_BLOG_AUTOPILOT_ENABLED` 플래그만으로는 실행하지 않고 Event/Signing 키와 후보 등록 introspection을 모두 확인한다. 여기서 `publish`는 승인 초안을 슬롯 큐에 확정하는 단계이며 즉시 공개하지 않는다. 원자 공개와 색인 아웃박스 생성은 09/12/15/18/21시 단일 `blog-publication-controller`만 수행한다. 연구 브리프 DB 저장, 주장 해시 보존, V4 품질 결정, 실제 공개 컴포넌트를 사용한 `noindex` Playwright 95점을 모두 통과하기 전에는 공개하지 않는다.
+
+> 2026-09-02 demand-refill addendum: 일일 `blog-scheduler`는 큐 준비 전에 프로그램형 SEO 대기 풀을 순환 탐색한다. Naver Search Ads 검색량 또는 Naver DataLab 추세가 양수인 키워드만 `blog_topic_queue`로 승격하고 같은 관측치를 `blog_demand_signals`에 30일 만료 근거로 저장한다. 검색량·추세가 모두 0/null이면 계속 대기시키며 후보 수를 맞추기 위해 수요를 제조하지 않는다. `topical-rebuild`는 일요일 18:20 UTC의 단일 Vercel 주간 스케줄로 매트릭스와 클러스터를 갱신한다. 보호 릴리스의 1건 shadow는 후보 배포의 `blog-scheduler`를 먼저 실행한 뒤에만 `blog-generate?force=1&limit=1`을 호출한다.
 >
 > 검색 생명주기는 `queued → submitted → received → discovered → crawled → indexed → ranking`이다. Sitemap·IndexNow 2xx는 `received`일 뿐 `indexed`가 아니다. 일반 `/blog` URL은 Google Indexing API를 절대 호출하지 않고 D+1/3/7 URL Inspection을 실행한다. D+3 미발견은 Sitemap 1회만 재제출하고, D+7 미색인은 기술/콘텐츠 보정 큐로 종료한다. 공급자 원본은 불변으로 보존하고 `classification_version` 기반 파생 판정만 append-only로 추가한다. CI 회귀 기준은 100건(72 safe, 12 product, 16 failure-edge) Promptfoo 골든셋이다.
 >
