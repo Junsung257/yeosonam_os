@@ -15,13 +15,31 @@
  */
 
 import { supabaseAdmin } from './supabase';
+import {
+  hasVerifiedBlogDemandSignal,
+  type BlogDemandSignalInput,
+} from './blog-autopublish-policy-v3';
 
 export interface PillarGenerationInput {
   destination: string;
+  demand?: BlogDemandSignalInput | null;
+  verifiedOperatorNoteId?: string | null;
 }
 
 export async function queuePillarGeneration(input: PillarGenerationInput): Promise<{ queued: boolean; reason?: string }> {
-  const { destination } = input;
+  const { destination, demand } = input;
+  const verifiedOperatorNoteId = String(input.verifiedOperatorNoteId || '').trim() || null;
+  const durableDemand = demand
+    ? { ...demand, verifiedOperatorNote: Boolean(verifiedOperatorNoteId) }
+    : null;
+
+  // A coverage gap is not demand evidence. Pillar candidates must satisfy the
+  // same verified-demand contract as every other V4 topic before entering the
+  // durable queue; otherwise the weekly scheduler continuously creates blocked
+  // work that can never be published.
+  if (!hasVerifiedBlogDemandSignal(durableDemand)) {
+    return { queued: false, reason: 'verified demand required' };
+  }
 
   // 이미 pillar 존재?
   const { data: existing } = await supabaseAdmin
@@ -56,7 +74,18 @@ export async function queuePillarGeneration(input: PillarGenerationInput): Promi
     priority: 95,
     destination,
     category: 'pillar',
-    meta: { pillar_for: destination },
+    monthly_search_volume: durableDemand?.monthlySearchVolume ?? null,
+    trend_score: durableDemand?.trendScore ?? null,
+    meta: {
+      pillar_for: destination,
+      gsc_signal: durableDemand?.gsc === true,
+      naver_signal: durableDemand?.naver === true,
+      customer_question_count: durableDemand?.customerQuestionCount ?? 0,
+      active_product_relation_verified: durableDemand?.activeProductRelation === true,
+      verified_operator_note_id: verifiedOperatorNoteId,
+      editor_approved_seed: durableDemand?.editorApprovedSeed === true,
+      verified_demand_contract: true,
+    },
     target_publish_at: new Date().toISOString(), // 다음 publisher 크론에 즉시 처리
   });
 

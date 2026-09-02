@@ -87,10 +87,18 @@ async function checkSurface(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12_000);
   try {
+    const protectionBypass = String(process.env.VERCEL_AUTOMATION_BYPASS_SECRET || '').trim();
     const response = await fetch(url, {
-      redirect: 'follow',
+      // Never forward the deployment-protection secret across an unexpected
+      // cross-origin redirect. A redirect is itself a surface-contract failure.
+      redirect: 'manual',
       signal: controller.signal,
-      headers: { 'user-agent': 'YeosonamBlogProductionEvidenceV4/1.0' },
+      headers: {
+        'user-agent': 'YeosonamBlogProductionEvidenceV4/1.0',
+        ...(protectionBypass
+          ? { 'x-vercel-protection-bypass': protectionBypass }
+          : {}),
+      },
     });
     const body = await response.text();
     const reason = response.status !== expectedStatus

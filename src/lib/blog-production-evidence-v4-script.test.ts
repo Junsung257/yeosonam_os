@@ -17,6 +17,9 @@ describe('production evidence V4 collector contract', () => {
     expect(source).toContain("'--output-format'");
     expect(source).toContain("'--agent'");
     expect(source).toContain("'yes'");
+    expect(source).toContain('VERCEL_AUTOMATION_BYPASS_SECRET');
+    expect(source).toContain("'x-vercel-protection-bypass'");
+    expect(source).toContain("redirect: 'manual'");
     expect(source).not.toContain("['supabase', 'db', 'query', '--linked', '--output', 'json'");
     expect(source).toContain("'legacy_public_slug_rpc_absent'");
     expect(source).toContain("'generation_selected_attempt'");
