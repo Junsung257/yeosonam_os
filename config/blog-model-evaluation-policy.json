@@ -8,8 +8,10 @@
     "lockPath": "tools/harness-evals/package-lock.json"
   },
   "fixture": {
-    "path": "promptfoo/load-blog-editorial-tests.cjs",
+    "path": "promptfoo/blog-model-eval-fixtures-v5-33.cjs",
     "sha256": "b86c6a073cad8e4cd045e874bdaf1267fdccaab9ba78f0658e62d28001870032",
+    "assertionPath": "promptfoo/assertions/blog-model-eval-offline-v5-33.cjs",
+    "assertionSha256": "6d5d440a0f359713fa93db49afb17c9b438044536f9429a2b090ce736b140821",
     "count": 33,
     "smokeIndexes": [0, 1, 2]
   },

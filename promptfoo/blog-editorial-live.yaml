@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
-description: Yeosonam advisory blog editorial model comparison (3-case smoke, then 33 cases twice)
+description: Yeosonam advisory blog editorial model comparison (dedicated pinned V5 33-case snapshot; 3-case smoke, then 33 cases twice)
 
 prompts:
   - id: people-first-editorial-judge-v1

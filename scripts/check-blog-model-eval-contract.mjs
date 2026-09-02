@@ -14,10 +14,12 @@ const providerSource = read('scripts/lib/blog-model-eval/provider.mjs');
 const runner = read('scripts/run-blog-model-eval.mjs');
 const promoter = read('scripts/promote-blog-model-eval-summary.mjs');
 const yaml = read('promptfoo/blog-editorial-live.yaml');
-const offlineAssertion = require(resolve(root, 'promptfoo/assertions/blog-editorial-contract.cjs'));
 const fixturePath = resolve(root, policy.fixture.path);
+const assertionPath = resolve(root, policy.fixture.assertionPath);
 const fixtureHash = createHash('sha256').update(readFileSync(fixturePath)).digest('hex');
+const assertionHash = createHash('sha256').update(readFileSync(assertionPath)).digest('hex');
 const fixtures = require(fixturePath);
+const offlineAssertion = require(assertionPath);
 
 function requireValue(condition, message) {
   if (!condition) throw new Error(message);
@@ -28,6 +30,7 @@ requireValue(evaluatorPackage.devDependencies.promptfoo === '0.122.2', 'Promptfo
 requireValue(evaluatorLock.packages[''].devDependencies.promptfoo === '0.122.2', 'Promptfoo lock root must remain pinned');
 requireValue(evaluatorLock.packages['node_modules/promptfoo'].version === '0.122.2', 'Promptfoo resolved package must remain pinned');
 requireValue(fixtureHash === policy.fixture.sha256 && fixtures.length === 33, 'Frozen V5 fixture hash or count drifted');
+requireValue(assertionHash === policy.fixture.assertionSha256, 'Frozen V5 assertion hash drifted');
 const offlinePasses = fixtures.filter((fixture) => offlineAssertion(fixture.vars.candidate_answer, { vars: fixture.vars }).pass).length;
 requireValue(offlinePasses === 33, `Frozen V5 offline assertion must remain 33/33, observed ${offlinePasses}/33`);
 requireValue(policy.execution.smokeCases === 3 && policy.execution.fullCases === 33 && policy.execution.fullRuns === 2, 'Evaluation stages differ from policy');

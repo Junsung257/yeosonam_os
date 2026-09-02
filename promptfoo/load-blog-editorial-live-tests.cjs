@@ -1,6 +1,8 @@
 'use strict';
 
-const fixtures = require('./load-blog-editorial-tests.cjs');
+const path = require('node:path');
+const policy = require('../config/blog-model-evaluation-policy.json');
+const fixtures = require(path.resolve(__dirname, '..', policy.fixture.path));
 const phase = process.env.BLOG_MODEL_EVAL_PHASE;
 const runId = process.env.BLOG_MODEL_EVAL_RUN_ID || '0';
 if (phase !== 'smoke' && phase !== 'full') throw new Error('BLOG_MODEL_EVAL_PHASE must be smoke or full.');

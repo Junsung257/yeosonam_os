@@ -204,7 +204,9 @@ the [official NVIDIA hosted example](https://build.nvidia.com/nvidia/llama-3_3-n
 The OpenRouter slug is concrete because [OpenRouter recommends concrete slugs for
 reproducible regression tests](https://openrouter.ai/docs/guides/routing/routers/latest-resolution).
 
-The suite reuses the unchanged 33 V5 fixtures. Each provider must first pass the
+The suite uses a dedicated, hash-pinned snapshot of the unchanged 33 V5 fixtures and
+its offline assertion. It does not replace or downgrade the production blog harness's
+100-case V4 corpus. Each provider must first pass the
 three food-budget smoke cases, then all 33 cases twice. Calls are serial, have a
 60-second deadline, and retry HTTP 429 at most twice with bounded backoff. DeepSeek
 uses the [official OpenAI-compatible endpoint](https://api-docs.deepseek.com/)
