@@ -39,6 +39,7 @@ on:
           - blog-indexing-worker
           - blog-daily-summary
           - trend-topic-miner
+          - topical-rebuild
           - serp-rank-snapshot
           - gsc-index-rank
           - rank-tracking

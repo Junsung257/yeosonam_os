@@ -22,6 +22,10 @@
       "schedule": "30 18 * * 0"
     },
     {
+      "path": "/api/cron/topical-rebuild",
+      "schedule": "20 18 * * 0"
+    },
+    {
       "path": "/api/cron/blog-regenerate-zero-click",
       "schedule": "45 12 * * *"
     },

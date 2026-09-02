@@ -26,6 +26,10 @@ import { computeSeasonalTargetPublishAt } from './blog-season-publish';
 import { CUSTOMER_VISIBLE_STATUSES } from './visibility-status';
 import { normalizeBlogTopicQueueRow } from './blog-queue-normalize';
 import { filterTopicFitPassed } from './blog-topic-fit-gate';
+import {
+  hasObservedProgrammaticKeywordDemand,
+  selectDailyProgrammaticDemandProbe,
+} from './blog-programmatic-demand';
 
 // 12 angle × 시즌 적합도
 interface AngleTemplate {
@@ -203,6 +207,7 @@ export async function seedProgrammaticTopics(opts?: { destinations?: string[] })
  */
 export async function promotePendingTopics(opts?: { limit?: number }): Promise<{
   promoted: number;
+  demand_rejected: number;
   errors: string[];
 }> {
   const limit = opts?.limit ?? 3;
@@ -221,10 +226,10 @@ export async function promotePendingTopics(opts?: { limit?: number }): Promise<{
     .or(`month.is.null,month.eq.${thisMonth},month.eq.${nextMonth}`)
     .order('priority', { ascending: false })
     .order('created_at', { ascending: true })
-    .limit(limit * 2);  // 후보 여유
+    .limit(500);
 
   if (!candidates || candidates.length === 0) {
-    return { promoted: 0, errors: ['pending 토픽 없음'] };
+    return { promoted: 0, demand_rejected: 0, errors: ['pending 토픽 없음'] };
   }
 
   // 14일 내 같은 (destination, primary_keyword) 큐 이력 — 중복 방어
@@ -241,15 +246,29 @@ export async function promotePendingTopics(opts?: { limit?: number }): Promise<{
 
   const fresh = candidates.filter((c: any) =>
     !recentKeys.has(`${c.destination}::${c.primary_keyword}`)
-  ).slice(0, limit);
+  );
 
-  if (fresh.length === 0) return { promoted: 0, errors: ['모두 14일 dedup 충돌'] };
+  if (fresh.length === 0) {
+    return { promoted: 0, demand_rejected: 0, errors: ['모두 14일 dedup 충돌'] };
+  }
+
+  const probe = selectDailyProgrammaticDemandProbe(fresh, { limit });
 
   // 키워드 리서치
-  const research = await researchKeywordsBatch(fresh.map((c: Record<string, unknown>) => c.primary_keyword as string)).catch(() => new Map());
+  const research = await researchKeywordsBatch(
+    probe.map((c: Record<string, unknown>) => c.primary_keyword as string),
+  ).catch(() => new Map());
+  const demandBacked = probe.filter((candidate: Record<string, unknown>) =>
+    hasObservedProgrammaticKeywordDemand(research.get(candidate.primary_keyword as string)),
+  ).slice(0, limit);
+  const demandRejected = probe.length - demandBacked.length;
+
+  if (demandBacked.length === 0) {
+    return { promoted: 0, demand_rejected: demandRejected, errors };
+  }
 
   const queueRows: Record<string, unknown>[] = [];
-  for (const c of fresh as Record<string, unknown>[]) {
+  for (const c of demandBacked as Record<string, unknown>[]) {
     const kw = c.primary_keyword as string;
     const r = research.get(kw);
     const tier = r?.tier ?? c.expected_tier as string ?? classifyKeywordTier(kw);
@@ -279,6 +298,10 @@ export async function promotePendingTopics(opts?: { limit?: number }): Promise<{
         programmatic_angle: c.angle,
         programmatic_month: c.month,
         search_intent: intent,
+        demand_verified_at: new Date().toISOString(),
+        demand_signal_source: r?.monthly_search_volume
+          ? 'naver_search_ads'
+          : 'naver_datalab',
       },
     }));
   }
@@ -289,7 +312,9 @@ export async function promotePendingTopics(opts?: { limit?: number }): Promise<{
     errors.push(`topic_fit_rejected: ${topicFit.rejected.length}`);
   }
 
-  if (acceptedQueueRows.length === 0) return { promoted: 0, errors };
+  if (acceptedQueueRows.length === 0) {
+    return { promoted: 0, demand_rejected: demandRejected, errors };
+  }
 
   const { data: inserted, error } = await supabaseAdmin
     .from('blog_topic_queue')
@@ -298,14 +323,58 @@ export async function promotePendingTopics(opts?: { limit?: number }): Promise<{
 
   if (error) {
     errors.push(`큐 INSERT 실패: ${error.message}`);
-    return { promoted: 0, errors };
+    return { promoted: 0, demand_rejected: demandRejected, errors };
+  }
+
+  const observedAt = new Date();
+  const expiresAt = new Date(observedAt.getTime() + 30 * 86_400_000).toISOString();
+  const demandRows = (inserted ?? []).flatMap((row: Record<string, unknown>) => {
+    const keyword = row.primary_keyword as string;
+    const observed = research.get(keyword);
+    const rows: Record<string, unknown>[] = [];
+    if (Number(observed?.monthly_search_volume ?? 0) > 0) {
+      rows.push({
+        queue_id: row.id,
+        provider: 'search_volume',
+        signal_key: keyword,
+        signal_value: observed!.monthly_search_volume,
+        source_reference: `keyword_research_cache:${row.id}:volume`,
+        observed_at: observedAt.toISOString(),
+        expires_at: expiresAt,
+        metadata: { keyword, source: observed?.source },
+      });
+    }
+    if (Number(observed?.trend_score ?? 0) > 0) {
+      rows.push({
+        queue_id: row.id,
+        provider: 'search_trend',
+        signal_key: keyword,
+        signal_value: observed!.trend_score,
+        source_reference: `keyword_research_cache:${row.id}:trend`,
+        observed_at: observedAt.toISOString(),
+        expires_at: expiresAt,
+        metadata: { keyword, source: observed?.source },
+      });
+    }
+    return rows;
+  });
+  const { error: demandError } = await supabaseAdmin
+    .from('blog_demand_signals')
+    .insert(demandRows);
+  if (demandError) {
+    const insertedIds = (inserted ?? []).map((row: Record<string, unknown>) => row.id as string);
+    if (insertedIds.length > 0) {
+      await supabaseAdmin.from('blog_topic_queue').delete().in('id', insertedIds);
+    }
+    errors.push(`수요 근거 저장 실패: ${demandError.message}`);
+    return { promoted: 0, demand_rejected: demandRejected, errors };
   }
 
   // pending → queued 처리
   if (inserted && inserted.length > 0) {
     for (let i = 0; i < inserted.length; i++) {
       const ins = inserted[i] as Record<string, unknown>;
-      const src = fresh.find((f: Record<string, unknown>) => f.primary_keyword === ins.primary_keyword);
+      const src = demandBacked.find((f: Record<string, unknown>) => f.primary_keyword === ins.primary_keyword);
       if (!src) continue;
       await supabaseAdmin
         .from('programmatic_seo_topics')
@@ -318,5 +387,5 @@ export async function promotePendingTopics(opts?: { limit?: number }): Promise<{
     }
   }
 
-  return { promoted: inserted?.length ?? 0, errors };
+  return { promoted: inserted?.length ?? 0, demand_rejected: demandRejected, errors };
 }
