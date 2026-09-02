@@ -25,6 +25,7 @@ describe('Inngest blog autopilot V4 contract', () => {
 
   it('terminates deterministic duplicate skips before artifact verification and retries real generation failures', () => {
     const workflow = source('src/inngest/functions/blog-autopilot-v4.ts');
+    const publisher = source('src/app/api/cron/blog-publisher/route.ts');
     const terminalCheck = workflow.indexOf('const terminalGeneration = readTerminalGenerationOutcome(generation)');
     const verifyStep = workflow.indexOf("step.run('verify'");
     expect(workflow).toContain("status.startsWith('skipped')");
@@ -32,6 +33,8 @@ describe('Inngest blog autopilot V4 contract', () => {
     expect(workflow).toContain('payload.ok === false && !readTerminalGenerationOutcome(payload)');
     expect(workflow).toContain('blog_generation_payload_failed:');
     expect(workflow).toContain("terminalStage: 'draft'");
+    expect(publisher).toContain("const terminalFailureStatus = failureStatus === 'failed' || failureStatus === 'skipped'");
+    expect(publisher).toContain('status: terminalFailureStatus');
     expect(terminalCheck).toBeGreaterThan(0);
     expect(terminalCheck).toBeLessThan(verifyStep);
   });
@@ -75,9 +78,24 @@ describe('Inngest blog autopilot V4 contract', () => {
     expect(dispatcher).toContain('target_queue_id_requires_forced_manual_run');
     expect(dispatcher).toContain('quarantineNonRetryableBlogQueueItems');
     expect(dispatcher).toContain('shouldQuarantineQueuedBlogItem');
+    expect(dispatcher).toContain('destinationlessInfoBlocksPublishability');
     expect(dispatcher).toContain('forcedManualDispatch: forcedManualRun');
     expect(release).toContain('update_env INNGEST_BLOG_AUTOPILOT_ENABLED true');
     expect(release).toContain('npx vercel env update INNGEST_BLOG_AUTOPILOT_ENABLED production --value true');
     expect(release).not.toContain('npx vercel env update BLOG_GENERATION_CRON_ENABLED production --value true');
+  });
+
+  it('preserves an existing terminal queue cause before deriving a new preflight diagnosis', () => {
+    const lifecycle = source('src/lib/blog-queue-lifecycle.ts');
+    const existingTerminalCheck = lifecycle.indexOf('const existingTerminalDecision = shouldQuarantineQueuedBlogItem');
+    const candidateInspection = lifecycle.indexOf('const candidateContract = inspectBlogCandidatePrepublishContract');
+
+    expect(existingTerminalCheck).toBeGreaterThan(0);
+    expect(existingTerminalCheck).toBeLessThan(candidateInspection);
+    expect(lifecycle).toContain('if (!existingTerminalDecision.quarantine)');
+    expect(lifecycle).toContain('if (!existingTerminalDecision.quarantine && row.product_id)');
+    expect(lifecycle).toContain('const decision = existingTerminalDecision.quarantine');
+    expect(lifecycle).toContain("destinationIssue === 'generic_unmarked'");
+    expect(lifecycle).toContain('buildDestinationlessInfoGenericMeta');
   });
 });

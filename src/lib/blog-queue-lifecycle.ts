@@ -26,6 +26,10 @@ import { hasVerifiedBlogDemandSignal } from '@/lib/blog-autopublish-policy-v3';
 import { readEmbeddedBlogQueueDemandSignalV3 } from '@/lib/blog-demand-repository-v3';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 import { evaluateQueuedInformationResearch } from '@/lib/blog-queue-research';
+import {
+  buildDestinationlessInfoGenericMeta,
+  classifyDestinationlessInfoCandidate,
+} from '@/lib/blog-destinationless-info';
 
 /**
  * 판매 불가·아카이브 등으로 블로그 자동발행 큐를 중단한다.
@@ -148,8 +152,8 @@ function buildProductOpenContractFailure(blockers: string[]): string {
 export async function quarantineNonRetryableBlogQueueItems(opts?: {
   limit?: number;
   maxAttempts?: number;
-}): Promise<{ scanned: number; quarantined: number; skipped: number; failed: number; deferred: number }> {
-  if (!isSupabaseConfigured) return { scanned: 0, quarantined: 0, skipped: 0, failed: 0, deferred: 0 };
+}): Promise<{ scanned: number; quarantined: number; skipped: number; failed: number; deferred: number; normalizedGeneric: number }> {
+  if (!isSupabaseConfigured) return { scanned: 0, quarantined: 0, skipped: 0, failed: 0, deferred: 0, normalizedGeneric: 0 };
 
   const now = new Date().toISOString();
   const { data, error } = await supabaseAdmin
@@ -162,13 +166,14 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
     .limit(opts?.limit ?? 60);
 
   if (error || !data || data.length === 0) {
-    return { scanned: data?.length ?? 0, quarantined: 0, skipped: 0, failed: 0, deferred: 0 };
+    return { scanned: data?.length ?? 0, quarantined: 0, skipped: 0, failed: 0, deferred: 0, normalizedGeneric: 0 };
   }
 
   let quarantined = 0;
   let skipped = 0;
   let failed = 0;
   let deferred = 0;
+  let normalizedGeneric = 0;
   const productContractCache = new Map<string, {
     failure: string | null;
     defer: boolean;
@@ -192,20 +197,55 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
     let lastError = row.last_error ?? null;
     let forcedReason: string | null = null;
     let researchIssues: string[] | null = null;
-    const candidateContract = inspectBlogCandidatePrepublishContract({
-      topic: row.topic,
-      destination: row.destination,
-      primary_keyword: row.primary_keyword,
-      meta: row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta)
-        ? row.meta as Record<string, unknown>
-        : null,
+    let rowMeta = row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta)
+      ? row.meta as Record<string, unknown>
+      : {};
+    const existingTerminalDecision = shouldQuarantineQueuedBlogItem({
+      attempts: row.attempts,
+      lastError: row.last_error,
+      meta: rowMeta,
+      maxAttempts: opts?.maxAttempts,
     });
-    if (!candidateContract.passed) {
-      lastError = `candidate_pre_publish_contract:${candidateContract.issues.map((issue) => issue.code).join('|')}`;
-      forcedReason = 'candidate_pre_publish_contract';
+
+    if (!existingTerminalDecision.quarantine) {
+      const destinationIssue = classifyDestinationlessInfoCandidate({ ...row, meta: rowMeta });
+      if (destinationIssue === 'generic_unmarked') {
+        const normalizedMeta = buildDestinationlessInfoGenericMeta({
+          row: { ...row, meta: rowMeta },
+          checkedAt: now,
+        });
+        const { error: normalizeError } = await supabaseAdmin
+          .from('blog_topic_queue')
+          .update({ meta: normalizedMeta, updated_at: now } as never)
+          .eq('id', row.id)
+          .eq('status', 'queued');
+        if (normalizeError) continue;
+        row.meta = normalizedMeta;
+        rowMeta = normalizedMeta;
+        normalizedGeneric += 1;
+      } else if (destinationIssue === 'missing_destination' || destinationIssue === 'invalid_destination') {
+        lastError = `destinationless_info_${destinationIssue}`;
+        forcedReason = destinationIssue;
+      }
+    }
+
+    // A stored terminal cause is the audit truth for an already-failed queue item.
+    // Do not replace it with a later candidate/research/product preflight diagnosis.
+    if (!existingTerminalDecision.quarantine && !forcedReason) {
+      const candidateContract = inspectBlogCandidatePrepublishContract({
+        topic: row.topic,
+        destination: row.destination,
+        primary_keyword: row.primary_keyword,
+        meta: rowMeta,
+      });
+      if (!candidateContract.passed) {
+        lastError = `candidate_pre_publish_contract:${candidateContract.issues.map((issue) => issue.code).join('|')}`;
+        forcedReason = 'candidate_pre_publish_contract';
+      }
     }
     if (
-      !forcedReason
+      !existingTerminalDecision.quarantine
+      && !forcedReason
       && !row.product_id
       && row.source !== 'pillar'
       && row.target_publish_at
@@ -218,7 +258,7 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
         researchIssues = researchReadiness.issues.slice(0, 12);
       }
     }
-    if (row.product_id) {
+    if (!existingTerminalDecision.quarantine && row.product_id) {
       if (!productContractCache.has(row.product_id)) {
         try {
           const contract = await loadCustomerOpenContractForPackage(supabaseAdmin, row.product_id);
@@ -250,22 +290,23 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
       }
     }
 
-    const decision = shouldQuarantineQueuedBlogItem({
-      attempts: row.attempts,
-      lastError,
-      meta: row.meta,
-      maxAttempts: opts?.maxAttempts,
-    });
+    const decision = existingTerminalDecision.quarantine
+      ? existingTerminalDecision
+      : shouldQuarantineQueuedBlogItem({
+          attempts: row.attempts,
+          lastError,
+          meta: row.meta,
+          maxAttempts: opts?.maxAttempts,
+        });
     const shouldQuarantine = forcedReason ? true : decision.quarantine;
     if (!shouldQuarantine) continue;
 
-    const meta = row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta)
-      ? row.meta as Record<string, unknown>
-      : {};
     const reason = forcedReason ?? decision.reason ?? 'publisher_preflight';
     const productContractState = row.product_id ? productContractCache.get(row.product_id) : null;
     const status = forcedReason === 'candidate_pre_publish_contract'
       || forcedReason === 'information_research_not_ready'
+      || forcedReason === 'missing_destination'
+      || forcedReason === 'invalid_destination'
       ? 'skipped'
       : forcedReason === 'product_open_contract' && productContractState?.defer
         ? 'deferred'
@@ -279,7 +320,7 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
         last_error: lastError ?? `publisher preflight quarantine: ${reason}`,
         updated_at: now,
         meta: {
-          ...meta,
+          ...rowMeta,
           failure_code: forcedReason === 'information_research_not_ready'
             ? 'evidence_insufficient'
             : reason,
@@ -315,7 +356,7 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
     }
   }
 
-  return { scanned: data.length, quarantined, skipped, failed, deferred };
+  return { scanned: data.length, quarantined, skipped, failed, deferred, normalizedGeneric };
 }
 
 type RecoverableQueueRow = {

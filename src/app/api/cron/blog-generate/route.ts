@@ -16,6 +16,7 @@ import {
   quarantineNonRetryableBlogQueueItems,
   shouldQuarantineQueuedBlogItem,
 } from '@/lib/blog-queue-lifecycle';
+import { destinationlessInfoBlocksPublishability } from '@/lib/blog-destinationless-info';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -111,7 +112,7 @@ async function runBlogGenerate(request: NextRequest) {
     });
     let candidateQuery = supabaseAdmin
       .from('blog_topic_queue')
-      .select('id,updated_at,target_publish_at,attempts,last_error,meta')
+      .select('id,updated_at,target_publish_at,attempts,last_error,meta,source,product_id,topic,destination,primary_keyword,category')
       .eq('status', 'queued')
       .or('attempts.is.null,attempts.lt.3');
     if (targetQueueId) {
@@ -125,6 +126,7 @@ async function runBlogGenerate(request: NextRequest) {
     const { data: candidatePool, error } = await candidateQuery.limit(candidatePoolLimit);
     if (error) throw new Error(`blog_pipeline_dispatch_query_failed:${error.message}`);
     const candidates = (candidatePool ?? [])
+      .filter((candidate) => !destinationlessInfoBlocksPublishability(candidate))
       .filter((candidate) => !shouldQuarantineQueuedBlogItem({
         attempts: candidate.attempts,
         lastError: candidate.last_error,
