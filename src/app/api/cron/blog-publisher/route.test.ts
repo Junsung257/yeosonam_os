@@ -35,7 +35,7 @@ describe('blog publisher quota recovery contract', () => {
     const source = routeSource();
 
     expect(source).toContain("searchParams.get('pipelineQueueId')");
-    expect(source).toContain('isInngestBlogAutopilotEnabled()');
+    expect(source).toContain('isInngestBlogAutopilotConfigured()');
     expect(source).toContain('!durablePipelineQueueId && (item.product_id');
     expect(source).toContain('durablePipeline: Boolean(durablePipelineQueueId)');
   });
