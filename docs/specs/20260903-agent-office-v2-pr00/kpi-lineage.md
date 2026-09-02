@@ -31,7 +31,7 @@ The aggregate endpoint/RPC returns metrics and lineage together:
 
 ```json
 {
-  "metricKey": "office.completion_rate_7d",
+  "metricKey": "METRIC_KEY",
   "metricVersion": "2",
   "value": 94.2,
   "unit": "percent",
