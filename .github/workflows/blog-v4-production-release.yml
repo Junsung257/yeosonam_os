@@ -264,6 +264,7 @@ jobs:
             --production-commit="${{ inputs.release_commit }}" \
             --database-errors-since-candidate="$db_errors" \
             --daily-ai-budget-usd=2 \
+            --data-readiness=.tmp/blog-v4-release/data-readiness.json \
             --output=.tmp/blog-v4-release/production-evidence.json
           npm run verify:blog-production-readiness-v4 -- \
             --evidence=.tmp/blog-v4-release/production-evidence.json \

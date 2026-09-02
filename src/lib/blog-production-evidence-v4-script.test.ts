@@ -20,6 +20,9 @@ describe('production evidence V4 collector contract', () => {
     expect(source).toContain('VERCEL_AUTOMATION_BYPASS_SECRET');
     expect(source).toContain("'x-vercel-protection-bypass'");
     expect(source).toContain("redirect: 'manual'");
+    expect(source).toContain("payload.message === 'Unauthorized'");
+    expect(source).toContain('readInngestRuntimeEvidence');
+    expect(source).toContain('blog_data_readiness_evidence_required');
     expect(source).not.toContain("['supabase', 'db', 'query', '--linked', '--output', 'json'");
     expect(source).toContain("'legacy_public_slug_rpc_absent'");
     expect(source).toContain("'generation_selected_attempt'");
@@ -32,5 +35,6 @@ describe('production evidence V4 collector contract', () => {
     expect(source).toContain("'analytics_canary_passed_at'");
     expect(source).toContain('database-errors-since-candidate');
     expect(source).toContain('blog_publication_rollout_state');
+    expect(source).toContain("argument('data-readiness')");
   });
 });

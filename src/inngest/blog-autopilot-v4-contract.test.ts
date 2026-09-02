@@ -31,6 +31,15 @@ describe('Inngest blog autopilot V4 contract', () => {
     expect(workflow).toContain('publicationQueuedForScheduledSlot: true');
   });
 
+  it('uses one function registration list for the serve route and runtime diagnostics', () => {
+    const index = source('src/inngest/index.ts');
+    const route = source('src/app/api/inngest/route.ts');
+    expect(index).toContain('export const inngestFunctions = [');
+    expect(index).toContain('blogAutopilotV4Fn');
+    expect(index).toContain('MINIMUM_INNGEST_FUNCTION_COUNT = 5');
+    expect(route).toContain('functions: [...inngestFunctions]');
+  });
+
   it('dispatches approved manual shadow runs through Inngest and release wiring never enables the legacy generator', () => {
     const dispatcher = source('src/app/api/cron/blog-generate/route.ts');
     const release = source('.github/workflows/blog-v4-production-release.yml');
