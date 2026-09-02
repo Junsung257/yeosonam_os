@@ -149,6 +149,7 @@ describe('blog queue failure policy', () => {
   it('still recognizes real duplicate ownership and slug collisions', () => {
     for (const reason of [
       'duplicate slug already exists',
+      'information_representative_preclaim:active:fukuoka-weather-packing',
       'information_representative_duplicate_upgrade_review:canonical-slug',
       'recent_info_duplicate_before_generation: 최근 14일 내 동일 목적지 글 이미 발행됨',
     ]) {

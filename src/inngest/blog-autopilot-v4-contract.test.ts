@@ -71,6 +71,10 @@ describe('Inngest blog autopilot V4 contract', () => {
     expect(dispatcher).toContain('requestedManualLimit >= 1');
     expect(dispatcher).toContain('requestedManualLimit <= 2');
     expect(dispatcher).toContain('const dispatchLimit = Math.min(perRunLimit, remainingToday)');
+    expect(dispatcher).toContain("url.searchParams.get('targetQueueId')");
+    expect(dispatcher).toContain('target_queue_id_requires_forced_manual_run');
+    expect(dispatcher).toContain('quarantineNonRetryableBlogQueueItems');
+    expect(dispatcher).toContain('shouldQuarantineQueuedBlogItem');
     expect(dispatcher).toContain('forcedManualDispatch: forcedManualRun');
     expect(release).toContain('update_env INNGEST_BLOG_AUTOPILOT_ENABLED true');
     expect(release).toContain('npx vercel env update INNGEST_BLOG_AUTOPILOT_ENABLED production --value true');

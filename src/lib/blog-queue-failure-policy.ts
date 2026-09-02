@@ -59,6 +59,9 @@ function hasFailedGate(qa: unknown, gate: string): boolean {
  */
 export function isBlogDuplicateQueueFailure(reason: string): boolean {
   const text = (reason || '').replace(/\bpublish_gate:duplicate\b/gi, 'publish_gate:quality');
+  if (/information_representative_(?:preclaim|duplicate|reserved)(?::|_)/i.test(text)) {
+    return true;
+  }
   return /동일\s*slug|유사\s*slug|이미\s*발행|최근\s*\d+\s*일\s*내|중복|\[duplicate\]|duplicate|slug already|slug .*exists/i.test(text);
 }
 
