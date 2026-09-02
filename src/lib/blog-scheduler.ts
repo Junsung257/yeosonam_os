@@ -17,6 +17,11 @@ import {
   type PersistedBlogDemandSignalV3,
 } from './blog-demand-repository-v3';
 import { PUBLIC_BLOG_READ_SOURCE } from './blog-public-eligibility';
+import {
+  readProgrammaticAudience,
+  readProgrammaticExpectedSlug,
+  readProgrammaticMicroAngle,
+} from './blog-programmatic-contract';
 
 type MicroAngleId =
   | 'budget_family'
@@ -118,6 +123,8 @@ function destinationAngleKey(row: QueueCandidateLike): string | null {
 function readMicroAngle(row: { angle_type?: string | null; generation_meta?: any; meta?: any }): string | null {
   const fromMeta = row.meta?.micro_angle ?? row.generation_meta?.micro_angle;
   if (typeof fromMeta === 'string' && fromMeta.trim()) return fromMeta.trim();
+  const programmatic = readProgrammaticMicroAngle({ meta: row.meta, angleType: row.angle_type });
+  if (programmatic) return programmatic;
   const rawAngle = row.angle_type;
   if (typeof rawAngle === 'string' && MICRO_ANGLE_TEMPLATES.some(t => t.id === rawAngle)) return rawAngle;
   return null;
@@ -287,7 +294,8 @@ function readWriterType(row: QueueCandidateLike): string {
 
 function readExpectedSlug(row: QueueCandidateLike): string | null {
   const raw = row.meta?.expected_slug ?? row.meta?.spun_slug ?? row.slug_hint ?? row.slug;
-  return typeof raw === 'string' && raw.trim() ? raw.trim().toLowerCase() : null;
+  if (typeof raw === 'string' && raw.trim()) return raw.trim().toLowerCase();
+  return readProgrammaticExpectedSlug({ meta: row.meta, topic: row.topic });
 }
 
 function readProductDedupKey(row: QueueCandidateLike): string | null {
@@ -335,7 +343,7 @@ function publishableRepresentativeKey(row: QueueCandidateLike): string | null {
     category: row.category,
     source: row.source,
     microAngle: readMicroAngle(row),
-    audience: typeof row.meta?.audience === 'string' ? row.meta.audience : null,
+    audience: readProgrammaticAudience({ meta: row.meta, angleType: row.angle_type }),
     locale: typeof row.meta?.locale === 'string' ? row.meta.locale : 'ko-KR',
     travelerNationality: typeof row.meta?.traveler_nationality === 'string'
       ? row.meta.traveler_nationality

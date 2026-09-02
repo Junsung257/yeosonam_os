@@ -5,6 +5,8 @@
 > 2026-08-30 V5 override: 신규 정보성 후보는 `decision_artifact_v1`과 `editorial_harness_v5`가 모두 있어야 자동발행할 수 있다. 일일 운영자는 `npm run eval:blog-editorial:promptfoo`의 33/33, 새 승인 attempt의 prompt trace 완전성, queue-only 편집 평가 저장, generation/editorial_judge 비용 원장을 함께 확인한다. 심사 실패를 평균 품질 점수로 상쇄하거나 수동으로 `approved_for_slot`으로 바꾸지 않는다.
 
 > 2026-09-02 candidate-refill override: `queued=0`일 때 임의 토픽이나 수동 SQL을 넣지 않는다. `blog-scheduler`가 프로그램형 대기 풀을 날짜별 순환 probe하고 실제 월간 검색량 또는 추세가 양수인 항목만 큐와 `blog_demand_signals`에 함께 기록한다. 일일 스케줄러는 일반 refill → 수요 검증 programmatic refill → 연구 준비 → 슬롯 배정 순서다. `topical-rebuild`는 주 1회 Vercel만 소유하며 GitHub workflow 항목은 수동 복구용이다. 보호 shadow 릴리스가 `no_queued_blog_pipeline_candidate`로 멈추면 먼저 `trend-topic-miner`, `blog-regenerate-zero-click`, 후보 배포의 `blog-scheduler` 응답을 확인하고, 근거가 끝내 0이면 올바른 안전정지로 처리한다.
+>
+> 2026-09-02 research-ready refill override: 검색량/추세가 있어도 곧바로 큐에 넣지 않는다. `promotePendingTopics()`가 프로그램형 angle 계약, 자동발행 위험도, reviewed source coverage, active information representative를 fail-closed로 검사한다. `contract_rejected`, `human_review_rejected`, `coverage_rejected`, `representative_rejected`는 정상적인 상류 차단 지표이며 임의 SQL로 우회하지 않는다. 과거에 큐에 들어간 프로그램형 행은 `programmatic_angle`과 topic에서 `micro_angle`·audience·content key를 복구해 동일 연구/중복 계약으로 정리한다.
 
 > 2026-08-16 release override: DeepSeek-only 연구 구조화·초안·재작성, 비용 예약, `pilot_3→ramp_10→max_30` 자동 승격/강등, immutable snapshot, 90일 GSC 보강, 분석 canary, 배포·롤백 순서는 `docs/runbooks/blog-orchestrator-v4-production-rollout.md`와 `docs/runbooks/blog-deepseek-orchestrator-v4.md`가 우선한다.
 
@@ -439,6 +441,7 @@ The blog system is complete only when the admin UI can answer these questions wi
   - seasonal month topics must be weather, clothing, packing, rainy/dry season, or checklist led; lodging micro-topics such as air-conditioner/no-air-conditioner are not publishable;
   - unsupported honeymoon pairings such as Shijiazhuang + honeymoon are not publishable;
   - topics that repeat the destination prefix, for example `Destination Destination(...)`, are not publishable.
+- Programmatic producers must additionally prove observed demand, a resolvable explicit information contract, reviewed source coverage for the same destination and intent, and absence of an active representative. A legacy compatibility route must delegate to `promotePendingTopics()` instead of writing the queue directly.
 - The publisher must re-run topic-fit before generation so old bad queue rows cannot leak into publication even if they were inserted before the current producer rules.
 
 ## 2026-06-17 Topic Quality Cleanup Evidence

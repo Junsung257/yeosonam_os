@@ -352,6 +352,31 @@ describe('blog scheduler queue refill helpers', () => {
     expect(stats.demandMissing).toBe(0);
   });
 
+  it('recognizes the representative identity of legacy programmatic rows', () => {
+    const stats = countPublishableQueueCandidates({
+      recentPublished: [],
+      activeRepresentativeKeys: new Set([
+        'v1|세부|itinerary|couple|ko-KR',
+      ]),
+      activeQueue: [{
+        destination: '세부',
+        topic: '세부 신혼여행 추천 코스와 호텔',
+        primary_keyword: '세부 신혼여행',
+        category: 'travel_tips',
+        angle_type: 'honeymoon',
+        source: 'coverage_gap',
+        meta: {
+          programmatic_source_id: 'legacy-cebu-honeymoon',
+          programmatic_angle: 'honeymoon',
+        },
+      }],
+    });
+
+    expect(stats.blockedRecentDuplicate).toBe(1);
+    expect(stats.researchNotReady).toBe(0);
+    expect(stats.demandMissing).toBe(0);
+  });
+
   it('classifies ten researched coverage-gap weather rows without demand as non-publishable', () => {
     const activeQueue = Array.from({ length: 10 }, (_, index) => ({
       id: `weather-${index}`,
