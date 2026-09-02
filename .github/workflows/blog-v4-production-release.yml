@@ -250,7 +250,7 @@ jobs:
             "${CANDIDATE_URL}/sitemap.xml" >/dev/null
           missing_status="$(curl --silent --show-error --location --output /dev/null --write-out '%{http_code}' \
             --header "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
-            "${CANDIDATE_URL}/blog/__blog_v4_missing_probe__)"
+            "${CANDIDATE_URL}/blog/__blog_v4_missing_probe__")"
           test "$missing_status" = "404"
           npx vercel logs "$CANDIDATE_URL" --no-follow --since 30m --json \
             --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN" \
