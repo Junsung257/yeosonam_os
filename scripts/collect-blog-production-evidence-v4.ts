@@ -29,6 +29,8 @@ type CorpusEvidence = {
   outbox_dead: number;
 };
 
+type InngestIntrospectionEvidence = BlogProductionReadinessInputV4['automation'];
+
 function argument(name: string): string | null {
   const prefix = `--${name}=`;
   return process.argv.find((value) => value.startsWith(prefix))?.slice(prefix.length) ?? null;
@@ -112,6 +114,62 @@ async function checkSurface(
   }
 }
 
+async function inspectInngestEndpoint(base: string): Promise<InngestIntrospectionEvidence> {
+  const minimumFunctionCount = 5;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12_000);
+  try {
+    const protectionBypass = String(process.env.VERCEL_AUTOMATION_BYPASS_SECRET || '').trim();
+    const response = await fetch(`${base}/api/inngest`, {
+      redirect: 'manual',
+      signal: controller.signal,
+      headers: {
+        'user-agent': 'YeosonamBlogProductionEvidenceV4/1.0',
+        ...(protectionBypass
+          ? { 'x-vercel-protection-bypass': protectionBypass }
+          : {}),
+      },
+    });
+    if (response.status !== 200) {
+      return {
+        inngestEndpointReachable: false,
+        mode: null,
+        hasEventKey: false,
+        hasSigningKey: false,
+        functionCount: null,
+        minimumFunctionCount,
+        error: `http_${response.status}_expected_200`,
+      };
+    }
+    const raw = await response.text();
+    const payload = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      inngestEndpointReachable: true,
+      mode: typeof payload.mode === 'string' ? payload.mode : null,
+      hasEventKey: payload.has_event_key === true,
+      hasSigningKey: payload.has_signing_key === true,
+      functionCount: typeof payload.function_count === 'number'
+        && Number.isInteger(payload.function_count)
+        ? payload.function_count
+        : null,
+      minimumFunctionCount,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      inngestEndpointReachable: false,
+      mode: null,
+      hasEventKey: false,
+      hasSigningKey: false,
+      functionCount: null,
+      minimumFunctionCount,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function numberArgument(name: string): number | null {
   const value = argument(name);
   return value != null && /^\d+$/.test(value) ? Number(value) : null;
@@ -189,6 +247,7 @@ async function main(): Promise<void> {
       `)
     : { stage: null, frozen: true, hard_incident_count: 0 };
   const base = (argument('base') || 'https://www.yeosonam.com').replace(/\/$/, '');
+  const automation = await inspectInngestEndpoint(base);
   const unavailable = /BLOG_DATABASE_UNAVAILABLE|블로그 데이터를 (?:잠시 )?불러오지 못했습니다|블로그 데이터를 불러올 수 없습니다/i;
   const detailUrl = corpus.sample_slug ? `${base}/blog/${encodeURIComponent(corpus.sample_slug)}` : `${base}/blog/__missing_sample__`;
   const surfaceFailures = (await Promise.all([
@@ -232,6 +291,7 @@ async function main(): Promise<void> {
       publicSurfaceFailures: surfaceFailures,
       databaseUnavailableErrorsSinceCandidateDeploy: numberArgument('database-errors-since-candidate'),
     },
+    automation,
     corpus: {
       reviewBlockedPublished: corpus.review_blocked_published,
       reviewBlockedWithDisposition: corpus.review_blocked_with_disposition,

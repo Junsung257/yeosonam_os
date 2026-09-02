@@ -25,6 +25,15 @@ const readyInput = (): BlogProductionReadinessInputV4 => ({
     publicSurfaceFailures: [],
     databaseUnavailableErrorsSinceCandidateDeploy: 0,
   },
+  automation: {
+    inngestEndpointReachable: true,
+    mode: 'cloud',
+    hasEventKey: true,
+    hasSigningKey: true,
+    functionCount: 5,
+    minimumFunctionCount: 5,
+    error: null,
+  },
   corpus: {
     reviewBlockedPublished: 8,
     reviewBlockedWithDisposition: 8,
@@ -77,6 +86,17 @@ describe('blog production readiness v4', () => {
     expect(evaluateBlogProductionReadinessV4(input, now).safeToEnableLive).toBe(false);
     input.delivery.databaseUnavailableErrorsSinceCandidateDeploy = 1;
     expect(evaluateBlogProductionReadinessV4(input, now).safeToEnableLive).toBe(false);
+  });
+
+  it('blocks a requested cutover when either Inngest credential or registration is missing', () => {
+    const input = readyInput();
+    input.automation.hasEventKey = false;
+    input.automation.functionCount = 4;
+    const report = evaluateBlogProductionReadinessV4(input, now);
+    expect(report.scopes.automation).toBe(false);
+    expect(report.safeToEnableLive).toBe(false);
+    expect(report.checks.find((item) => item.key === 'durable_workflow_registration'))
+      .toMatchObject({ status: 'block' });
   });
 
   it('requires an explicit disposition for every review-blocked published row', () => {

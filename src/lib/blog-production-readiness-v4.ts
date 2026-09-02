@@ -3,6 +3,7 @@ export type BlogProductionReadinessScopeV4 =
   | 'source'
   | 'schema'
   | 'delivery'
+  | 'automation'
   | 'corpus'
   | 'measurement'
   | 'rollout';
@@ -34,6 +35,15 @@ export interface BlogProductionReadinessInputV4 {
     missingSnapshotSlugs: string[] | null;
     publicSurfaceFailures: string[];
     databaseUnavailableErrorsSinceCandidateDeploy: number | null;
+  };
+  automation: {
+    inngestEndpointReachable: boolean;
+    mode: string | null;
+    hasEventKey: boolean;
+    hasSigningKey: boolean;
+    functionCount: number | null;
+    minimumFunctionCount: number;
+    error: string | null;
   };
   corpus: {
     reviewBlockedPublished: number | null;
@@ -132,6 +142,12 @@ export function evaluateBlogProductionReadinessV4(
     && input.rollout.hardIncidentCount === 0
     && input.rollout.dailyAiBudgetUsd != null
     && input.rollout.dailyAiBudgetUsd > 0;
+  const durableWorkflowReady = input.automation.inngestEndpointReachable
+    && input.automation.mode === 'cloud'
+    && input.automation.hasEventKey
+    && input.automation.hasSigningKey
+    && input.automation.functionCount != null
+    && input.automation.functionCount >= input.automation.minimumFunctionCount;
 
   const checks: BlogProductionReadinessCheckV4[] = [
     check(
@@ -183,6 +199,15 @@ export function evaluateBlogProductionReadinessV4(
         : input.delivery.databaseUnavailableErrorsSinceCandidateDeploy == null
           ? 'candidate-deployment runtime error evidence is missing'
           : 'database-unavailable errors occurred on the candidate deployment',
+    ),
+    check(
+      'durable_workflow_registration',
+      'automation',
+      durableWorkflowReady ? 'pass' : 'block',
+      input.automation,
+      durableWorkflowReady
+        ? 'Inngest cloud credentials and all required functions are present on the candidate'
+        : 'Inngest endpoint, cloud credentials, or required function registration is missing',
     ),
     check(
       'review_blocked_dispositions',
@@ -252,7 +277,7 @@ export function evaluateBlogProductionReadinessV4(
   ];
 
   const scopeNames: BlogProductionReadinessScopeV4[] = [
-    'source', 'schema', 'delivery', 'corpus', 'measurement', 'rollout',
+    'source', 'schema', 'delivery', 'automation', 'corpus', 'measurement', 'rollout',
   ];
   const scopes = Object.fromEntries(scopeNames.map((scope) => [
     scope,

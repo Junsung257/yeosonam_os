@@ -52,12 +52,14 @@
 - 🔑 `GOOGLE_ADS_CLIENT_SECRET` — Google OAuth 앱 시크릿
 - 🔑 `RESEND_FROM_EMAIL` — 리타겟 이메일 발신 주소 (예: noreply@yeosonam.com, Resend에서 도메인 인증 필요)
 
-### Sprint 2-A (Naver OAuth) + Sprint 4-B (TossPayments) + Inngest
+### Sprint 2-A (Naver OAuth) + Sprint 4-B (TossPayments)
 - 🔑 `NAVER_CLIENT_ID` — 네이버 개발자센터 > 애플리케이션 ID (블로그 API 스코프)
 - 🔑 `NAVER_CLIENT_SECRET` — 네이버 개발자센터 > Client Secret
 - 🔑 `TOSS_SECRET_KEY` — TossPayments 대시보드 > 개발 > API 키 > 시크릿 키
-- 🔑 `INNGEST_EVENT_KEY` — Inngest 대시보드 > 앱 > Event Key
-- 🔑 `INNGEST_SIGNING_KEY` — Inngest 대시보드 > 앱 > Signing Key
+
+### Inngest (설정 완료)
+
+- ✅ `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY` — 2026-09-02 공식 Vercel Marketplace Inngest 통합이 Production에 자동 주입·관리. 수동 복사·재발급 하지 않음.
 
 ---
 

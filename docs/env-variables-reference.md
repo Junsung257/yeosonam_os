@@ -10,7 +10,6 @@
 | `BLOG_PUBLICATION_RAMP_STAGE` | `pilot_3` | 내구성 원장 호환/복구 메타데이터. V4 발행량을 낮추거나 높이지 않음 |
 | `BLOG_AUTO_RAMP_ENABLED` | `false` | 기존 단계 원장 평가 호환용. V4에서는 DB 발행량 SSOT를 변경하지 않음 |
 | `BLOG_AUTO_ROLLBACK_ENABLED` | `true` | 심각 사고는 즉시 동결·pilot 복귀, 일반 불건전 관측 2회 연속은 한 단계 강등 |
-| `BLOG_DAILY_CANDIDATE_CAP` | `30` | KST 야간에 생성·검증할 후보 상한. 공개 상한이 아니며 최대 30 |
 | `BLOG_DAILY_AI_COST_CAP_USD` | `2` | KST 일일 AI 비용 상한. 공급자 호출 전에 DB 원자 예약이 실패하거나 상한을 넘으면 호출 금지 |
 | `BLOG_MAX_WEATHER_SHARE_30D` | `0.20` | 최근 30일 날씨 archetype 비중 상한 |
 | `BLOG_MAX_SAME_ARCHETYPE_IN_LAST_10` | `2` | 최근 10개 same-archetype 상한 |
@@ -18,6 +17,8 @@
 | `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS` | 없음 | `1`일 때만 DB 절전 모드에서도 블로그 핵심 체인(`rank-tracking`, `blog-data-readiness`, `blog-generate`, `blog-publication-controller`, `blog-indexing-worker`, `blog-ai-model-canary`, `blog-analytics-canary`, `analytics-delivery`) 실행. 누락 시 전체 체인은 fail-closed |
 | `BLOG_GENERATION_CRON_ENABLED` | 없음 (`false`) | `true`/`1`일 때만 야간 `blog-generate` cron이 모델 호출을 수행. 누락·오타는 pause이며, 승인된 수동 `force=true` 검증만 예외 |
 | `INNGEST_BLOG_AUTOPILOT_ENABLED` | 없음 (`false`) | `true`/`1`일 때만 `blog_topic_queue` 이벤트를 Inngest V4 함수로 전환. 전환 전 기존 cron은 호환 진입점 |
+| `INNGEST_EVENT_KEY` | 없음 | Inngest Cloud 이벤트 전송 키. 공식 Vercel 통합으로 주입하며 소스·로그에 기록 금지 |
+| `INNGEST_SIGNING_KEY` | 없음 | Inngest Cloud 콜백 서명 검증 키. 공식 Vercel 통합으로 주입하며 소스·로그에 기록 금지 |
 | `BLOG_PREVIEW_SECRET` | `CRON_SECRET` fallback | 15분 이하 `noindex` 초안 미리보기 HMAC. 반드시 server-only |
 | `BLOG_AUTOPILOT_INTERNAL_ORIGIN` | `NEXT_PUBLIC_SITE_URL` fallback | Inngest가 공통 cron 진입점을 호출할 HTTPS 원점. 로컬만 localhost HTTP 허용 |
 | `BLOG_CRAWL4AI_ENDPOINT` / `BLOG_CRAWL4AI_BEARER_TOKEN` | 없음 | 기존 HTML 추출 실패 시에만 쓰는 self-hosted Crawl4AI `/crawl`. 30건 벤치마크 통과 원장이 없으면 설정돼 있어도 호출 금지 |
@@ -43,7 +44,7 @@
 
 운영 최초 반영은 반드시 `BLOG_AUTOPUBLISH_MODE=draft_only`로 시작합니다. DB 절전 모드가 운영 기본값인 동안에는 검증된 배포에서만 `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS=1`을 함께 설정하고, draft canary 전후의 발행·공개·색인 건수를 비교한 뒤 `live`를 승인합니다. apply confirmation 값은 상시 환경 변수로 두지 않고 승인된 일회성 change window에서만 사용합니다.
 
-`INNGEST_BLOG_AUTOPILOT_ENABLED=1`은 자동 생성 실행을 켜지만 즉시 공개 권한을 주지 않습니다. 성공한 실행은 `approved_for_slot`에 저장되고, DB `publishing_policies`의 5개 슬롯에서만 `blog-publication-controller`가 원자 공개와 색인 아웃박스를 생성합니다. Crawl4AI·Docling·한국어 의미 중복기는 각각 최신 `blog_adapter_benchmarks` 통과 행이 있어야 활성화됩니다.
+`INNGEST_BLOG_AUTOPILOT_ENABLED=1`만으로는 실행되지 않습니다. `INNGEST_EVENT_KEY`와 `INNGEST_SIGNING_KEY`가 모두 있고 후보 `/api/inngest`가 `cloud` 모드·필수 함수 수를 보고해야 자동 생성 준비로 판정합니다. 키가 빠지면 `blog-generate`는 명시적으로 중지하며 readiness는 차단됩니다. 생성·공개 일일 목표는 모두 DB `publishing_policies.posts_per_day`(운영 5)를 사용하고 별도 30건 후보 상한은 없습니다. 성공한 실행은 `approved_for_slot`에 저장되고, DB의 5개 슬롯에서만 `blog-publication-controller`가 원자 공개와 색인 아웃박스를 생성합니다. Crawl4AI·Docling·한국어 의미 중복기는 각각 최신 `blog_adapter_benchmarks` 통과 행이 있어야 활성화됩니다.
 
 ### V3 staging runtime verifier 전용
 

@@ -675,10 +675,12 @@ The production workflow is `.github/workflows/blog-v4-production-release.yml`. I
 1. Run `npm run verify:blog-release-bundle-v4`, `npm run test:blog-autopilot-v4`, `npm run eval:blog-editorial:offline`, `npm run type-check`, and `npm run build` on the exact reviewed main SHA.
 2. Dry-run the linked release workdir and require no unexpected migration version. Apply only the pinned forward set.
 3. Run `npm run benchmark:blog-korean-semantic-v4 -- --apply`; the script refuses to persist a row unless the versioned 100-case precision and recall are both at least 0.90.
-4. Deploy the candidate with `BLOG_AUTOPUBLISH_MODE=draft_only`, `INNGEST_BLOG_AUTOPILOT_ENABLED=true`, and `BLOG_GENERATION_CRON_ENABLED=false`. Inngest is the only scheduled generation engine; the legacy flag stays off.
+4. Deploy the candidate with `BLOG_AUTOPUBLISH_MODE=draft_only`, `INNGEST_BLOG_AUTOPILOT_ENABLED=true`, and `BLOG_GENERATION_CRON_ENABLED=false`. Inngest is the only scheduled generation engine; the legacy flag stays off. Before declaring readiness, require candidate `/api/inngest` evidence for `cloud` mode, both Inngest keys, and all registered functions. The flag alone never counts as configured.
 5. Run the release-scope weekly SEO audit. Critical canonical, robots, H1, JSON-LD, Sitemap, or public HTTP findings block promotion. The audit never edits or unpublishes content.
 6. Accumulate 35 shadow drafts over 7 days with zero critical quality/PII/evidence failures and preview score at least 95. `publish` workflow checkpoints mean `approved_for_slot`, not public publication.
 7. Release 15 canaries over 3 days. Any duplicate publication, PII, claim loss, or incorrect indexing classification returns `BLOG_AUTOPUBLISH_MODE` to `draft_only` and disables Inngest.
+
+For a protected one-item shadow smoke test, call the authenticated dispatcher with `force=1&limit=1`. The `limit` override is honored only for forced manual runs and is hard-capped at two; scheduled runs remain policy-controlled.
 8. Observe 70 DB policy slots over 14 days, then approve normal 5/day live operation. The publication controller remains the only atomic public commit and indexing-outbox owner.
 
 Crawl4AI and Docling remain inactive until `npm run benchmark:blog-source-adapters-v4 -- --adapter=... --fixture=... --version=... --apply` passes a reviewed 30-source failure corpus. Endpoint credentials alone never activate them. A failed or stale latest benchmark closes the adapter again. The common HTML/PDF extractor remains authoritative while a fallback is closed.

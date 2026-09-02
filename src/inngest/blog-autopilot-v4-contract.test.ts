@@ -34,7 +34,14 @@ describe('Inngest blog autopilot V4 contract', () => {
   it('dispatches approved manual shadow runs through Inngest and release wiring never enables the legacy generator', () => {
     const dispatcher = source('src/app/api/cron/blog-generate/route.ts');
     const release = source('.github/workflows/blog-v4-production-release.yml');
-    expect(dispatcher).toContain('if (durableWorkflowEnabled)');
+    expect(dispatcher).toContain('if (durableWorkflowConfigured)');
+    expect(dispatcher).toContain('inngest_blog_autopilot_credentials_missing');
+    expect(dispatcher).toContain("getBlogPublishingPolicy('global')");
+    expect(dispatcher).toContain('blog_generation_daily_quota_reached');
+    expect(dispatcher).toContain("url.searchParams.get('limit')");
+    expect(dispatcher).toContain('requestedManualLimit >= 1');
+    expect(dispatcher).toContain('requestedManualLimit <= 2');
+    expect(dispatcher).toContain('const dispatchLimit = Math.min(perRunLimit, remainingToday)');
     expect(dispatcher).toContain('forcedManualDispatch: forcedManualRun');
     expect(release).toContain('update_env INNGEST_BLOG_AUTOPILOT_ENABLED true');
     expect(release).toContain('npx vercel env update INNGEST_BLOG_AUTOPILOT_ENABLED production --value true');
