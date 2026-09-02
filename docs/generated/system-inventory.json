@@ -1850,6 +1850,7 @@
     "scripts/verify-blog-public-eligibility-parity-v3.ts",
     "scripts/verify-blog-publisher-bridge.mjs",
     "scripts/verify-blog-release-candidate-responses-v4.ts",
+    "scripts/verify-blog-shadow-generation-v4.ts",
     "scripts/verify-blog-staging-runtime-v3.ts",
     "scripts/verify-blog-supabase-dry-run-v4.ts",
     "scripts/verify-ci-action-pins.mjs",
