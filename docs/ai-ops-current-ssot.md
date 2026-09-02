@@ -181,7 +181,7 @@ assertion. It does not call a model, customer API, database, or production
 surface, and it must not replace `verify:customer-inquiry` or the Jarvis gates.
 The first run may access npm only to download the exact pinned CLI package.
 
-- Promptfoo is pinned to `0.122.0`; do not use `@latest` in automation.
+- Promptfoo is pinned to `0.122.2`; do not use `@latest` in automation.
 - Sharing, cache/result writes, telemetry, update checks, remote generation,
   template environment variables, and local debug/error logs are disabled by default.
 - Only reviewed repository configs and assertion files may be executed because
@@ -192,3 +192,51 @@ The first run may access npm only to download the exact pinned CLI package.
 - The manual `Concierge Promptfoo Challenger` workflow remains non-blocking until
   the corpus is expanded and its score is proven stable against the authoritative
   customer-inquiry gate.
+
+### Blog model evaluation lane
+
+The V5 blog editorial comparison is an explicit, cost-bearing advisory run. DeepSeek
+`deepseek-v4-pro` remains the champion. The only challengers are NVIDIA NIM
+`nvidia/llama-3.3-nemotron-super-49b-v1.5` and OpenRouter
+`openai/gpt-oss-120b`; model aliases, `openrouter/free`, `openrouter/auto`, and
+provider/model fallbacks are forbidden. The NIM model ID and endpoint are pinned to
+the [official NVIDIA hosted example](https://build.nvidia.com/nvidia/llama-3_3-nemotron-super-49b-v1_5?nim=hosted).
+The OpenRouter slug is concrete because [OpenRouter recommends concrete slugs for
+reproducible regression tests](https://openrouter.ai/docs/guides/routing/routers/latest-resolution).
+
+The suite uses a dedicated, hash-pinned snapshot of the unchanged 33 V5 fixtures and
+its offline assertion. It does not replace or downgrade the production blog harness's
+100-case V4 corpus. Each provider must first pass the
+three food-budget smoke cases, then all 33 cases twice. Calls are serial, have a
+60-second deadline, and retry HTTP 429 at most twice with bounded backoff. DeepSeek
+uses the [official OpenAI-compatible endpoint](https://api-docs.deepseek.com/)
+without an added `/v1` and explicitly disables thinking, matching the production
+editorial judge. A live run requires an explicit cost confirmation. The child
+process receives only the selected provider credential and basic process variables;
+Supabase, Vercel, and unrelated provider secrets are not forwarded.
+
+Raw prompts and responses stay under gitignored `artifacts/private/blog-model-eval`.
+Only aggregate counts, raw-file hashes, cost, and an advisory decision may be
+promoted into `evals/blog-model/latest-summary.json`. Even a two-run challenger pass
+cannot change `system_ai_policies`, production provider types, DB enums, blog writer
+routing, or publication behavior. Those remain separate approved changes.
+
+### Deferred external tools
+
+`config/external-tool-adoption-policy.json` records the current boundary:
+
+- Zapier MCP is limited to low-frequency owner conveniences such as Gmail or
+  Notion. Booking, payment, deposit, product publication, PII, and external
+  publication are forbidden. Zapier currently documents 100 monthly Free-plan
+  tasks and two tasks per successful MCP call, so plan economics must be rechecked
+  before use.
+- FluidVoice remains a personal productivity option with no repository integration
+  while its official project describes Windows as forthcoming.
+- The specific Conductor coding-agent app at `conductor.build` is not adopted: its
+  official setup is Mac-based and it duplicates the existing worktree and agent
+  office controls. This decision does not apply to unrelated products that share
+  the Conductor name.
+- Bytez is not adopted because its hosted model endpoint duplicates the existing
+  provider-policy, cost-ledger, and trace boundary.
+- Headcount bulk Skill installation remains forbidden. Only individually reviewed,
+  locally rewritten Skills may enter the repository.

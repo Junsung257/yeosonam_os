@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "status": "advisory_challenger_only",
+  "verifiedAt": "2026-09-02",
+  "promptfoo": {
+    "version": "0.122.2",
+    "packagePath": "tools/harness-evals/package.json",
+    "lockPath": "tools/harness-evals/package-lock.json"
+  },
+  "fixture": {
+    "path": "promptfoo/blog-model-eval-fixtures-v5-33.cjs",
+    "sha256": "b86c6a073cad8e4cd045e874bdaf1267fdccaab9ba78f0658e62d28001870032",
+    "assertionPath": "promptfoo/assertions/blog-model-eval-offline-v5-33.cjs",
+    "assertionSha256": "6d5d440a0f359713fa93db49afb17c9b438044536f9429a2b090ce736b140821",
+    "count": 33,
+    "smokeIndexes": [0, 1, 2]
+  },
+  "execution": {
+    "smokeCases": 3,
+    "fullCases": 33,
+    "fullRuns": 2,
+    "maxConcurrency": 1,
+    "timeoutMs": 60000,
+    "maxRetries": 2,
+    "retryStatusCodes": [429],
+    "backoffBaseMs": 1000,
+    "backoffMaxMs": 30000,
+    "maxOutputTokens": 1200,
+    "rawOutputRoot": "artifacts/private/blog-model-eval",
+    "costConfirmation": "BLOG_MODEL_EVAL_V1"
+  },
+  "providers": [
+    {
+      "id": "deepseek-champion",
+      "role": "champion",
+      "endpoint": "https://api.deepseek.com/chat/completions",
+      "model": "deepseek-v4-pro",
+      "apiKeyEnv": "DEEPSEEK_API_KEY",
+      "source": "https://api-docs.deepseek.com/"
+    },
+    {
+      "id": "nvidia-nim-nemotron-super-49b-v1.5",
+      "role": "challenger",
+      "endpoint": "https://integrate.api.nvidia.com/v1/chat/completions",
+      "model": "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+      "apiKeyEnv": "NVIDIA_API_KEY",
+      "source": "https://build.nvidia.com/nvidia/llama-3_3-nemotron-super-49b-v1_5?nim=hosted"
+    },
+    {
+      "id": "openrouter-gpt-oss-120b",
+      "role": "challenger",
+      "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+      "model": "openai/gpt-oss-120b",
+      "apiKeyEnv": "OPENROUTER_API_KEY",
+      "source": "https://openrouter.ai/openai/gpt-oss-120b/pricing",
+      "routing": {
+        "allowFallbacks": false,
+        "dataCollection": "deny",
+        "requireParameters": true
+      }
+    }
+  ],
+  "decision": {
+    "championRemains": "deepseek-champion",
+    "productionProviderMutationAllowed": false,
+    "databaseEnumMutationAllowed": false,
+    "minimumCandidatePasses": "33/33 twice after 3/3 smoke",
+    "rawResultsCommitAllowed": false,
+    "commitSafeFields": ["aggregate", "hashes", "cost", "decision"]
+  },
+  "forbiddenModelPatterns": ["openrouter/free", "openrouter/auto", ":free", "~", "latest"]
+}

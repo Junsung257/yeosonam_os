@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "status": "not_run",
+  "hashes": {
+    "policy": null,
+    "fixture": "b86c6a073cad8e4cd045e874bdaf1267fdccaab9ba78f0658e62d28001870032",
+    "prompt": null
+  },
+  "providers": [],
+  "decision": {
+    "champion": "deepseek-champion",
+    "championChanged": false,
+    "productionProviderMutationAllowed": false,
+    "databaseEnumMutationAllowed": false
+  }
+}
