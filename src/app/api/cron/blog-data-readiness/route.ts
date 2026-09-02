@@ -15,6 +15,7 @@ import {
   MINIMUM_INNGEST_FUNCTION_COUNT,
 } from '@/inngest';
 import { isInngestBlogAutopilotConfigured } from '@/inngest/runtime-policy';
+import { getSecret } from '@/lib/secret-registry';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -63,8 +64,8 @@ const handler = async (_request: NextRequest) => {
   const automation = {
     endpointPath: '/api/inngest',
     mode: inngest.mode,
-    hasEventKey: Boolean(String(process.env.INNGEST_EVENT_KEY || '').trim()),
-    hasSigningKey: Boolean(String(process.env.INNGEST_SIGNING_KEY || '').trim()),
+    hasEventKey: Boolean(getSecret('INNGEST_EVENT_KEY')),
+    hasSigningKey: Boolean(getSecret('INNGEST_SIGNING_KEY')),
     functionCount: inngestFunctions.length,
     minimumFunctionCount: MINIMUM_INNGEST_FUNCTION_COUNT,
     configured: isInngestBlogAutopilotConfigured(),
