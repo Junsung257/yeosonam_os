@@ -48,14 +48,27 @@ function runLinkedReadOnlyQuery<T>(sql: string): T {
     maxBuffer: 20 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'pipe'] as ['ignore', 'pipe', 'pipe'],
   };
+  // Supabase CLI agent auto-detection can suppress db-query rows in headless CI.
+  // Pin the reviewed CLI and force its structured agent output on both platforms.
   const stdout = process.platform === 'win32'
     ? execFileSync('powershell.exe', [
         '-NoProfile',
         '-NonInteractive',
         '-Command',
-        `$query = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(statement, 'utf8').toString('base64')}')); $nodeExe = (Get-Command node).Source; $npxCli = Join-Path (Split-Path $nodeExe) 'node_modules\\npm\\bin\\npx-cli.js'; & $nodeExe $npxCli supabase db query --linked --output json $query`,
+        `$query = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(statement, 'utf8').toString('base64')}')); $nodeExe = (Get-Command node).Source; $npxCli = Join-Path (Split-Path $nodeExe) 'node_modules\\npm\\bin\\npx-cli.js'; & $nodeExe $npxCli --yes supabase@2.116.0 db query --linked --output-format json --agent yes $query`,
       ], options)
-    : execFileSync('npx', ['supabase', 'db', 'query', '--linked', '--output', 'json', statement], options);
+    : execFileSync('npx', [
+        '--yes',
+        'supabase@2.116.0',
+        'db',
+        'query',
+        '--linked',
+        '--output-format',
+        'json',
+        '--agent',
+        'yes',
+        statement,
+      ], options);
   const parsed = JSON.parse(stdout) as { rows?: Array<{ evidence?: T }> };
   const value = parsed.rows?.[0]?.evidence;
   if (value == null) throw new Error('linked evidence query returned no payload');
