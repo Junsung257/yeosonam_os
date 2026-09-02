@@ -23,6 +23,19 @@ describe('Inngest blog autopilot V4 contract', () => {
     expect(workflow).not.toContain('blog-publication-controller?force=true');
   });
 
+  it('terminates deterministic duplicate skips before artifact verification and retries real generation failures', () => {
+    const workflow = source('src/inngest/functions/blog-autopilot-v4.ts');
+    const terminalCheck = workflow.indexOf('const terminalGeneration = readTerminalGenerationOutcome(generation)');
+    const verifyStep = workflow.indexOf("step.run('verify'");
+    expect(workflow).toContain("status.startsWith('skipped')");
+    expect(workflow).toContain("['duplicate_review', 'failed', 'quarantined'].includes(status)");
+    expect(workflow).toContain('payload.ok === false && !readTerminalGenerationOutcome(payload)');
+    expect(workflow).toContain('blog_generation_payload_failed:');
+    expect(workflow).toContain("terminalStage: 'draft'");
+    expect(terminalCheck).toBeGreaterThan(0);
+    expect(terminalCheck).toBeLessThan(verifyStep);
+  });
+
   it('checkpoints all ten V4 stages with atomic publication deferred to the five-slot controller', () => {
     const workflow = source('src/inngest/functions/blog-autopilot-v4.ts');
     for (const stage of ['research', 'brief', 'draft', 'verify', 'edit', 'quality', 'preview', 'publish', 'indexing', 'observe']) {
