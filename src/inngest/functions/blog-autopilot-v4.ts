@@ -1,5 +1,5 @@
 import { blogPipelineRequestedEvent, inngest } from '../client';
-import { isInngestBlogAutopilotEnabled } from '@/inngest/runtime-policy';
+import { isInngestBlogAutopilotConfigured } from '@/inngest/runtime-policy';
 import { getSecret } from '@/lib/secret-registry';
 import { isSupabaseAdminConfigured } from '@/lib/supabase';
 import { BLOG_AUTOPILOT_PIPELINE_VERSION } from '@/lib/blog-autopilot-v4-contract';
@@ -61,8 +61,8 @@ export const blogAutopilotV4Fn = inngest.createFunction(
     triggers: [blogPipelineRequestedEvent],
   },
   async ({ event, step }) => {
-    if (!isInngestBlogAutopilotEnabled()) {
-      return { skipped: true, reason: 'inngest_blog_autopilot_not_enabled' };
+    if (!isInngestBlogAutopilotConfigured()) {
+      return { skipped: true, reason: 'inngest_blog_autopilot_not_configured' };
     }
     if (!isSupabaseAdminConfigured) {
       return { skipped: true, reason: 'supabase_admin_not_configured' };

@@ -110,7 +110,7 @@ import { researchBlogInformationAutomatically } from '@/lib/blog-auto-research';
 import { buildBlogIntentPromptContract, classifyBlogIntent } from '@/lib/blog-content-intent';
 import { ensureDailyPublishableQueue, getBlogPublishingPolicy, MIN_PUBLISHABLE_BUFFER_DAYS, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
 import { BLOG_AUTOPILOT_PIPELINE_VERSION } from '@/lib/blog-autopilot-v4-contract';
-import { isInngestBlogAutopilotEnabled } from '@/inngest/runtime-policy';
+import { isInngestBlogAutopilotConfigured } from '@/inngest/runtime-policy';
 import {
   classifyBlogQueueFailure,
   isBlogDuplicateQueueFailure,
@@ -305,7 +305,6 @@ const MAX_BATCH = readBoundedIntEnv('BLOG_PUBLISHER_MAX_BATCH', 1, 1, 4);
 const CLAIM_POOL_MULTIPLIER = readBoundedIntEnv('BLOG_PUBLISHER_CLAIM_POOL_MULTIPLIER', 4, 1, 5);
 const MAX_CANDIDATE_POOL = readBoundedIntEnv('BLOG_PUBLISHER_MAX_CANDIDATE_POOL', 8, MAX_BATCH, 8);
 const MAX_CANDIDATE_ATTEMPTS_PER_RUN = 8;
-const BLOG_DAILY_CANDIDATE_CAP = readBoundedIntEnv('BLOG_DAILY_CANDIDATE_CAP', 30, 1, 30);
 const MAX_EXTRA_CLAIM_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 4, 1, 8);
 // V3 never deterministically invents or appends content to satisfy a gate.
 const BLOG_AUTOPUBLISH_POLICY_V3 = readBlogAutopublishPolicyV3();
@@ -1795,13 +1794,13 @@ async function runBlogPublisher(request: NextRequest) {
     const targetQueueId = durablePipelineQueueId
       || request.nextUrl.searchParams.get('targetQueueId')?.trim();
     if (targetQueueId) {
-      if (durablePipelineQueueId && !isInngestBlogAutopilotEnabled()) {
+      if (durablePipelineQueueId && !isInngestBlogAutopilotConfigured()) {
         return {
           ok: false,
           processed: 0,
           published: 0,
           durablePipeline: true,
-          reason: 'inngest_blog_autopilot_not_enabled',
+          reason: 'inngest_blog_autopilot_not_configured',
           results,
           errors,
         };
@@ -1884,12 +1883,10 @@ async function runBlogPublisher(request: NextRequest) {
     });
     const pillarDeferral = await deferDuePillarQueueItems();
     const publishPolicy = await getBlogPublishingPolicy('global').catch(() => null);
-    const targetPostsToday = deferPublication
-      ? BLOG_DAILY_CANDIDATE_CAP
-      : Math.min(
-          BLOG_AUTOPUBLISH_POLICY_V3.dailyPublishCap,
-          normalizeDailyPostTarget(publishPolicy?.posts_per_day),
-        );
+    const targetPostsToday = Math.min(
+      BLOG_AUTOPUBLISH_POLICY_V3.dailyPublishCap,
+      normalizeDailyPostTarget(publishPolicy?.posts_per_day),
+    );
     const todayQuota = await getTodayBlogPublishCount();
     const slotQuota = calculateBlogPublishSlotQuota({
       dailyTarget: targetPostsToday,
@@ -1898,7 +1895,7 @@ async function runBlogPublisher(request: NextRequest) {
     });
     const generatedToday = deferPublication ? await getTodayBlogGenerationCount() : 0;
     const remainingDueNow = deferPublication
-      ? Math.max(0, BLOG_DAILY_CANDIDATE_CAP - generatedToday)
+      ? Math.max(0, targetPostsToday - generatedToday)
       : slotQuota.remainingDueNow;
     if (remainingDueNow <= 0) {
       const dailyQuotaReached = slotQuota.remainingDaily <= 0;

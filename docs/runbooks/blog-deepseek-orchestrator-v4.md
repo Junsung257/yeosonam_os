@@ -81,11 +81,9 @@ HUB가 429/5xx/network 오류면 `NAVER_CLIENT_ID`/`NAVER_CLIENT_SECRET`의 기�
 DEEPSEEK_API_KEY=<server-only>
 NAVER_API_HUB_CLIENT_ID=<server-only>
 NAVER_API_HUB_CLIENT_SECRET=<server-only>
-BLOG_DAILY_CANDIDATE_CAP=30
 BLOG_AUTOPUBLISH_MODE=draft_only
-BLOG_DAILY_PUBLISH_CAP=30
-BLOG_PUBLICATION_RAMP_STAGE=max_30
-BLOG_AUTO_RAMP_ENABLED=true
+INNGEST_BLOG_AUTOPILOT_ENABLED=true
+BLOG_GENERATION_CRON_ENABLED=false
 BLOG_AUTO_ROLLBACK_ENABLED=true
 BLOG_DAILY_AI_COST_CAP_USD=2
 BLOG_REQUIRE_DEMAND_SIGNAL=true
@@ -93,7 +91,7 @@ BLOG_MAX_WEATHER_SHARE_30D=0.20
 BLOG_MAX_SAME_ARCHETYPE_IN_LAST_10=2
 ```
 
-처음에는 반드시 `draft_only`다. migration과 canary 검증 후에만 `live`로 바꾼다. 환경에 cap 30과 `max_30`을 넣어도 DB 원장은 `pilot_3`에서 시작하므로 실효 상한은 3이다. 환경 값을 낮추면 즉시 더 낮은 상한이 적용된다.
+처음에는 반드시 `draft_only`다. migration과 canary 검증 후에만 `live`로 바꾼다. 일일 생성·공개 목표는 DB `publishing_policies.posts_per_day=5`만 사용한다. `INNGEST_EVENT_KEY`와 `INNGEST_SIGNING_KEY`는 공식 Vercel 통합으로 주입하며 둘 중 하나라도 없으면 생성 자체를 중지한다.
 
 승격과 강등은 DB 원장에 일일 관측을 한 번만 기록해 자동 판단한다. 관측값 하나라도 없으면 healthy streak를 0으로 만들고 승격하지 않는다.
 

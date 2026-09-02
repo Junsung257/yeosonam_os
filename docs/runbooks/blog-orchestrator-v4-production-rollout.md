@@ -34,19 +34,18 @@ GitHub `blog-production` environment에 배포 승인 규칙과 다음 secret을
 ```text
 BLOG_AUTOPUBLISH_MODE=draft_only
 BLOG_GENERATION_CRON_ENABLED=false
-BLOG_DAILY_PUBLISH_CAP=30
-BLOG_PUBLICATION_RAMP_STAGE=max_30
-BLOG_AUTO_RAMP_ENABLED=true
+INNGEST_BLOG_AUTOPILOT_ENABLED=true
+BLOG_PUBLICATION_RAMP_STAGE=pilot_3
+BLOG_AUTO_RAMP_ENABLED=false
 BLOG_AUTO_ROLLBACK_ENABLED=true
 BLOG_DAILY_AI_COST_CAP_USD=2
-BLOG_DAILY_CANDIDATE_CAP=30
 BLOG_REQUIRE_DEMAND_SIGNAL=true
 BLOG_MAX_WEATHER_SHARE_30D=0.20
 BLOG_MAX_SAME_ARCHETYPE_IN_LAST_10=2
 DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS=1
 ```
 
-DB rollout state는 migration에서 `pilot_3`으로 시작한다. 따라서 환경 ceiling을 30으로 열어도 첫 실효 공개량은 슬롯별 `[1,1,2,2,3]`, 일 최대 3건이다.
+DB `publishing_policies`의 전역 행은 `posts_per_day=5`와 `09/12/15/18/21` 슬롯의 유일한 발행량 SSOT다. 후보 배포는 공개 권한이 없는 `draft_only`이므로 5건/일 shadow 생성만 허용한다. `/api/inngest` introspection에서 `cloud`, 이벤트 키, 서명 키, 필수 함수 수가 모두 확인되지 않으면 release readiness를 차단한다.
 
 ## 정확한 실행 순서
 

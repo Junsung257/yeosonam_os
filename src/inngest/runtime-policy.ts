@@ -22,6 +22,17 @@ export function isInngestBlogAutopilotEnabled(): boolean {
   return enabled(getSecret('INNGEST_BLOG_AUTOPILOT_ENABLED'));
 }
 
+/**
+ * A requested cutover is not runnable until Inngest can both accept events and
+ * authenticate function callbacks. Keep this separate from the rollout flag so
+ * diagnostics can distinguish a paused pipeline from missing credentials.
+ */
+export function isInngestBlogAutopilotConfigured(): boolean {
+  return isInngestBlogAutopilotEnabled()
+    && Boolean(getSecret('INNGEST_EVENT_KEY'))
+    && Boolean(getSecret('INNGEST_SIGNING_KEY'));
+}
+
 export function utcDayFromTimestamp(timestamp?: number): string {
   const date = new Date(typeof timestamp === 'number' ? timestamp : Date.now());
   if (Number.isNaN(date.getTime())) throw new Error('invalid Inngest timestamp');
