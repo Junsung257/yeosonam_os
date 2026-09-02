@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "status": "prototype_build_pending",
+  "upstream": {
+    "repository": "https://github.com/calesthio/OpenMontage",
+    "commit": "cd9f3c1f03368be87b140af494914b8ee4e3c7a4",
+    "commitSignatureVerified": true,
+    "license": "AGPL-3.0-only",
+    "vendored": false,
+    "upstreamModified": false,
+    "networkServiceEnabled": false
+  },
+  "container": {
+    "baseImage": "python:3.12.11-slim-bookworm@sha256:519591d6871b7bc437060736b9f7456b8731f1499a57e22e6c285135ae657bf7",
+    "runtimeNetwork": "none",
+    "readOnlyRootFilesystem": true,
+    "hostPythonRequired": false,
+    "hostFfmpegRequired": false,
+    "publishedPorts": []
+  },
+  "providers": {
+    "ttsEngine": {
+      "name": "piper",
+      "package": "piper-tts",
+      "engineLicense": "GPL-3.0-only",
+      "voiceMustBeCommerciallyApproved": true
+    },
+    "knownKoreanVoice": {
+      "repository": "https://huggingface.co/rhasspy/piper-voices",
+      "revision": "39ab474be869e9181350af6a65e4953eef67aaa0",
+      "path": "ko/ko_KR/kss/medium/ko_KR-kss-medium.onnx",
+      "sha256": "624fd774e26895f24bebae1bd9a3379e3394baeade4b584924f83e414096e2c9",
+      "datasetLicense": "CC-BY-NC-SA-4.0",
+      "status": "license_blocked",
+      "reason": "Non-commercial dataset license is incompatible with Yeosonam commercial output. The image does not download this voice."
+    },
+    "paidHeroProvidersEnabled": false
+  },
+  "mutations": {
+    "databaseWritesEnabled": false,
+    "uploadEnabled": false,
+    "socialPublishingEnabled": false
+  },
+  "deliverable": {
+    "durationSeconds": { "minimum": 20, "maximum": 40 },
+    "width": 1080,
+    "height": 1920,
+    "aspectRatio": "9:16",
+    "videoCodec": "h264",
+    "audioCodec": "aac",
+    "language": "ko-KR",
+    "vaApprovalRequired": true
+  }
+}

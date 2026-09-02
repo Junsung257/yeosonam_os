@@ -1,6 +1,6 @@
 # 여소남 미디어 생성 현재 SSOT
 
-> 상태: current · 검증일 2026-09-01. 이 문서는 미디어 권한·생성·검수 계약의 SSOT다. 워커 수, 큐 길이, canary 상태처럼 바뀌는 운영 값은 이 문서에 고정하지 않고 `npm run audit:media-generation`과 운영 화면에서 확인한다.
+> 상태: current · 검증일 2026-09-02. 이 문서는 미디어 권한·생성·검수 계약의 SSOT다. 워커 수, 큐 길이, canary 상태처럼 바뀌는 운영 값은 이 문서에 고정하지 않고 `npm run audit:media-generation`과 운영 화면에서 확인한다.
 
 ## 1. 결론
 
@@ -53,6 +53,18 @@ AI 이미지는 `AI 생성 참고 이미지 · 실제 현장 기록이나 최신
 - 카드뉴스: 상품형은 공개 상품 snapshot 사진만 사용한다. 정보형은 구독형 master 배경을 큐에 넣되 승인 전에는 브랜드 placeholder를 사용한다.
 
 Pexels 자동 fallback은 정상 경로에서 비활성이다. 장애 복구가 꼭 필요할 때도 `MEDIA_LEGACY_PEXELS_FALLBACK=true`와 호출 지점의 명시적 opt-in이 모두 있어야 한다.
+
+## 4.1 OpenMontage 세로 영상 파일럿
+
+OpenMontage는 공개·발행 경로가 아니라 내부 draft 도구 sandbox 후보다. 공식 `calesthio/OpenMontage`의 서명 검증 commit `cd9f3c1f03368be87b140af494914b8ee4e3c7a4`만 Docker build 때 clone하며 vendoring, upstream 수정, Skill 설치, 네트워크 서비스화를 하지 않는다. upstream 라이선스는 AGPL-3.0-only다.
+
+- 입력은 승인된 정보성 블로그 revision, 본문 hash, 근거 hash, claim ledger만 허용한다. 웹 조사는 source discovery일 뿐 새 사실이나 판매 주장의 근거가 아니다.
+- 호텔·객실·식사·관광지·상품 장면은 `internal_product_registration.media_assets`의 supplier/operator/official 계열, 사용 가능한 권리 상태, content hash, asset ID를 모두 가진 자산만 허용한다. stock/public archive는 `information_broll`과 `참고 영상` 표시에만 쓴다. 생성 이미지는 claim이나 상품 증거에 연결할 수 없다.
+- 결과는 20–40초, 9:16, 1080×1920, H.264/AAC, 한국어 자막으로 제한하고 MP4/SRT/thumbnail/manifest를 `/private/video-worker/` 아래 draft로만 둔다. 업로드, SNS 발행, DB 쓰기, 유료 Hero provider는 없다. VA 승인 전 상태는 `draft_pending_va`다.
+- Docker wrapper는 no-network, read-only root, read-only input, private writable output, non-root, no ports를 기본으로 한다. 공식 upstream에는 현재 Docker runtime이 없으므로 이 wrapper는 upstream 지원을 가장하지 않는 build-pending prototype이다.
+- Piper 엔진 자체와 음성 모델의 라이선스는 별도로 본다. 확인된 `ko_KR-kss-medium` 모델은 dataset license가 CC-BY-NC-SA-4.0이므로 상업 영상에 `license_blocked`다. 상업 사용이 명시 승인된 한국어 voice hash가 등록되기 전에는 실제 한국어 렌더를 시작하지 않는다.
+
+권위 계약은 `config/openmontage-worker.json`과 `src/lib/video-worker/contracts.ts`다. 세 개의 합성 정보성 fixture와 상품 호텔 장면을 stock으로 바꾸려는 음성 사례는 정책 단위 테스트일 뿐 실제 승인 블로그 3건의 렌더 증거가 아니다. Docker build/preflight, 승인 블로그 3건, 잘못된 대체영상 1건, ffprobe/자막/음량/watermark QA와 실제 시간 개선이 모두 확인되기 전에는 후속 DB 작업 원장이나 발행 파이프라인을 설계하지 않는다.
 
 ## 5. 운영 설정과 실행
 

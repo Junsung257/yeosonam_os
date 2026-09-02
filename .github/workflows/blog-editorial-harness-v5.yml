@@ -7,9 +7,9 @@ on:
       - 'src/lib/blog-information-claim-validator.ts'
       - 'src/lib/blog-deepseek-orchestrator-v4.ts'
       - 'src/app/api/cron/blog-publisher/route.ts'
-      - 'promptfoo/blog-editorial-offline.yaml'
+      - 'promptfoo/blog-editorial-offline.config.ts'
       - 'promptfoo/load-blog-editorial-tests.cjs'
-      - 'promptfoo/assertions/blog-editorial-contract.cjs'
+      - 'promptfoo/assertions/blog-editorial-contract-v4.ts'
       - 'supabase/migrations/*blog_editorial_harness_v5.sql'
       - 'package.json'
       - '.github/workflows/blog-editorial-harness-v5.yml'
@@ -48,5 +48,5 @@ jobs:
         run: |
           npm run setup:harness-evals
           npm run audit:harness-evals
-      - name: Frozen 33-case Promptfoo challenger
+      - name: Frozen 100-case Promptfoo challenger
         run: npm run eval:blog-editorial:promptfoo

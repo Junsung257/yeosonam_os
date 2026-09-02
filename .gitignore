@@ -224,11 +224,13 @@ dev-server.log
 .vercel
 .env*.local
 .serena/
+.codebase-memory/
 .tsbuildinfo*
 logs/
 .promptfoo/
 promptfoo-results/
 /artifacts/
+/private/video-worker/
 
 # 세션 작업 파일 (git에 포함 금지)
 .commit-msg.txt
@@ -259,6 +261,8 @@ tmp-*.png
 !/tools/harness-evals/package-lock.json
 !/tools/research-node/
 !/tools/research-node/**
+!/tools/openmontage-worker/
+!/tools/openmontage-worker/**
 /Lib/
 
 # Local desktop cleanup archives

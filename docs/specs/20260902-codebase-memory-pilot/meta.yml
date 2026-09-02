@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "tier": 2,
+  "status": "active",
+  "owner": "platform-engineering",
+  "review_file": "review.md",
+  "surface_map_version": 1,
+  "verified_commit": "278b922f35e89fc60b603df9df4595efafab67e2",
+  "verification": [
+    "npm run check:harness",
+    "npm run check:agent-host",
+    "npm run check:agent-host -- --repo-only",
+    "node --check scripts/run-codebase-memory-benchmark.mjs"
+  ],
+  "evidence_paths": [
+    "docs/specs/20260902-codebase-memory-pilot/review.md"
+  ]
+}

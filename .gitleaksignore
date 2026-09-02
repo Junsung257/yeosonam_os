@@ -1,0 +1,4 @@
+# False positives: deterministic Blog Runtime V4 resource identifiers, not credentials.
+e44508591ba01ed4bc7dc74c1417e6f13cca816c:src/lib/blog-runtime-readiness-v3.ts:generic-api-key:111
+e44508591ba01ed4bc7dc74c1417e6f13cca816c:src/lib/blog-runtime-readiness-v3.test.ts:generic-api-key:52
+e44508591ba01ed4bc7dc74c1417e6f13cca816c:src/lib/blog-runtime-readiness-v3.test.ts:generic-api-key:62

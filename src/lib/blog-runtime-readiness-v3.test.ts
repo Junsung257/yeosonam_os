@@ -49,6 +49,19 @@ describe('blog runtime schema readiness v3', () => {
         columns: expect.stringContaining('finish_reason'),
       }),
       expect.objectContaining({ key: 'model_price_catalog_v4', scope: 'publish' }),
+      expect.objectContaining({ key: 'publishing_policy_v4', scope: 'publish' }),
+    ]));
+  });
+
+  it('requires lifecycle classification and deployment provenance before V4 public delivery', () => {
+    expect(BLOG_RUNTIME_RESOURCES_V3).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'indexing_reports_lifecycle_v4', scope: 'delivery' }),
+      expect.objectContaining({ key: 'visibility_lifecycle_v4', scope: 'delivery' }),
+      expect.objectContaining({ key: 'classification_revisions_v4', scope: 'delivery' }),
+      expect.objectContaining({
+        key: 'generation_runs_v4',
+        columns: expect.stringContaining('deployment_commit_sha'),
+      }),
     ]));
   });
 

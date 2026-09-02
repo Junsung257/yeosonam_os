@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "taskId": "20260902-openmontage-draft-worker",
+  "agents": [
+    {
+      "id": "openmontage-draft-owner",
+      "role": "implementation",
+      "write": [
+        ".gitignore",
+        "config/openmontage-worker.json",
+        "tools/openmontage-worker/**",
+        "src/lib/video-worker/**",
+        "scripts/check-openmontage-worker-contract.mjs",
+        "docs/media-generation-current-ssot.md",
+        "docs/generated/system-inventory.md",
+        "docs/generated/system-inventory.json",
+        "docs/specs/20260902-openmontage-draft-worker/**",
+        "package.json"
+      ],
+      "readOnly": ["AGENTS.md", "CURRENT_STATUS.md", "docs/blog-autopublish-contract.md", "docs/product-registration-current-ssot.md", "supabase/migrations/**"],
+      "forbidden": ["src/app/api/**", "supabase/migrations/**", ".github/**"]
+    }
+  ]
+}

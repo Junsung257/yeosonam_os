@@ -1,10 +1,10 @@
 import {
-  getBlogPublicationRampDefinition,
   parseBlogPublicationRampStage,
   type BlogPublicationRampStage,
 } from './blog-publication-rollout';
 
 export const BLOG_AUTOPUBLISH_MODES = ['draft_only', 'reviewed_only', 'live'] as const;
+export const BLOG_DAILY_PUBLISH_MAX_V4 = 5 as const;
 
 export type BlogAutopublishMode = (typeof BLOG_AUTOPUBLISH_MODES)[number];
 
@@ -112,14 +112,19 @@ export function readBlogAutopublishPolicyV3(
     : 'draft_only';
   const deploymentProvenance = evaluateBlogDeploymentProvenanceV3(env);
   const mode = deploymentProvenance.passed ? requestedMode : 'draft_only';
-  const requestedDailyPublishCap = Math.floor(boundedNumber(env.BLOG_DAILY_PUBLISH_CAP, 1, 0, 30));
+  // AI-CONTEXT: publishing_policies.posts_per_day is the operational SSOT.
+  // This value is only a hard safety ceiling; the retired 30/day environment
+  // target must never override the DB policy again.
+  const requestedDailyPublishCap = BLOG_DAILY_PUBLISH_MAX_V4;
   const publicationRampStage = parseBlogPublicationRampStage(env.BLOG_PUBLICATION_RAMP_STAGE);
-  const rampCap = getBlogPublicationRampDefinition(publicationRampStage).dailyCap;
 
   return {
     requestedMode,
     mode,
-    dailyPublishCap: Math.min(requestedDailyPublishCap, rampCap),
+    // V4: publishing_policies is the only volume SSOT. Legacy rollout stage
+    // names remain for freeze/recovery compatibility but never lower or raise
+    // the five-post hard safety ceiling.
+    dailyPublishCap: BLOG_DAILY_PUBLISH_MAX_V4,
     requestedDailyPublishCap,
     publicationRampStage,
     autoRampEnabled: envBoolean(env.BLOG_AUTO_RAMP_ENABLED, false),
