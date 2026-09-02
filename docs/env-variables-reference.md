@@ -19,6 +19,7 @@
 | `INNGEST_BLOG_AUTOPILOT_ENABLED` | 없음 (`false`) | `true`/`1`일 때만 `blog_topic_queue` 이벤트를 Inngest V4 함수로 전환. 전환 전 기존 cron은 호환 진입점 |
 | `INNGEST_EVENT_KEY` | 없음 | Inngest Cloud 이벤트 전송 키. 공식 Vercel 통합으로 주입하며 소스·로그에 기록 금지 |
 | `INNGEST_SIGNING_KEY` | 없음 | Inngest Cloud 콜백 서명 검증 키. 공식 Vercel 통합으로 주입하며 소스·로그에 기록 금지 |
+| `VERCEL_AUTOMATION_BYPASS_SECRET` | 없음 | Deployment Protection이 적용된 배포에서 Inngest 워커가 서버 내부 cron API를 호출할 때만 쓰는 server-only 우회 키. Vercel 보호 설정의 현재 키와 함께 회전하며 client 노출 금지 |
 | `BLOG_PREVIEW_SECRET` | `CRON_SECRET` fallback | 15분 이하 `noindex` 초안 미리보기 HMAC. 반드시 server-only |
 | `BLOG_AUTOPILOT_INTERNAL_ORIGIN` | `NEXT_PUBLIC_SITE_URL` fallback | Inngest가 공통 cron 진입점을 호출할 HTTPS 원점. 로컬만 localhost HTTP 허용 |
 | `BLOG_CRAWL4AI_ENDPOINT` / `BLOG_CRAWL4AI_BEARER_TOKEN` | 없음 | 기존 HTML 추출 실패 시에만 쓰는 self-hosted Crawl4AI `/crawl`. 30건 벤치마크 통과 원장이 없으면 설정돼 있어도 호출 금지 |
@@ -44,7 +45,7 @@
 
 운영 최초 반영은 반드시 `BLOG_AUTOPUBLISH_MODE=draft_only`로 시작합니다. DB 절전 모드가 운영 기본값인 동안에는 검증된 배포에서만 `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS=1`을 함께 설정하고, draft canary 전후의 발행·공개·색인 건수를 비교한 뒤 `live`를 승인합니다. apply confirmation 값은 상시 환경 변수로 두지 않고 승인된 일회성 change window에서만 사용합니다.
 
-`INNGEST_BLOG_AUTOPILOT_ENABLED=1`만으로는 실행되지 않습니다. `INNGEST_EVENT_KEY`와 `INNGEST_SIGNING_KEY`가 모두 있고 후보 `/api/inngest`가 `cloud` 모드·필수 함수 수를 보고해야 자동 생성 준비로 판정합니다. 키가 빠지면 `blog-generate`는 명시적으로 중지하며 readiness는 차단됩니다. 생성·공개 일일 목표는 모두 DB `publishing_policies.posts_per_day`(운영 5)를 사용하고 별도 30건 후보 상한은 없습니다. 성공한 실행은 `approved_for_slot`에 저장되고, DB의 5개 슬롯에서만 `blog-publication-controller`가 원자 공개와 색인 아웃박스를 생성합니다. Crawl4AI·Docling·한국어 의미 중복기는 각각 최신 `blog_adapter_benchmarks` 통과 행이 있어야 활성화됩니다.
+`INNGEST_BLOG_AUTOPILOT_ENABLED=1`만으로는 실행되지 않습니다. `INNGEST_EVENT_KEY`와 `INNGEST_SIGNING_KEY`가 모두 있고 후보 `/api/inngest`가 `cloud` 모드·필수 함수 수를 보고해야 자동 생성 준비로 판정합니다. Deployment Protection을 사용하는 운영 배포에서는 서버 전용 `VERCEL_AUTOMATION_BYPASS_SECRET`도 설정해 워커의 자기 배포 내부 호출이 보호 계층에서 차단되지 않게 합니다. 키가 빠지면 `blog-generate`는 명시적으로 중지하며 readiness는 차단됩니다. 생성·공개 일일 목표는 모두 DB `publishing_policies.posts_per_day`(운영 5)를 사용하고 별도 30건 후보 상한은 없습니다. 성공한 실행은 `approved_for_slot`에 저장되고, DB의 5개 슬롯에서만 `blog-publication-controller`가 원자 공개와 색인 아웃박스를 생성합니다. Crawl4AI·Docling·한국어 의미 중복기는 각각 최신 `blog_adapter_benchmarks` 통과 행이 있어야 활성화됩니다.
 
 ### V3 staging runtime verifier 전용
 

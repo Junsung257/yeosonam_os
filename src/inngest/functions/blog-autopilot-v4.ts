@@ -31,10 +31,15 @@ function resolveInternalAppOrigin(): string {
 async function invokeAuthorizedCron(pathname: string): Promise<CronPayload> {
   const cronSecret = getSecret('CRON_SECRET');
   if (!cronSecret) throw new Error('blog_autopilot_cron_secret_missing');
+  const deploymentProtectionBypass = getSecret('VERCEL_AUTOMATION_BYPASS_SECRET');
+  const headers: Record<string, string> = { authorization: `Bearer ${cronSecret}` };
+  if (deploymentProtectionBypass) {
+    headers['x-vercel-protection-bypass'] = deploymentProtectionBypass;
+  }
   const response = await fetch(`${resolveInternalAppOrigin()}${pathname}`, {
     method: 'GET',
     cache: 'no-store',
-    headers: { authorization: `Bearer ${cronSecret}` },
+    headers,
     signal: AbortSignal.timeout(285_000),
   });
   const raw = await response.text();
