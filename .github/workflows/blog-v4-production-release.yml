@@ -209,7 +209,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm run build
+          # The immutable release gate already runs the pinned typecheck and
+          # regression suites. Vercel is the deployment build authority here;
+          # a second local Next.js production build can exhaust the hosted
+          # runner heap before the identical candidate build is submitted.
           candidate_url="$(npx vercel deploy --prod --skip-domain --yes \
             --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN")"
           echo "url=${candidate_url}" >> "$GITHUB_OUTPUT"

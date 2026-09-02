@@ -69,4 +69,13 @@ describe('blog V4 protected production release workflow', () => {
     expect(source).toContain('call_cron blog-ai-model-canary');
     expect(source).not.toContain('blog-data-readiness | tee .tmp/blog-v4-release/data-readiness.json || true');
   });
+
+  it('uses the Vercel candidate as the single production build authority', () => {
+    const candidateStep = source.slice(
+      source.indexOf('Build and deploy unaliased production candidate'),
+      source.indexOf('Run candidate collectors and synthetic analytics proof'),
+    );
+    expect(candidateStep).toContain('npx vercel deploy --prod --skip-domain --yes');
+    expect(candidateStep).not.toContain('npm run build');
+  });
 });
