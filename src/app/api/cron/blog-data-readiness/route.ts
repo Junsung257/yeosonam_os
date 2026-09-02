@@ -9,6 +9,13 @@ import { logError } from '@/lib/sentry-logger';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 import { buildBlogPublicSnapshotParityDiagnosticsV3 } from '@/lib/blog-public-snapshot-parity-v3';
 import { readImmutableRemoteSnapshotConfigV3 } from '@/lib/blog-public-remote-snapshot-v3';
+import {
+  inngest,
+  inngestFunctions,
+  MINIMUM_INNGEST_FUNCTION_COUNT,
+} from '@/inngest';
+import { isInngestBlogAutopilotConfigured } from '@/inngest/runtime-policy';
+import { getSecret } from '@/lib/secret-registry';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -54,6 +61,15 @@ const handler = async (_request: NextRequest) => {
       sha256: process.env.BLOG_PUBLIC_DETAIL_LKG_SHA256,
     })),
   };
+  const automation = {
+    endpointPath: '/api/inngest',
+    mode: inngest.mode,
+    hasEventKey: Boolean(getSecret('INNGEST_EVENT_KEY')),
+    hasSigningKey: Boolean(getSecret('INNGEST_SIGNING_KEY')),
+    functionCount: inngestFunctions.length,
+    minimumFunctionCount: MINIMUM_INNGEST_FUNCTION_COUNT,
+    configured: isInngestBlogAutopilotConfigured(),
+  };
   const report = evaluateBlogDataReadinessV3({
     searchPerformance30d: countOrNull(search),
     engagement7d: countOrNull(engagement),
@@ -71,6 +87,9 @@ const handler = async (_request: NextRequest) => {
     || snapshotParity?.parity !== true
     || !remoteSnapshots.catalog
     || !remoteSnapshots.detail
+    || !automation.configured
+    || automation.mode !== 'cloud'
+    || automation.functionCount < automation.minimumFunctionCount
     || recentSyntheticCanary.error
     || Number(recentSyntheticCanary.count || 0) === 0;
   if (critical) {
@@ -80,6 +99,7 @@ const handler = async (_request: NextRequest) => {
       deploymentProvenance: policy.deploymentProvenance,
       snapshotParity,
       remoteSnapshots,
+      automation,
       analyticsCanary24h: countOrNull(recentSyntheticCanary),
     });
   }
@@ -89,6 +109,7 @@ const handler = async (_request: NextRequest) => {
     schemaReadiness,
     snapshotParity,
     remoteSnapshots,
+    automation,
     analyticsCanary24h: countOrNull(recentSyntheticCanary),
     autopublish: {
       requestedMode: policy.requestedMode,
