@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "questions": [
+    { "id": "product-publication-state", "category": "product", "question": "publication_state 변경이 상품 공개에 영향을 주는 경로는?", "searchQuery": "publication state customer open contract", "expectedAnchors": ["src/lib/product-registration/customer-open-contract.ts", "src/lib/package-publication/types.ts"] },
+    { "id": "product-public-snapshot", "category": "product", "question": "상품 고객 공개 snapshot을 생성하고 읽는 경계는?", "searchQuery": "customer snapshot publication", "expectedAnchors": ["src/lib/product-registration-v6/snapshot-publication.ts", "src/app/packages/[id]/page.tsx"] },
+    { "id": "product-media-provenance", "category": "product", "question": "상품 미디어 provenance가 공개 자격에 연결되는 경로는?", "searchQuery": "media provenance eligibility", "expectedAnchors": ["src/lib/product-registration-v6/media-provenance.ts"] },
+    { "id": "booking-state-machine", "category": "booking", "question": "예약 상태 전이는 어디에서 검증되는가?", "searchQuery": "booking state transition", "expectedAnchors": ["src/lib/booking-state-machine.ts"] },
+    { "id": "booking-automation", "category": "booking", "question": "예약 자동화가 실행 가능한 작업을 결정하는 경계는?", "searchQuery": "booking automation task policy", "expectedAnchors": ["src/lib/booking-automation-policy.ts", "src/lib/booking-tasks/runner.ts"] },
+    { "id": "payment-matching", "category": "payment", "question": "입금 매칭과 자동 제안의 호출 관계는?", "searchQuery": "payment matcher auto suggest", "expectedAnchors": ["src/lib/payment-matcher.ts", "src/lib/payment-command-resolver.ts"] },
+    { "id": "settlement-close", "category": "settlement", "question": "월 정산 마감이 ledger와 예외 처리에 연결되는 경로는?", "searchQuery": "monthly settlement close exceptions", "expectedAnchors": ["src/lib/monthly-settlement-close.ts", "src/lib/finance-settlement-exceptions.ts"] },
+    { "id": "affiliate-settlement", "category": "affiliate", "question": "제휴 커미션 정산 계산과 승인 경계는?", "searchQuery": "affiliate settlement commission approval", "expectedAnchors": ["src/lib/affiliate/settlement-calc.ts"] },
+    { "id": "confirmation-delivery", "category": "confirmation", "question": "확정서 voucher 생성과 고객 전달 검사가 연결되는 경로는?", "searchQuery": "voucher customer delivery", "expectedAnchors": ["src/lib/voucher-generator.ts", "src/lib/customer-delivery-check.ts"] },
+    { "id": "blog-deepseek-lane", "category": "blog", "question": "블로그 DeepSeek-only 생성 경계와 모델 호출자는?", "searchQuery": "blog deepseek orchestrator caller", "expectedAnchors": ["src/lib/blog-deepseek-orchestrator-v4.ts", "src/lib/blog-ai-caller.ts"] },
+    { "id": "blog-editorial-gate", "category": "blog", "question": "V5 편집 판단이 공개 가능 상태에 연결되는 경로는?", "searchQuery": "blog editorial harness publication review", "expectedAnchors": ["src/lib/blog-editorial-harness-v5.ts", "src/lib/blog-publication-review-policy.ts"] },
+    { "id": "blog-atomic-publication", "category": "blog", "question": "정보성 블로그의 원자적 공개와 색인 outbox 경계는?", "searchQuery": "blog atomic publication indexing", "expectedAnchors": ["src/lib/blog-information-atomic-publication.ts", "src/lib/blog-indexing-outbox.ts"] },
+    { "id": "media-worker", "category": "media", "question": "미디어 작업 claim부터 검수·저장까지의 경로는?", "searchQuery": "media generation claim worker persistence", "expectedAnchors": ["src/lib/media-generation/worker.ts", "src/lib/media-generation/persistence.ts"] },
+    { "id": "media-policy", "category": "media", "question": "생성 이미지가 상품 사실 증거로 승격되지 못하게 하는 정책 경계는?", "searchQuery": "media generation policy product evidence", "expectedAnchors": ["src/lib/media-generation/policy.ts"] },
+    { "id": "jarvis-dispatch", "category": "jarvis", "question": "Jarvis 요청이 specialist와 tool로 분기되는 경로는?", "searchQuery": "jarvis dispatch specialist tools", "expectedAnchors": ["src/lib/jarvis/v2-dispatch.ts", "src/lib/jarvis/orchestration/resolve-specialist.ts"] },
+    { "id": "jarvis-hitl", "category": "jarvis", "question": "Jarvis HITL 승인이 실제 실행과 분리되는 경로는?", "searchQuery": "jarvis hitl execution approval", "expectedAnchors": ["src/lib/jarvis/hitl.ts", "src/lib/jarvis/hitl-execution.ts"] },
+    { "id": "jarvis-rag", "category": "jarvis", "question": "Jarvis RAG 색인과 retrieval의 연결은?", "searchQuery": "jarvis rag index retriever", "expectedAnchors": ["src/lib/jarvis/rag/indexer.ts", "src/lib/jarvis/rag/retriever.ts"] },
+    { "id": "marketing-publish", "category": "marketing", "question": "마케팅 draft가 외부 publish로 넘어가는 승인 saga는?", "searchQuery": "marketing publish saga approval", "expectedAnchors": ["src/lib/marketing-pipeline/publish-saga.ts", "src/lib/marketing-pipeline/orchestrator.ts"] },
+    { "id": "ai-provider-policy", "category": "ai", "question": "일반 AI provider 정책과 블로그 예외가 갈리는 경계는?", "searchQuery": "ai provider policy blog deepseek", "expectedAnchors": ["src/lib/ai-provider-policy.ts", "src/lib/blog-ai-caller.ts"] },
+    { "id": "demand-forecast", "category": "analytics", "question": "현재 수요 예측 cron과 predictive marketing이 각각 어떤 데이터를 사용하는가?", "searchQuery": "demand forecast predictive marketing", "expectedAnchors": ["src/app/api/cron/demand-forecast/route.ts", "src/lib/predictive-marketing.ts"] }
+  ]
+}

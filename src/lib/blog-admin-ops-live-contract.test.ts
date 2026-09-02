@@ -28,12 +28,12 @@ describe('blog admin live operations contract', () => {
     expect(statusStrip).toContain("'/admin/blog/queue?scope=attention'");
   });
 
-  it('shows the effective environment cap instead of presenting the DB target as executable truth', () => {
+  it('shows the DB policy as the only executable volume truth', () => {
     const policyPage = source('src/app/admin/blog/policy/page.tsx');
     const systemPage = source('src/app/admin/blog/system/page.tsx');
 
-    expect(policyPage).toContain('현재 환경 상한을 적용한 실효 기준');
-    expect(policyPage).toContain('BLOG_DAILY_PUBLISH_CAP');
+    expect(policyPage).toContain('DB 설정이 발행량의 단일 기준');
+    expect(policyPage).not.toContain('BLOG_DAILY_PUBLISH_CAP');
     expect(systemPage).toContain('자동발행 실효 정책');
     expect(systemPage).toContain('V3 운영 DB 준비상태');
   });

@@ -14,6 +14,14 @@
       "schedule": "5 0,3,6,9,12 * * *"
     },
     {
+      "path": "/api/cron/blog-search-lifecycle",
+      "schedule": "45 2 * * *"
+    },
+    {
+      "path": "/api/cron/blog-seo-weekly-audit",
+      "schedule": "30 18 * * 0"
+    },
+    {
       "path": "/api/cron/blog-regenerate-zero-click",
       "schedule": "45 12 * * *"
     },
@@ -45,6 +53,7 @@
     "src/app/api/cron/auto-publish-loop/route.ts": { "maxDuration": 300 },
     "src/app/api/cron/blog-publisher/route.ts": { "maxDuration": 300 },
     "src/app/api/cron/blog-generate/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/blog-seo-weekly-audit/route.ts": { "maxDuration": 300 },
     "src/app/api/cron/blog-learn/route.ts": { "maxDuration": 300 },
     "src/app/api/cron/blog-scheduler/route.ts": { "maxDuration": 300 },
     "src/app/api/cron/blog-regenerate-zero-click/route.ts": { "maxDuration": 300 },

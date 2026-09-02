@@ -37,13 +37,13 @@ function verifyEntry(root: string, entry: Entry): Entry & { bytes: number } {
 
 export function verifyBlogOrchestratorV4ReleaseBundle(root = process.cwd()) {
   const manifest = JSON.parse(readFileSync(repositoryFile(root, MANIFEST), 'utf8')) as Manifest;
-  if (manifest.schema_version !== 1 || manifest.release !== 'blog-orchestrator-v4-20260816') {
+  if (manifest.schema_version !== 1 || manifest.release !== 'blog-autopilot-v4-20260902') {
     throw new Error('blog_v4_release_identity_invalid');
   }
   if (manifest.apply_mode !== 'supabase-db-push-include-all-after-exact-dry-run') {
     throw new Error('blog_v4_release_apply_mode_invalid');
   }
-  if (manifest.migrations.length !== 13) throw new Error('blog_v4_release_migration_count_invalid');
+  if (manifest.migrations.length !== 15) throw new Error('blog_v4_release_migration_count_invalid');
   const versions = manifest.migrations.map((entry) => entry.version);
   if (new Set(versions).size !== versions.length || versions.join() !== [...versions].sort().join()) {
     throw new Error('blog_v4_release_version_order_invalid');

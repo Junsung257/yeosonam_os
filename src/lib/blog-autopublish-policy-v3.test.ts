@@ -12,7 +12,7 @@ describe('blog autopublish policy v3', () => {
     expect(readBlogAutopublishPolicyV3({})).toMatchObject({
       requestedMode: 'draft_only',
       mode: 'draft_only',
-      dailyPublishCap: 1,
+      dailyPublishCap: 5,
       publicationRampStage: 'pilot_3',
       autoRampEnabled: false,
       autoRollbackEnabled: true,
@@ -86,7 +86,7 @@ describe('blog autopublish policy v3', () => {
       riskLevel: 'HIGH',
       reviewStatus: 'none',
       demand: null,
-      publishedToday: 1,
+      publishedToday: 5,
       weatherShare30d: 0.5,
       isWeatherContent: true,
       sameArchetypeInLast10: 2,
@@ -120,29 +120,29 @@ describe('blog autopublish policy v3', () => {
     expect(hasVerifiedBlogDemandSignal({ gsc: true })).toBe(true);
   });
 
-  it('keeps a requested high cap behind an explicit staged ramp', () => {
+  it('ignores the retired environment volume target and never exceeds five per day', () => {
     expect(readBlogAutopublishPolicyV3({
       BLOG_AUTOPUBLISH_MODE: 'live', BLOG_DAILY_PUBLISH_CAP: '30',
-    })).toMatchObject({ requestedDailyPublishCap: 30, dailyPublishCap: 3, publicationRampStage: 'pilot_3' });
+    })).toMatchObject({ requestedDailyPublishCap: 5, dailyPublishCap: 5, publicationRampStage: 'pilot_3' });
     expect(readBlogAutopublishPolicyV3({
       BLOG_AUTOPUBLISH_MODE: 'live', BLOG_DAILY_PUBLISH_CAP: '30', BLOG_PUBLICATION_RAMP_STAGE: 'ramp_10',
-    })).toMatchObject({ requestedDailyPublishCap: 30, dailyPublishCap: 10, publicationRampStage: 'ramp_10' });
+    })).toMatchObject({ requestedDailyPublishCap: 5, dailyPublishCap: 5, publicationRampStage: 'ramp_10' });
     expect(readBlogAutopublishPolicyV3({
       BLOG_AUTOPUBLISH_MODE: 'live', BLOG_DAILY_PUBLISH_CAP: '99', BLOG_PUBLICATION_RAMP_STAGE: 'max_30',
       BLOG_AUTO_RAMP_ENABLED: 'true', BLOG_AUTO_ROLLBACK_ENABLED: 'false',
     })).toMatchObject({
-      requestedDailyPublishCap: 30,
-      dailyPublishCap: 30,
+      requestedDailyPublishCap: 5,
+      dailyPublishCap: 5,
       publicationRampStage: 'max_30',
       autoRampEnabled: true,
       autoRollbackEnabled: false,
     });
   });
 
-  it('treats retired or invalid stages as the fail-closed pilot ceiling', () => {
+  it('keeps retired stages as metadata without changing the DB volume ceiling', () => {
     expect(readBlogAutopublishPolicyV3({ BLOG_PUBLICATION_RAMP_STAGE: 'max_20' }))
-      .toMatchObject({ publicationRampStage: 'pilot_3', dailyPublishCap: 1 });
+      .toMatchObject({ publicationRampStage: 'pilot_3', dailyPublishCap: 5 });
     expect(readBlogAutopublishPolicyV3({ BLOG_PUBLICATION_RAMP_STAGE: 'ramp_5' }))
-      .toMatchObject({ publicationRampStage: 'pilot_3', dailyPublishCap: 1 });
+      .toMatchObject({ publicationRampStage: 'pilot_3', dailyPublishCap: 5 });
   });
 });

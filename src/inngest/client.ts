@@ -19,6 +19,17 @@ export const billingChargeTenantEvent = eventType('billing/charge.tenant', {
   }).strict(),
 });
 
+export const blogPipelineRequestedEvent = eventType('blog/pipeline.requested', {
+  schema: z.object({
+    queueId: z.string().uuid(),
+    contentVersion: z.string().trim().min(1).max(128),
+    // Inngest event schemas cannot use input/output transforms such as Zod
+    // defaults. Producers must send the explicit mode for an auditable event.
+    mode: z.enum(['generate_only', 'generate_and_publish']),
+    requestedAt: z.string().datetime(),
+  }).strict(),
+});
+
 export const inngest = new Inngest({
   id: 'yeosonam-os',
   name: '여소남 OS',

@@ -23,8 +23,35 @@ describe('blog V4 protected production release workflow', () => {
     expect(dryRun).toBeGreaterThan(0);
     expect(dryRun).toBeLessThan(apply);
     expect(source).toContain('prepare:blog-supabase-release-workdir-v4');
+    expect(source.match(/npx --yes supabase@2\.116\.0/g)?.length).toBe(3);
     expect(source.match(/--workdir \.tmp\/blog-v4-supabase-release/g)?.length).toBe(2);
     expect(source).toContain('verify:blog-supabase-dry-run-v4');
+  });
+
+  it('uses protected project variables and keeps the database password optional', () => {
+    expect(source).toContain('secrets.VERCEL_ORG_ID || vars.VERCEL_ORG_ID');
+    expect(source).toContain('secrets.VERCEL_PROJECT_ID || vars.VERCEL_PROJECT_ID');
+    expect(source).toContain('secrets.SUPABASE_PROJECT_REF || vars.SUPABASE_PROJECT_REF');
+    expect(source).toContain('secrets.SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL');
+    expect(source).toContain('if [ -n "${SUPABASE_DB_PASSWORD:-}" ]; then');
+    expect(source).not.toContain(
+      'SUPABASE_PROJECT_REF SUPABASE_DB_PASSWORD SUPABASE_ACCESS_TOKEN',
+    );
+    const vercelCommands = source
+      .split('\n')
+      .filter((line) => line.includes('npx vercel'));
+    expect(source).toContain('npx vercel project inspect "$VERCEL_PROJECT_ID"');
+    expect(source.match(/--scope "\$VERCEL_ORG_ID"/g)?.length ?? 0)
+      .toBeGreaterThanOrEqual(vercelCommands.length);
+  });
+
+  it('installs and audits the pinned evaluator before the editorial release gate', () => {
+    const setup = source.indexOf('npm run setup:harness-evals');
+    const audit = source.indexOf('npm run audit:harness-evals');
+    const evaluate = source.indexOf('npm run eval:blog-editorial:offline');
+    expect(setup).toBeGreaterThan(0);
+    expect(setup).toBeLessThan(audit);
+    expect(audit).toBeLessThan(evaluate);
   });
 
   it('verifies protected candidate URLs and fails closed around live promotion', () => {

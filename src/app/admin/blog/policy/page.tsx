@@ -193,7 +193,7 @@ export default function PolicyPage() {
           <div>
             <p className="text-admin-xs font-semibold text-admin-text-2">현재 정책 미리보기</p>
             <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
-              DB 설정은 하루 {dailyTotal}편이고, 현재 환경 상한을 적용한 실효 기준은 {effectiveDailyTotal}편입니다. 정보성 {info}편, 상품 {product}편 범위에서 큐 슬롯을 잡습니다.
+              DB 설정이 발행량의 단일 기준입니다. 하루 {effectiveDailyTotal}편, 정보성 {info}편, 상품 {product}편 범위에서 5개 슬롯을 잡습니다.
             </p>
           </div>
           <div>
@@ -215,10 +215,10 @@ export default function PolicyPage() {
         {/* posts_per_day */}
         <div>
           <label htmlFor="blog-policy-posts-per-day" className="text-admin-xs font-semibold text-admin-text-2">하루 발행 편수</label>
-          <p className="text-[10px] text-admin-muted-2 mb-1">DB 목표값입니다. 실제 공개 수는 BLOG_DAILY_PUBLISH_CAP 환경 상한을 넘을 수 없으며 V3 권장 운영값은 3편/일입니다.</p>
+          <p className="text-[10px] text-admin-muted-2 mb-1">DB 단일 목표값입니다. V4 운영값은 5편/일이며 환경 변수가 이 값을 덮어쓰지 못합니다.</p>
           <input
             id="blog-policy-posts-per-day"
-            type="number" min="1" max="20"
+            type="number" min="0" max="5"
             value={policy!.posts_per_day}
             onChange={e => update({ posts_per_day: parseInt(e.target.value) })}
             className="w-24 h-9 px-3 text-admin-sm border border-admin-border-mid rounded-admin-sm bg-admin-surface text-admin-text admin-num focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"

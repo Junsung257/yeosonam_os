@@ -25,4 +25,16 @@ describe('googleInspectionToIndexStatus', () => {
       coverage_state: '발견됨 - 현재 색인이 생성되지 않음',
     })).toBe('not_indexed');
   });
+
+  it.each([
+    ['FAIL', 'Crawled - currently not indexed', 'not_indexed'],
+    ['NEUTRAL', 'URL is unknown to Google', 'not_indexed'],
+    ['NEUTRAL', 'Blocked by robots.txt', 'blocked'],
+    ['PASS', 'Submitted and indexed', 'indexed'],
+  ])('classifies English %s/%s as %s', (verdict, coverageState, expected) => {
+    expect(googleInspectionToIndexStatus({
+      verdict,
+      coverage_state: coverageState,
+    })).toBe(expected);
+  });
 });

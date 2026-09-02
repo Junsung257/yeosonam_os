@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "tier": 2,
+  "status": "completed",
+  "owner": "platform-engineering",
+  "review_file": "review.md",
+  "surface_map_version": 1,
+  "verified_commit": "792fed8bc",
+  "verification": [
+    "npm run check:harness",
+    "npm run check:agent-surfaces -- --spec 20260902-external-tool-foundation --agent foundation-owner --base origin/main",
+    "skill-creator quick_validate.py"
+  ],
+  "evidence_paths": [
+    "review.md"
+  ]
+}

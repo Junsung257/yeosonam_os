@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "taskId": "20260902-codebase-memory-pilot",
+  "agents": [
+    {
+      "id": "cbm-pilot-owner",
+      "role": "implementation",
+      "write": [
+        ".cbmignore",
+        ".gitignore",
+        ".gitattributes",
+        "config/codebase-memory-pilot.json",
+        "evals/codebase-memory/**",
+        "scripts/run-codebase-memory-benchmark.mjs",
+        "scripts/check-agent-host-health.mjs",
+        "scripts/lib/harness/agent-host-config.mjs",
+        "scripts/lib/harness/agent-host-config.test.mjs",
+        "docs/agent-mcp-tooling.md",
+        "docs/generated/system-inventory.md",
+        "docs/generated/system-inventory.json",
+        "docs/specs/20260902-codebase-memory-pilot/**",
+        "package.json"
+      ],
+      "readOnly": ["AGENTS.md", "CURRENT_STATUS.md", "src/**"],
+      "forbidden": ["supabase/**", ".github/**"]
+    }
+  ]
+}
