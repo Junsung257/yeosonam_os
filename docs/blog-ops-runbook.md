@@ -679,6 +679,8 @@ The production workflow is `.github/workflows/blog-v4-production-release.yml`. I
 5. Run the release-scope weekly SEO audit. Critical canonical, robots, H1, JSON-LD, Sitemap, or public HTTP findings block promotion. The audit never edits or unpublishes content.
 6. Accumulate 35 shadow drafts over 7 days with zero critical quality/PII/evidence failures and preview score at least 95. `publish` workflow checkpoints mean `approved_for_slot`, not public publication.
 7. Release 15 canaries over 3 days. Any duplicate publication, PII, claim loss, or incorrect indexing classification returns `BLOG_AUTOPUBLISH_MODE` to `draft_only` and disables Inngest.
+
+For a protected one-item shadow smoke test, call the authenticated dispatcher with `force=1&limit=1`. The `limit` override is honored only for forced manual runs and is hard-capped at two; scheduled runs remain policy-controlled.
 8. Observe 70 DB policy slots over 14 days, then approve normal 5/day live operation. The publication controller remains the only atomic public commit and indexing-outbox owner.
 
 Crawl4AI and Docling remain inactive until `npm run benchmark:blog-source-adapters-v4 -- --adapter=... --fixture=... --version=... --apply` passes a reviewed 30-source failure corpus. Endpoint credentials alone never activate them. A failed or stale latest benchmark closes the adapter again. The common HTML/PDF extractor remains authoritative while a fallback is closed.

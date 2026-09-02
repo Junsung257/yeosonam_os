@@ -38,7 +38,10 @@ describe('Inngest blog autopilot V4 contract', () => {
     expect(dispatcher).toContain('inngest_blog_autopilot_credentials_missing');
     expect(dispatcher).toContain("getBlogPublishingPolicy('global')");
     expect(dispatcher).toContain('blog_generation_daily_quota_reached');
-    expect(dispatcher).toContain('const dispatchLimit = Math.min(2, remainingToday)');
+    expect(dispatcher).toContain("url.searchParams.get('limit')");
+    expect(dispatcher).toContain('requestedManualLimit >= 1');
+    expect(dispatcher).toContain('requestedManualLimit <= 2');
+    expect(dispatcher).toContain('const dispatchLimit = Math.min(perRunLimit, remainingToday)');
     expect(dispatcher).toContain('forcedManualDispatch: forcedManualRun');
     expect(release).toContain('update_env INNGEST_BLOG_AUTOPILOT_ENABLED true');
     expect(release).toContain('npx vercel env update INNGEST_BLOG_AUTOPILOT_ENABLED production --value true');

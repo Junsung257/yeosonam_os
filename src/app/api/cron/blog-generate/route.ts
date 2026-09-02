@@ -22,6 +22,13 @@ async function runBlogGenerate(request: NextRequest) {
   const url = new URL(request.url);
   const forceValue = url.searchParams.get('force');
   const forcedManualRun = forceValue === '1' || forceValue === 'true';
+  const requestedManualLimit = Number.parseInt(url.searchParams.get('limit') || '', 10);
+  const perRunLimit = forcedManualRun
+    && Number.isSafeInteger(requestedManualLimit)
+    && requestedManualLimit >= 1
+    && requestedManualLimit <= 2
+    ? requestedManualLimit
+    : 2;
   const durableWorkflowRequested = isInngestBlogAutopilotEnabled();
   const durableWorkflowConfigured = isInngestBlogAutopilotConfigured();
   if (durableWorkflowRequested && !durableWorkflowConfigured) {
@@ -84,7 +91,7 @@ async function runBlogGenerate(request: NextRequest) {
         dayKey: range.dayKey,
       };
     }
-    const dispatchLimit = Math.min(2, remainingToday);
+    const dispatchLimit = Math.min(perRunLimit, remainingToday);
     const { data: candidates, error } = await supabaseAdmin
       .from('blog_topic_queue')
       .select('id,updated_at,target_publish_at')
