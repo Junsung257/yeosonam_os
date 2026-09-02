@@ -63,7 +63,8 @@ describe('blog V4 protected production release workflow', () => {
     expect(source).toContain('if: failure() && inputs.promote_live');
     expect(source).toContain('production --value draft_only');
     expect(source).toContain('production --value false');
-    expect(source).toContain('/blog/__blog_v4_missing_probe__');
+    expect(source).toContain('"${CANDIDATE_URL}/blog/__blog_v4_missing_probe__")');
+    expect(source).not.toContain('"${CANDIDATE_URL}/blog/__blog_v4_missing_probe__)"');
     expect(source).toContain('test "$missing_status" = "404"');
     expect(source).toContain('verify:blog-release-candidate-responses-v4');
     expect(source).toContain('call_cron blog-ai-model-canary');
