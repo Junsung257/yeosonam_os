@@ -40,6 +40,13 @@ describe('Inngest blog autopilot V4 contract', () => {
     expect(route).toContain('functions: [...inngestFunctions]');
   });
 
+  it('can call its protected deployment without exposing the automation bypass key', () => {
+    const workflow = source('src/inngest/functions/blog-autopilot-v4.ts');
+    expect(workflow).toContain("getSecret('VERCEL_AUTOMATION_BYPASS_SECRET')");
+    expect(workflow).toContain("headers['x-vercel-protection-bypass'] = deploymentProtectionBypass");
+    expect(workflow).not.toContain('process.env.VERCEL_AUTOMATION_BYPASS_SECRET');
+  });
+
   it('dispatches approved manual shadow runs through Inngest and release wiring never enables the legacy generator', () => {
     const dispatcher = source('src/app/api/cron/blog-generate/route.ts');
     const release = source('.github/workflows/blog-v4-production-release.yml');
