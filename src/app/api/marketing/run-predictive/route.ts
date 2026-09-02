@@ -12,11 +12,16 @@ const handler = async (): Promise<NextResponse> => {
   }
 
   try {
-    const insights = await generatePredictiveInsights();
+    const result = await generatePredictiveInsights();
     return NextResponse.json({
       success: true,
-      message: '예측 인사이트가 생성되었습니다.',
-      data: { insights_generated: insights.length },
+      message: result.status === 'ready' ? '예측 인사이트가 생성되었습니다.' : '일별 시계열 데이터가 부족합니다.',
+      data: {
+        status: result.status,
+        insights_generated: result.insights.length,
+        reason: result.status === 'data_insufficient' ? result.reason : null,
+        downstream_mutations_allowed: false,
+      },
     });
   } catch (err) {
     return NextResponse.json(

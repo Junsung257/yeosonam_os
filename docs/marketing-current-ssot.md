@@ -1,6 +1,6 @@
 # Marketing Current SSOT
 
-Last updated: 2026-09-01
+Last updated: 2026-09-02
 
 This is the current operating contract for marketing automation, Ad OS, campaign actions, card-news distribution, external ad-platform writes, and marketing performance dashboards. Strategy research and campaign plans are not the source of truth for current execution behavior.
 
@@ -23,6 +23,7 @@ Repeated failures belong in `docs/errors/marketing.md`.
 |---|---|
 | Marketing pipeline | `src/lib/marketing-pipeline/**` |
 | Marketing OS utilities | `src/lib/marketing/**`, `src/lib/marketing-cron.ts`, `src/lib/marketing-osmu.ts` |
+| Predictive advisory boundary | `src/lib/predictive-marketing.ts`, `src/lib/forecast-lab.ts`, `docs/forecasting-current-ssot.md` |
 | External publish decisions | `src/lib/marketing-pipeline/publish-saga.ts`, `/api/admin/ad-os/**` |
 | Admin surfaces | `/admin/marketing/**`, `/admin/ad-os`, `/admin/control-tower` AI operations command center |
 | Runtime checks | `scripts/verify-marketing-automation-readiness.mjs`, `scripts/verify-marketing-release-readiness.mjs`, `scripts/verify-marketing-95-scorecard.mjs` |
@@ -50,6 +51,7 @@ Repeated failures belong in `docs/errors/marketing.md`.
 - Marketing/Ad OS routes remain manual or event-driven unless provider credentials, an actionable queue, a response-time objective, and rollback evidence justify a recurring schedule. Re-enabling one requires a dry-run, explicit allowlist entry, stop condition, and owner.
 - Local and marketing release-readiness workflows run on default-branch changes or operator dispatch. They are validation gates, not daily operational cron jobs.
 - Release/deployment Slack notifications are optional operational telemetry, not a publish or readiness authority. They must skip when the job-scoped webhook secret is absent, remain non-blocking where used as an informational step, and invoke the reviewed action through an immutable commit SHA with the matching major-version input contract.
+- Predictive marketing must use observed daily series. It must return `data_insufficient` instead of synthesizing history or confidence, and forecast output cannot enqueue content, change ad budget, choose charter actions, or publish externally. `persistInsights` is a manual internal ledger helper only; the forecast route does not call it.
 
 ## External Write Boundary
 

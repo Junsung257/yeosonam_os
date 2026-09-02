@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "status": "read_only_lab",
+  "tables": {
+    "shadowAuthority": "demand_forecast_v2",
+    "legacyReadOnly": ["demand_forecast", "demand_forecasts"],
+    "newTableAllowed": false
+  },
+  "data": {
+    "allowedDailyFields": ["date", "inquiries", "bookings"],
+    "piiAllowed": false,
+    "minimumDays": 180,
+    "rollingCutoffs": 8,
+    "segmentMinimumObservedDays": 60
+  },
+  "baselines": ["seasonal_naive_7", "seasonal_naive_28", "moving_average_7", "moving_average_28", "exponential_smoothing"],
+  "metrics": ["WAPE", "MAE", "sMAPE"],
+  "candidateGate": {
+    "minimumWapeImprovementPercent": 10,
+    "importantSegmentRegressionAllowed": false,
+    "productionMutationAllowed": false,
+    "decisionRole": "advisory_only"
+  },
+  "blockedModels": [
+    {
+      "name": "TimesFM-3",
+      "weightsRepository": "https://huggingface.co/google/timesfm-3.0-pytorch",
+      "revision": "900fcab43d1bfe71733a33b3fec61a41fce28a27",
+      "license": "timesfm-non-commercial-license-v1.0",
+      "status": "license_blocked",
+      "downloadAllowed": false,
+      "commercialDecisionUseAllowed": false
+    }
+  ],
+  "futureReview": {
+    "repository": "https://github.com/google-research/timesfm",
+    "revision": "331c6d33cb1ac2611de3056d0ac7164aab6301eb",
+    "sourceLicense": "Apache-2.0",
+    "weightsUpToVersion": "2.5",
+    "status": "baseline_first_separate_review_required"
+  },
+  "forbiddenDownstream": ["ad_budget", "content_generation", "charter", "external_publish"]
+}

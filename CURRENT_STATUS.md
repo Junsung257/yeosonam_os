@@ -19,6 +19,7 @@
 | 제휴 | [제휴 SSOT](docs/affiliate-current-ssot.md) |
 | 정산 | [정산 SSOT](docs/settlement-current-ssot.md) |
 | 마케팅 | [마케팅 SSOT](docs/marketing-current-ssot.md) |
+| 수요예측 | [예측 SSOT](docs/forecasting-current-ssot.md) |
 | AI·자비스·RAG | [AI Ops SSOT](docs/ai-ops-current-ssot.md) |
 | 조사 노드 | [Research Node SSOT](docs/research-node-current-ssot.md) |
 | 에이전트 실행 | [Agent Workflow SSOT](docs/agent-workflow-current-ssot.md) |
@@ -40,6 +41,7 @@
 - 외부 조사 결과는 시장 반응·주제 후보이며 가격·일정·취소규정의 최종 사실 근거가 아니다.
 - Supabase MCP는 프로젝트 범위·읽기 전용·최소 feature group이 기본이다. 계정 범위 플러그인은 기본 비활성으로 둔다.
 - 문서 감사와 에이전트 설정은 Production DB나 배포를 자동 실행하지 않는다.
+- 수요예측은 PII 없는 일별 집계의 read-only lab과 `demand_forecast_v2` shadow shape만 사용한다. 기존 예측 테이블, 광고비, 콘텐츠 큐, charter, 외부 발행을 자동 변경하지 않으며 TimesFM-3 weight는 상업 라이선스 전까지 차단한다.
 - Vercel 정기 실행은 D+1/3/7 검색 추적과 주간 SEO 감사를 포함한 검증된 블로그 핵심 경로와 만료된 승인·AI 작업을 정리하는 일 1회 `agent-housekeeping`만 allowlist로 유지한다. 상품등록 backfill·watchdog와 비활성 기능은 API 코드를 보존하되 상시 스케줄에 선등록하지 않는다.
 
 ## 운영 검증
