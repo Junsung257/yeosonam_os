@@ -75,6 +75,19 @@ function ageInDays(value: string | null, now: Date): number | null {
   return Math.max(0, (now.getTime() - timestamp) / 86_400_000);
 }
 
+function ageInCalendarDays(value: string | null, now: Date): number | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  const metricDate = Date.UTC(year, month - 1, day);
+  if (!Number.isFinite(metricDate)) return null;
+  const parsed = new Date(metricDate);
+  if (parsed.getUTCFullYear() !== year
+    || parsed.getUTCMonth() !== month - 1
+    || parsed.getUTCDate() !== day) return null;
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return Math.max(0, Math.floor((today - metricDate) / 86_400_000));
+}
+
 function check(
   key: string,
   scope: BlogProductionReadinessScopeV4,
@@ -104,7 +117,10 @@ export function evaluateBlogProductionReadinessV4(
     && input.delivery.missingSnapshotSlugs.length === 0;
   const dispositionsComplete = input.corpus.reviewBlockedPublished != null
     && input.corpus.reviewBlockedWithDisposition === input.corpus.reviewBlockedPublished;
-  const gscAgeDays = ageInDays(input.measurement.gscLatestMetricDate, now);
+  // Search Console exposes a date-granularity metric dimension. Comparing its
+  // midnight timestamp with the current clock creates a false failure partway
+  // through the third calendar day, so freshness must use calendar-day age.
+  const gscAgeDays = ageInCalendarDays(input.measurement.gscLatestMetricDate, now);
   const analyticsCanaryAgeDays = ageInDays(input.measurement.analyticsCanaryPassedAt, now);
   const gscReady = (input.measurement.gscRows90d ?? 0) > 0
     && gscAgeDays != null

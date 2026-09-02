@@ -107,4 +107,23 @@ describe('blog production readiness v4', () => {
     expect(report.scopes.rollout).toBe(false);
     expect(report.safeToEnableLive).toBe(false);
   });
+
+  it('treats date-only GSC evidence as fresh through the third calendar day', () => {
+    const input = readyInput();
+    input.measurement.gscLatestMetricDate = '2026-08-30';
+    const boundaryNow = new Date('2026-09-02T23:59:59.000Z');
+    const fresh = evaluateBlogProductionReadinessV4(input, boundaryNow);
+    expect(fresh.checks.find((item) => item.key === 'search_performance_freshness'))
+      .toMatchObject({ status: 'pass', evidence: { ageDays: 3 } });
+
+    input.measurement.gscLatestMetricDate = '2026-08-29';
+    const stale = evaluateBlogProductionReadinessV4(input, boundaryNow);
+    expect(stale.checks.find((item) => item.key === 'search_performance_freshness'))
+      .toMatchObject({ status: 'block', evidence: { ageDays: 4 } });
+
+    input.measurement.gscLatestMetricDate = '2026-99-99';
+    const invalid = evaluateBlogProductionReadinessV4(input, boundaryNow);
+    expect(invalid.checks.find((item) => item.key === 'search_performance_freshness'))
+      .toMatchObject({ status: 'block', evidence: { ageDays: null } });
+  });
 });
