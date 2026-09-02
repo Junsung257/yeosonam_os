@@ -12,6 +12,12 @@ describe('production evidence V4 collector contract', () => {
     expect(source).toContain("'blog-ai-model-canary'");
     expect(source).toContain('v4_cron_route_contract_missing:');
     expect(source).toContain('production evidence collector accepts SELECT statements only');
+    expect(source).toContain('supabase@2.116.0 db query --linked --output-format json --agent yes');
+    expect(source).toContain("'supabase@2.116.0'");
+    expect(source).toContain("'--output-format'");
+    expect(source).toContain("'--agent'");
+    expect(source).toContain("'yes'");
+    expect(source).not.toContain("['supabase', 'db', 'query', '--linked', '--output', 'json'");
     expect(source).toContain("'legacy_public_slug_rpc_absent'");
     expect(source).toContain("'generation_selected_attempt'");
     expect(source).toContain("'ai_budget_ledger'");
