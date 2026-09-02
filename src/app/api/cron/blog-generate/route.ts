@@ -12,16 +12,29 @@ import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
 import { createBlogPipelineEventId } from '@/lib/blog-autopilot-v4-contract';
 import { getBlogPublishingPolicy } from '@/lib/blog-scheduler';
 import { getKstDayRange } from '@/lib/blog-daily-summary-window';
+import {
+  quarantineNonRetryableBlogQueueItems,
+  shouldQuarantineQueuedBlogItem,
+} from '@/lib/blog-queue-lifecycle';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function runBlogGenerate(request: NextRequest) {
   if (!isCronOrVercelAuthorized(request)) return cronUnauthorizedResponse();
   const url = new URL(request.url);
   const forceValue = url.searchParams.get('force');
   const forcedManualRun = forceValue === '1' || forceValue === 'true';
+  const targetQueueId = url.searchParams.get('targetQueueId')?.trim() || null;
+  if (targetQueueId && !forcedManualRun) {
+    return { skipped: true, reason: 'target_queue_id_requires_forced_manual_run' };
+  }
+  if (targetQueueId && !UUID_PATTERN.test(targetQueueId)) {
+    return { skipped: true, reason: 'target_queue_id_invalid' };
+  }
   const requestedManualLimit = Number.parseInt(url.searchParams.get('limit') || '', 10);
   const perRunLimit = forcedManualRun
     && Number.isSafeInteger(requestedManualLimit)
@@ -92,17 +105,42 @@ async function runBlogGenerate(request: NextRequest) {
       };
     }
     const dispatchLimit = Math.min(perRunLimit, remainingToday);
-    const { data: candidates, error } = await supabaseAdmin
+    const preflightSettlement = await quarantineNonRetryableBlogQueueItems({
+      limit: Math.max(dispatchLimit * 10, 20),
+      maxAttempts: 3,
+    });
+    let candidateQuery = supabaseAdmin
       .from('blog_topic_queue')
-      .select('id,updated_at,target_publish_at')
+      .select('id,updated_at,target_publish_at,attempts,last_error,meta')
       .eq('status', 'queued')
-      .or('attempts.is.null,attempts.lt.3')
-      .order('priority', { ascending: false })
-      .order('target_publish_at', { ascending: true, nullsFirst: false })
-      .limit(dispatchLimit);
+      .or('attempts.is.null,attempts.lt.3');
+    if (targetQueueId) {
+      candidateQuery = candidateQuery.eq('id', targetQueueId);
+    } else {
+      candidateQuery = candidateQuery
+        .order('priority', { ascending: false })
+        .order('target_publish_at', { ascending: true, nullsFirst: false });
+    }
+    const candidatePoolLimit = targetQueueId ? 1 : Math.max(dispatchLimit * 10, 20);
+    const { data: candidatePool, error } = await candidateQuery.limit(candidatePoolLimit);
     if (error) throw new Error(`blog_pipeline_dispatch_query_failed:${error.message}`);
+    const candidates = (candidatePool ?? [])
+      .filter((candidate) => !shouldQuarantineQueuedBlogItem({
+        attempts: candidate.attempts,
+        lastError: candidate.last_error,
+        meta: candidate.meta,
+        maxAttempts: 3,
+      }).quarantine)
+      .slice(0, targetQueueId ? 1 : dispatchLimit);
     if (!candidates?.length) {
-      return { skipped: true, reason: 'no_queued_blog_pipeline_candidate' };
+      return {
+        skipped: true,
+        reason: targetQueueId
+          ? 'target_queue_item_not_dispatchable'
+          : 'no_queued_blog_pipeline_candidate',
+        targetQueueId,
+        preflightSettlement,
+      };
     }
     const requestedAt = new Date().toISOString();
     const events = candidates.map((candidate) => {
@@ -123,6 +161,8 @@ async function runBlogGenerate(request: NextRequest) {
       queueIds: candidates.map((candidate) => candidate.id),
       modelCalls: 0,
       forcedManualDispatch: forcedManualRun,
+      targetQueueId,
+      preflightSettlement,
       dailyTarget,
       generatedToday: Number(generatedToday ?? 0),
       remainingToday,
