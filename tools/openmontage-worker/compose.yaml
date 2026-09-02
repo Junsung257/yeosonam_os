@@ -1,0 +1,24 @@
+services:
+  openmontage:
+    build:
+      context: .
+      args:
+        OPENMONTAGE_COMMIT: cd9f3c1f03368be87b140af494914b8ee4e3c7a4
+    network_mode: none
+    read_only: true
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 4g
+    cpus: 4
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+      - /home/worker:size=128m,uid=10001,gid=10001
+    volumes:
+      - ../../private/video-worker/input:/input:ro
+      - ../../private/video-worker/drafts:/output:rw
+    environment:
+      OPENMONTAGE_COMMIT: cd9f3c1f03368be87b140af494914b8ee4e3c7a4
+    command: [preflight]

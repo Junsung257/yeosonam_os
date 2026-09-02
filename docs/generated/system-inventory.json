@@ -1636,6 +1636,7 @@
     "scripts/check-integrity.js",
     "scripts/check-media-generation-contract.mjs",
     "scripts/check-no-direct-env.mjs",
+    "scripts/check-openmontage-worker-contract.mjs",
     "scripts/check-practices.js",
     "scripts/check-product-registration-authority.mjs",
     "scripts/check-product-registration-contract.mjs",
