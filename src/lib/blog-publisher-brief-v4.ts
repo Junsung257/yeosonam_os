@@ -1,5 +1,9 @@
 import { buildBlogContentBrief } from '@/lib/blog-content-brief';
 import { BLOG_INFORMATION_RESEARCH_META_KEY } from '@/lib/blog-generation-research';
+import {
+  readProgrammaticAudience,
+  readProgrammaticMicroAngle,
+} from '@/lib/blog-programmatic-contract';
 import type { BlogInformationAudience } from '@/lib/blog-information-planner';
 
 interface BlogPublisherQueueItemV4 {
@@ -7,6 +11,7 @@ interface BlogPublisherQueueItemV4 {
   destination?: string | null;
   primary_keyword?: string | null;
   category?: string | null;
+  angle_type?: string | null;
   source?: string | null;
   meta?: Record<string, unknown> | null;
 }
@@ -25,8 +30,7 @@ function isBlogInformationAudience(value: unknown): value is BlogInformationAudi
 }
 
 export function getQueueMicroAngleV4(item: BlogPublisherQueueItemV4): string | null {
-  const value = item.meta?.micro_angle;
-  return typeof value === 'string' && value.trim() ? value.trim() : null;
+  return readProgrammaticMicroAngle({ meta: item.meta, angleType: item.angle_type });
 }
 
 export function microAngleForInformationIntentV4(intent: unknown): string | null {
@@ -52,7 +56,9 @@ export function buildQueueContentBriefV4(item: BlogPublisherQueueItemV4) {
     source: item.source,
     keywords: queuedKeywords,
     microAngle: getQueueMicroAngleV4(item),
-    audience: isBlogInformationAudience(meta?.audience) ? meta.audience : null,
+    audience: isBlogInformationAudience(meta?.audience)
+      ? meta.audience
+      : readProgrammaticAudience({ meta, angleType: item.angle_type }),
     locale: typeof meta?.locale === 'string' ? meta.locale : null,
     travelerNationality: typeof meta?.traveler_nationality === 'string' ? meta.traveler_nationality : null,
   });

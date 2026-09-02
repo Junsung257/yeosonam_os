@@ -1,5 +1,6 @@
 import { inspectBlogSlugQuality } from './blog-slug-quality';
 import { slugifyTopic } from './slug-utils';
+import { readProgrammaticExpectedSlug } from './blog-programmatic-contract';
 
 export type BlogCandidatePrepublishIssueCode =
   | 'editorial_cliche_topic'
@@ -62,7 +63,7 @@ function readExpectedSlug(row: BlogCandidatePrepublishRow): string | null {
     row.generation_meta?.expected_slug,
     row.slug_hint,
     row.slug,
-  );
+  ) ?? readProgrammaticExpectedSlug({ meta: row.meta, topic: row.topic });
 }
 
 function probeSlug(row: BlogCandidatePrepublishRow, topic: string): string | null {

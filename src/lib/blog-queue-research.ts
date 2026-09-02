@@ -5,6 +5,11 @@ import {
   evaluateBlogGenerationResearchReadiness,
 } from './blog-generation-research';
 import { supabaseAdmin } from './supabase';
+import {
+  readProgrammaticAudience,
+  readProgrammaticExpectedSlug,
+  readProgrammaticMicroAngle,
+} from './blog-programmatic-contract';
 
 type QueueResearchCandidate = {
   id?: string | null;
@@ -28,8 +33,7 @@ function cleanMeta(meta: unknown): Record<string, unknown> {
 }
 
 function queueMicroAngle(row: QueueResearchCandidate): string | null {
-  const value = row.meta?.micro_angle;
-  return typeof value === 'string' && value.trim() ? value.trim() : null;
+  return readProgrammaticMicroAngle({ meta: row.meta, angleType: row.angle_type });
 }
 
 export function buildQueuedInformationBrief(row: QueueResearchCandidate) {
@@ -44,7 +48,7 @@ export function buildQueuedInformationBrief(row: QueueResearchCandidate) {
     source: row.source,
     keywords,
     microAngle: queueMicroAngle(row),
-    audience: typeof row.meta?.audience === 'string' ? row.meta.audience : null,
+    audience: readProgrammaticAudience({ meta: row.meta, angleType: row.angle_type }),
     locale: typeof row.meta?.locale === 'string' ? row.meta.locale : null,
     travelerNationality: typeof row.meta?.traveler_nationality === 'string'
       ? row.meta.traveler_nationality
@@ -53,8 +57,7 @@ export function buildQueuedInformationBrief(row: QueueResearchCandidate) {
 }
 
 function expectedContentKey(row: QueueResearchCandidate): string | null {
-  const value = row.meta?.expected_slug ?? row.meta?.spun_slug;
-  return typeof value === 'string' && value.trim() ? value.trim().toLowerCase() : null;
+  return readProgrammaticExpectedSlug({ meta: row.meta, topic: row.topic });
 }
 
 export function evaluateQueuedInformationResearch(row: QueueResearchCandidate) {

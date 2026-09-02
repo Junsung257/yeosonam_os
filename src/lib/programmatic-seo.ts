@@ -30,6 +30,16 @@ import {
   hasObservedProgrammaticKeywordDemand,
   selectDailyProgrammaticDemandProbe,
 } from './blog-programmatic-demand';
+import {
+  buildProgrammaticQueueMeta,
+  evaluateProgrammaticPromotionReadiness,
+  getBlogProgrammaticContract,
+} from './blog-programmatic-contract';
+import type {
+  BlogResearchOfficialDocumentCapability,
+  BlogResearchRegistryCapability,
+  BlogResearchReputableCapability,
+} from './blog-research-capability';
 
 // 12 angle × 시즌 적합도
 interface AngleTemplate {
@@ -208,6 +218,10 @@ export async function seedProgrammaticTopics(opts?: { destinations?: string[] })
 export async function promotePendingTopics(opts?: { limit?: number }): Promise<{
   promoted: number;
   demand_rejected: number;
+  contract_rejected: number;
+  human_review_rejected: number;
+  coverage_rejected: number;
+  representative_rejected: number;
   errors: string[];
 }> {
   const limit = opts?.limit ?? 3;
@@ -219,7 +233,7 @@ export async function promotePendingTopics(opts?: { limit?: number }): Promise<{
   const nextMonth = thisMonth === 12 ? 1 : thisMonth + 1;
 
   // pending 토픽 fetch — 시즌성 매칭 우선
-  const { data: candidates } = await supabaseAdmin
+  const { data: candidates, error: candidatesError } = await supabaseAdmin
     .from('programmatic_seo_topics')
     .select('*')
     .eq('status', 'pending')
@@ -228,17 +242,48 @@ export async function promotePendingTopics(opts?: { limit?: number }): Promise<{
     .order('created_at', { ascending: true })
     .limit(500);
 
+  if (candidatesError) {
+    return {
+      promoted: 0,
+      demand_rejected: 0,
+      contract_rejected: 0,
+      human_review_rejected: 0,
+      coverage_rejected: 0,
+      representative_rejected: 0,
+      errors: [`programmatic candidate lookup failed: ${candidatesError.message}`],
+    };
+  }
+
   if (!candidates || candidates.length === 0) {
-    return { promoted: 0, demand_rejected: 0, errors: ['pending 토픽 없음'] };
+    return {
+      promoted: 0,
+      demand_rejected: 0,
+      contract_rejected: 0,
+      human_review_rejected: 0,
+      coverage_rejected: 0,
+      representative_rejected: 0,
+      errors: ['pending 토픽 없음'],
+    };
   }
 
   // 14일 내 같은 (destination, primary_keyword) 큐 이력 — 중복 방어
   const since = new Date();
   since.setDate(since.getDate() - 14);
-  const { data: recent } = await supabaseAdmin
+  const { data: recent, error: recentError } = await supabaseAdmin
     .from('blog_topic_queue')
     .select('destination, primary_keyword')
     .gte('created_at', since.toISOString());
+  if (recentError) {
+    return {
+      promoted: 0,
+      demand_rejected: 0,
+      contract_rejected: 0,
+      human_review_rejected: 0,
+      coverage_rejected: 0,
+      representative_rejected: 0,
+      errors: [`programmatic recent queue lookup failed: ${recentError.message}`],
+    };
+  }
   const recentKeys = new Set(
     ((recent || []) as Array<{ destination: string | null; primary_keyword: string | null }>)
       .map(r => `${r.destination || ''}::${r.primary_keyword || ''}`)
@@ -249,7 +294,15 @@ export async function promotePendingTopics(opts?: { limit?: number }): Promise<{
   );
 
   if (fresh.length === 0) {
-    return { promoted: 0, demand_rejected: 0, errors: ['모두 14일 dedup 충돌'] };
+    return {
+      promoted: 0,
+      demand_rejected: 0,
+      contract_rejected: 0,
+      human_review_rejected: 0,
+      coverage_rejected: 0,
+      representative_rejected: 0,
+      errors: ['모두 14일 dedup 충돌'],
+    };
   }
 
   const probe = selectDailyProgrammaticDemandProbe(fresh, { limit });
@@ -260,16 +313,93 @@ export async function promotePendingTopics(opts?: { limit?: number }): Promise<{
   ).catch(() => new Map());
   const demandBacked = probe.filter((candidate: Record<string, unknown>) =>
     hasObservedProgrammaticKeywordDemand(research.get(candidate.primary_keyword as string)),
-  ).slice(0, limit);
+  );
   const demandRejected = probe.length - demandBacked.length;
 
   if (demandBacked.length === 0) {
-    return { promoted: 0, demand_rejected: demandRejected, errors };
+    return {
+      promoted: 0,
+      demand_rejected: demandRejected,
+      contract_rejected: 0,
+      human_review_rejected: 0,
+      coverage_rejected: 0,
+      representative_rejected: 0,
+      errors,
+    };
   }
 
+  const [representativesResult, registriesResult, officialDocumentsResult, reputableSourcesResult] = await Promise.all([
+    supabaseAdmin
+      .from('blog_information_representatives')
+      .select('representative_key')
+      .eq('status', 'active')
+      .limit(2000),
+    supabaseAdmin
+      .from('blog_information_official_source_registry')
+      .select('id,source_type,status')
+      .eq('status', 'active'),
+    supabaseAdmin
+      .from('blog_information_official_research_documents')
+      .select('official_source_registry_id,source_url,intents,destinations,status')
+      .eq('status', 'active'),
+    supabaseAdmin
+      .from('blog_information_reputable_source_registry')
+      .select('source_types,intents,research_urls,research_destinations,status')
+      .eq('status', 'active'),
+  ]);
+  const prerequisiteError = representativesResult.error
+    ?? registriesResult.error
+    ?? officialDocumentsResult.error
+    ?? reputableSourcesResult.error;
+  if (prerequisiteError) {
+    errors.push(`programmatic prerequisite lookup failed: ${prerequisiteError.message}`);
+    return {
+      promoted: 0,
+      demand_rejected: demandRejected,
+      contract_rejected: 0,
+      human_review_rejected: 0,
+      coverage_rejected: 0,
+      representative_rejected: 0,
+      errors,
+    };
+  }
+
+  const activeRepresentativeKeys = new Set(
+    (representativesResult.data ?? [])
+      .map(row => row.representative_key)
+      .filter((key): key is string => typeof key === 'string' && key.length > 0),
+  );
+  const registries = (registriesResult.data ?? []) as BlogResearchRegistryCapability[];
+  const officialDocuments = (
+    officialDocumentsResult.data ?? []
+  ) as BlogResearchOfficialDocumentCapability[];
+  const reputableSources = (
+    reputableSourcesResult.data ?? []
+  ) as BlogResearchReputableCapability[];
+  let contractRejected = 0;
+  let humanReviewRejected = 0;
+  let coverageRejected = 0;
+  let representativeRejected = 0;
+  let topicFitRejected = 0;
   const queueRows: Record<string, unknown>[] = [];
   for (const c of demandBacked as Record<string, unknown>[]) {
+    if (queueRows.length >= limit) break;
     const kw = c.primary_keyword as string;
+    const topic = c.topic_template as string;
+    const destination = c.destination as string;
+    const angle = c.angle as string;
+    const sourceId = c.id as string;
+    const contract = getBlogProgrammaticContract(angle);
+    const meta = buildProgrammaticQueueMeta({
+      sourceId,
+      angle,
+      topic,
+      month: typeof c.month === 'number' ? c.month : null,
+    });
+    if (!contract || !meta) {
+      contractRejected += 1;
+      continue;
+    }
     const r = research.get(kw);
     const tier = r?.tier ?? c.expected_tier as string ?? classifyKeywordTier(kw);
     const intent = classifySearchIntent(
@@ -281,49 +411,88 @@ export async function promotePendingTopics(opts?: { limit?: number }): Promise<{
     const seasonalAt = computeSeasonalTargetPublishAt(
       typeof c.month === 'number' ? c.month : null,
     );
-    queueRows.push(normalizeBlogTopicQueueRow({
-      topic: c.topic_template,
+    const queueRow = normalizeBlogTopicQueueRow({
+      topic,
       source: 'coverage_gap',  // programmatic은 coverage gap 일종
       priority,
-      destination: c.destination,
-      angle_type: c.angle,
-      category: 'travel_tips',
-      primary_keyword: c.primary_keyword,
+      destination,
+      angle_type: angle,
+      category: contract.category,
+      primary_keyword: kw,
       keyword_tier: tier,
       monthly_search_volume: r?.monthly_search_volume ?? null,
       competition_level: r?.competition_level ?? (tier === 'head' ? 'high' : tier === 'mid' ? 'medium' : 'low'),
       ...(seasonalAt ? { target_publish_at: seasonalAt } : {}),
       meta: {
-        programmatic_source_id: c.id,
-        programmatic_angle: c.angle,
-        programmatic_month: c.month,
+        ...meta,
         search_intent: intent,
         demand_verified_at: new Date().toISOString(),
         demand_signal_source: r?.monthly_search_volume
           ? 'naver_search_ads'
           : 'naver_datalab',
       },
-    }));
+    });
+    const topicFit = filterTopicFitPassed([queueRow]);
+    if (topicFit.rows.length === 0) {
+      topicFitRejected += 1;
+      continue;
+    }
+    const acceptedRow = topicFit.rows[0]!;
+    const readiness = evaluateProgrammaticPromotionReadiness({
+      topic,
+      destination,
+      primaryKeyword: kw,
+      category: contract.category,
+      source: 'coverage_gap',
+      angleType: angle,
+      meta: acceptedRow.meta,
+      activeRepresentativeKeys,
+      registries,
+      officialDocuments,
+      reputableSources,
+    });
+    if (!readiness.passed) {
+      if (readiness.reason === 'human_review_required') humanReviewRejected += 1;
+      else if (readiness.reason === 'research_coverage_missing') coverageRejected += 1;
+      else if (readiness.reason === 'active_representative_exists') representativeRejected += 1;
+      else contractRejected += 1;
+      continue;
+    }
+    if (readiness.representativeKey) activeRepresentativeKeys.add(readiness.representativeKey);
+    queueRows.push(acceptedRow);
   }
 
-  const topicFit = filterTopicFitPassed(queueRows);
-  const acceptedQueueRows = topicFit.rows;
-  if (topicFit.rejected.length > 0) {
-    errors.push(`topic_fit_rejected: ${topicFit.rejected.length}`);
-  }
+  const acceptedQueueRows = queueRows;
+  if (topicFitRejected > 0) errors.push(`topic_fit_rejected: ${topicFitRejected}`);
 
   if (acceptedQueueRows.length === 0) {
-    return { promoted: 0, demand_rejected: demandRejected, errors };
+    return {
+      promoted: 0,
+      demand_rejected: demandRejected,
+      contract_rejected: contractRejected,
+      human_review_rejected: humanReviewRejected,
+      coverage_rejected: coverageRejected,
+      representative_rejected: representativeRejected,
+      errors,
+    };
   }
 
   const { data: inserted, error } = await supabaseAdmin
     .from('blog_topic_queue')
     .insert(acceptedQueueRows)
-    .select('id, primary_keyword');
+    .select('id, primary_keyword, meta');
 
   if (error) {
     errors.push(`큐 INSERT 실패: ${error.message}`);
-    return { promoted: 0, demand_rejected: demandRejected, errors };
+    return {
+      promoted: 0,
+      demand_rejected: demandRejected,
+      contract_rejected: contractRejected,
+      human_review_rejected: humanReviewRejected,
+      coverage_rejected: coverageRejected,
+      representative_rejected: representativeRejected,
+      errors,
+    };
   }
 
   const observedAt = new Date();
@@ -367,25 +536,57 @@ export async function promotePendingTopics(opts?: { limit?: number }): Promise<{
       await supabaseAdmin.from('blog_topic_queue').delete().in('id', insertedIds);
     }
     errors.push(`수요 근거 저장 실패: ${demandError.message}`);
-    return { promoted: 0, demand_rejected: demandRejected, errors };
+    return {
+      promoted: 0,
+      demand_rejected: demandRejected,
+      contract_rejected: contractRejected,
+      human_review_rejected: humanReviewRejected,
+      coverage_rejected: coverageRejected,
+      representative_rejected: representativeRejected,
+      errors,
+    };
   }
 
   // pending → queued 처리
+  let promoted = 0;
   if (inserted && inserted.length > 0) {
-    for (let i = 0; i < inserted.length; i++) {
-      const ins = inserted[i] as Record<string, unknown>;
-      const src = demandBacked.find((f: Record<string, unknown>) => f.primary_keyword === ins.primary_keyword);
-      if (!src) continue;
-      await supabaseAdmin
+    for (const insertedRow of inserted) {
+      const ins = insertedRow as Record<string, unknown>;
+      const rowMeta = ins.meta && typeof ins.meta === 'object' && !Array.isArray(ins.meta)
+        ? ins.meta as Record<string, unknown>
+        : null;
+      const sourceId = typeof rowMeta?.programmatic_source_id === 'string'
+        ? rowMeta.programmatic_source_id
+        : null;
+      const updateResult = sourceId
+        ? await supabaseAdmin
         .from('programmatic_seo_topics')
         .update({
           status: 'queued',
           promoted_at: new Date().toISOString(),
           topic_queue_id: ins.id,
         })
-        .eq('id', src.id);
+        .eq('id', sourceId)
+        .eq('status', 'pending')
+        .select('id')
+        : { data: null, error: new Error('programmatic_source_id missing') };
+      if (!updateResult.error && (updateResult.data?.length ?? 0) === 1) {
+        promoted += 1;
+        continue;
+      }
+      await supabaseAdmin.from('blog_demand_signals').delete().eq('queue_id', ins.id);
+      await supabaseAdmin.from('blog_topic_queue').delete().eq('id', ins.id);
+      errors.push(`programmatic source transition failed: ${sourceId ?? 'missing'}:${updateResult.error?.message ?? 'pending row not claimed'}`);
     }
   }
 
-  return { promoted: inserted?.length ?? 0, demand_rejected: demandRejected, errors };
+  return {
+    promoted,
+    demand_rejected: demandRejected,
+    contract_rejected: contractRejected,
+    human_review_rejected: humanReviewRejected,
+    coverage_rejected: coverageRejected,
+    representative_rejected: representativeRejected,
+    errors,
+  };
 }

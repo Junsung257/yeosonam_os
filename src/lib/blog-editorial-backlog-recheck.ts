@@ -3,6 +3,10 @@ import {
   extractEditorialBacklogBlockers,
   type BlogEditorialBacklogQueueRow,
 } from './blog-editorial-backlog-work';
+import {
+  readProgrammaticExpectedSlug,
+  readProgrammaticMicroAngle,
+} from './blog-programmatic-contract';
 
 export const BLOG_EDITORIAL_BACKLOG_RECHECK_VERSION = 'blog-editorial-backlog-recheck-20260728';
 
@@ -137,13 +141,15 @@ function readWriterType(row: RecheckRow): string {
 
 function readExpectedSlug(row: RecheckRow): string | null {
   const meta = asRecord(row.meta);
-  return readNestedString(meta.expected_slug, meta.spun_slug, row.slug_hint, row.slug);
+  return readNestedString(meta.expected_slug, meta.spun_slug, row.slug_hint, row.slug)
+    ?? readProgrammaticExpectedSlug({ meta, topic: row.topic });
 }
 
 function readMicroAngle(row: RecheckRow): string | null {
   const meta = asRecord(row.meta);
   const generationMeta = asRecord(row.generation_meta);
-  return readNestedString(meta.micro_angle, generationMeta.micro_angle);
+  return readNestedString(meta.micro_angle, generationMeta.micro_angle)
+    ?? readProgrammaticMicroAngle({ meta, angleType: row.angle_type });
 }
 
 function readProductDedupKey(row: RecheckRow): string | null {

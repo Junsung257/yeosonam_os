@@ -2,6 +2,10 @@ import { evaluateBlogTopicFit } from './blog-topic-fit-gate';
 import { classifyDestinationlessInfoCandidate } from './blog-destinationless-info';
 import { inspectBlogCandidatePrepublishContract } from './blog-candidate-prepublish-contract';
 import { evaluateQueuedInformationResearch } from './blog-queue-research';
+import {
+  readProgrammaticExpectedSlug,
+  readProgrammaticMicroAngle,
+} from './blog-programmatic-contract';
 
 export type BlogCanaryCandidateRow = {
   id?: string | null;
@@ -65,11 +69,22 @@ function readWriterType(row: BlogCanaryCandidateRow): BlogCanaryCandidate['write
 }
 
 function readExpectedSlug(row: BlogCanaryCandidateRow): string | null {
-  return readNestedString(row.meta?.expected_slug, row.meta?.spun_slug, row.slug_hint, row.slug)?.toLowerCase() ?? null;
+  const explicit = readNestedString(
+    row.meta?.expected_slug,
+    row.meta?.spun_slug,
+    row.slug_hint,
+    row.slug,
+  );
+  return explicit?.toLowerCase()
+    ?? readProgrammaticExpectedSlug({ meta: row.meta, topic: row.topic });
 }
 
 function readMicroAngle(row: BlogCanaryCandidateRow): string | null {
-  return readNestedString(row.meta?.micro_angle, row.generation_meta?.micro_angle, row.angle_type)?.toLowerCase() ?? null;
+  const explicit = readNestedString(row.meta?.micro_angle, row.generation_meta?.micro_angle);
+  return explicit?.toLowerCase()
+    ?? readProgrammaticMicroAngle({ meta: row.meta, angleType: row.angle_type })
+    ?? readNestedString(row.angle_type)?.toLowerCase()
+    ?? null;
 }
 
 function readProductDedupKey(row: BlogCanaryCandidateRow): string | null {
