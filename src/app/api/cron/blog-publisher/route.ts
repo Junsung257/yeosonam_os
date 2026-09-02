@@ -135,6 +135,7 @@ import {
 } from '@/lib/blog-publisher-time-budget';
 import { readBoundedIntEnv } from '@/lib/env-utils';
 import { isHighRiskInformationalTopic } from '@/lib/blog-publication-review-policy';
+import { resolveBlogInformationResearchDestination } from '@/lib/blog-destinationless-info';
 import { routeBlogContentLane } from '@/lib/blog-content-boundary';
 import {
   evaluateBlogInformationClaimPublishGate,
@@ -4639,10 +4640,15 @@ async function processQueueItem(
     const failureStatus = await handleFailure(item, msg, null, isUnrecoverable);
     const researchRetryQueued = msg.includes('auto_research_extraction_empty:')
       && failureStatus === 'queued';
+    const terminalFailureStatus = failureStatus === 'failed' || failureStatus === 'skipped';
     return {
       id: item.id,
       topic: item.topic,
-      status: researchRetryQueued ? 'research_retry_queued' : 'error',
+      status: terminalFailureStatus
+        ? failureStatus
+        : researchRetryQueued
+          ? 'research_retry_queued'
+          : 'error',
       reason: msg,
     };
   }
@@ -5336,10 +5342,14 @@ async function generateFromTopic(
   if (!contentBrief.passed) {
     throw new Error(`blog_content_brief_failed:${contentBrief.issues.join(',')}`);
   }
+  const researchDestination = resolveBlogInformationResearchDestination(item);
+  if (!researchDestination) {
+    throw new Error('destinationless_info_research_scope_missing');
+  }
   let researchReadiness = evaluateBlogGenerationResearchReadiness({
     meta: item.meta,
     expectedContentKey: queueSlug,
-    destination: item.destination,
+    destination: researchDestination,
     intent: contentBrief.intentType,
     locale: contentBrief.plan.locale,
     sourcePolicy: contentBrief.sourcePolicy,
@@ -5348,7 +5358,7 @@ async function generateFromTopic(
   if ((!privateRegeneration || publishedAtomicUpgrade) && !researchReadiness.passed) {
     const autoResearch = await researchBlogInformationAutomatically({
       contentKey: queueSlug,
-      destination: item.destination,
+      destination: researchDestination,
       locale: contentBrief.plan.locale,
       brief: contentBrief,
     });
@@ -5423,7 +5433,7 @@ async function generateFromTopic(
     researchReadiness = evaluateBlogGenerationResearchReadiness({
       meta: item.meta,
       expectedContentKey: queueSlug,
-      destination: item.destination,
+      destination: researchDestination,
       intent: contentBrief.intentType,
       locale: contentBrief.plan.locale,
       sourcePolicy: contentBrief.sourcePolicy,

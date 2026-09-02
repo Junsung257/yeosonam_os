@@ -28,7 +28,9 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain("auto_research_failure: {");
     expect(source).toContain('researchFailureAttempt < 2');
     expect(source).toContain("auto_research_extraction_empty:");
-    expect(source).toContain("status: researchRetryQueued ? 'research_retry_queued' : 'error'");
+    expect(source).toContain("const terminalFailureStatus = failureStatus === 'failed' || failureStatus === 'skipped'");
+    expect(source).toContain('status: terminalFailureStatus');
+    expect(source).toContain("? 'research_retry_queued'");
   });
 
   it('accepts an exact Inngest queue target without weakening the manual canary contract', () => {

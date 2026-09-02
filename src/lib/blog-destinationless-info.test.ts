@@ -5,6 +5,7 @@ import {
   buildDestinationlessInfoGenericMeta,
   classifyDestinationlessInfoCandidate,
   destinationlessInfoBlocksPublishability,
+  resolveBlogInformationResearchDestination,
 } from './blog-destinationless-info';
 
 describe('blog destinationless info candidates', () => {
@@ -31,6 +32,20 @@ describe('blog destinationless info candidates', () => {
 
     expect(classifyDestinationlessInfoCandidate(row)).toBe('intentionally_generic');
     expect(destinationlessInfoBlocksPublishability(row)).toBe(false);
+    expect(resolveBlogInformationResearchDestination(row)).toBe('해외여행 공통');
+  });
+
+  it('keeps real destinations and refuses to invent a scope for unmarked generic rows', () => {
+    expect(resolveBlogInformationResearchDestination({
+      topic: '세부 가족여행 준비',
+      destination: '세부',
+      meta: { writer_type: 'info_writer' },
+    })).toBe('세부');
+    expect(resolveBlogInformationResearchDestination({
+      topic: '해외여행 보험 비교',
+      category: 'travel_tips',
+      meta: { writer_type: 'info_writer' },
+    })).toBeNull();
   });
 
   it('uses slug intent when a public API title is too generic', () => {

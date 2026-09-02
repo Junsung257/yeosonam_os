@@ -40,6 +40,8 @@ export type BlogDestinationlessInfoWorkReport = {
   samples: BlogDestinationlessInfoWorkItem[];
 };
 
+export const BLOG_GENERIC_INFORMATION_RESEARCH_SCOPE = '해외여행 공통';
+
 const GENERIC_INFO_CATEGORY_RE = /^(?:travel_tips|visa_info|preparation|local_info)$/i;
 const GENERIC_INFO_TOPIC_RE =
   /(?:roaming|insurance|coverage|로밍|유심|eSIM|USIM|보험|비자|입국|항공권|비행시간|공항\s*혼잡|비상약|상비약|환전|트래블월렛|travelwallet|비용\s*절약|경비\s*절약|배낭여행|여행\s*준비|여행지\s*추천|휴양지\s*추천|가족\s*(?:여행지|해외여행)|아이와\s*가기|해외여행\s*(?:전화|데이터|보험|준비|체크|비자|항공권|비행시간|환전|상비약|비상약)|광복절\s*연휴|황금연휴|여름\s*(?:휴가철|방학|항공권|공항))/i;
@@ -147,6 +149,16 @@ export function destinationlessInfoBlocksPublishability(row: BlogDestinationless
   return category === 'generic_unmarked' ||
     category === 'missing_destination' ||
     category === 'invalid_destination';
+}
+
+export function resolveBlogInformationResearchDestination(
+  row: BlogDestinationlessInfoRow,
+): string | null {
+  const destination = clean(row.destination);
+  if (destination) return destination;
+  return classifyDestinationlessInfoCandidate(row) === 'intentionally_generic'
+    ? BLOG_GENERIC_INFORMATION_RESEARCH_SCOPE
+    : null;
 }
 
 export function buildDestinationlessInfoGenericMeta(input: {
