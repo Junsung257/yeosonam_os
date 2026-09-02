@@ -12,6 +12,27 @@ import {
 
 type CronPayload = Record<string, unknown>;
 
+type TerminalGenerationOutcome = {
+  status: string;
+  reason: string | null;
+};
+
+function readTerminalGenerationOutcome(payload: CronPayload): TerminalGenerationOutcome | null {
+  const results = Array.isArray(payload.results) ? payload.results : [];
+  for (const result of results) {
+    if (!result || typeof result !== 'object' || Array.isArray(result)) continue;
+    const row = result as Record<string, unknown>;
+    const status = String(row.status || '').trim().toLowerCase();
+    if (status.startsWith('skipped') || ['duplicate_review', 'failed', 'quarantined'].includes(status)) {
+      return {
+        status,
+        reason: typeof row.reason === 'string' ? row.reason : null,
+      };
+    }
+  }
+  return null;
+}
+
 function resolveInternalAppOrigin(): string {
   const vercelUrl = String(process.env.VERCEL_URL || '').trim();
   if (vercelUrl) return `https://${vercelUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}`;
@@ -87,9 +108,34 @@ export const blogAutopilotV4Fn = inngest.createFunction(
       return { topic: candidate.topic, destination: candidate.destination, primaryKeyword: candidate.primary_keyword };
     });
 
-    const generation = await step.run('draft', () => invokeAuthorizedCron(
-      `/api/cron/blog-publisher?phase=generate_only&pipelineQueueId=${encodeURIComponent(queueId)}`,
-    ));
+    const generation = await step.run('draft', async () => {
+      const payload = await invokeAuthorizedCron(
+        `/api/cron/blog-publisher?phase=generate_only&pipelineQueueId=${encodeURIComponent(queueId)}`,
+      );
+      if (payload.ok === false && !readTerminalGenerationOutcome(payload)) {
+        const errorSummary = Array.isArray(payload.errors)
+          ? payload.errors.map(String).slice(0, 3).join('|')
+          : 'unknown';
+        throw new Error(`blog_generation_payload_failed:${errorSummary}`);
+      }
+      return payload;
+    });
+
+    const terminalGeneration = readTerminalGenerationOutcome(generation);
+    if (terminalGeneration) {
+      return {
+        queueId,
+        contentVersion,
+        pipelineVersion: BLOG_AUTOPILOT_PIPELINE_VERSION,
+        brief,
+        generation,
+        terminal: true,
+        terminalStage: 'draft',
+        terminalStatus: terminalGeneration.status,
+        terminalReason: terminalGeneration.reason,
+        publicationDispatched: false,
+      };
+    }
 
     const verified = await step.run('verify', () => readBlogGenerationArtifactsV4(queueId));
     const edited = await step.run('edit', async () => ({
