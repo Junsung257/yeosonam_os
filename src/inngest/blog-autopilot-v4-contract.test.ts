@@ -78,7 +78,10 @@ describe('Inngest blog autopilot V4 contract', () => {
     expect(dispatcher).toContain('target_queue_id_requires_forced_manual_run');
     expect(dispatcher).toContain('quarantineNonRetryableBlogQueueItems');
     expect(dispatcher).toContain('shouldQuarantineQueuedBlogItem');
-    expect(dispatcher).toContain('destinationlessInfoBlocksPublishability');
+    expect(dispatcher).toContain('selectPublishableQueueCandidates');
+    expect(dispatcher).toContain('loadQueueDemandSignalMapV3');
+    expect(dispatcher).toContain('activeRepresentativeKeys');
+    expect(dispatcher).toContain('dispatchReadiness');
     expect(dispatcher).toContain('forcedManualDispatch: forcedManualRun');
     expect(release).toContain('update_env INNGEST_BLOG_AUTOPILOT_ENABLED true');
     expect(release).toContain('npx vercel env update INNGEST_BLOG_AUTOPILOT_ENABLED production --value true');

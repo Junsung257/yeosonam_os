@@ -346,6 +346,16 @@ jobs:
           console.log(`Accepted one draft-only Inngest shadow event for queue ${payload.queueIds[0]}`);
           NODE
 
+      - name: Prove private shadow artifacts and zero publication side effects
+        if: inputs.run_shadow_smoke
+        shell: bash
+        run: >-
+          npm run verify:blog-shadow-generation-v4 --
+          --dispatch-summary=.tmp/blog-v4-release/shadow-dispatch-summary.json
+          --timeout-seconds=900
+          --poll-seconds=15
+          --output=.tmp/blog-v4-release/shadow-generation-proof.json
+
       - name: Enable pilot and deploy live candidate
         if: inputs.promote_live
         id: live_candidate

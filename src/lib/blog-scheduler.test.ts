@@ -10,6 +10,7 @@ import {
   countPublishableQueueCandidates,
   loadQueueDemandSignalMapV3,
   MIN_PUBLISHABLE_BUFFER_DAYS,
+  selectPublishableQueueCandidates,
   SCHEDULE_OCCUPYING_QUEUE_STATUSES,
 } from './blog-scheduler';
 
@@ -38,7 +39,7 @@ function researchedTokyoWeatherMeta(
   }];
   const payload = buildWmoMonthlyWeatherPayload(pages, destination);
   const brief = buildBlogContentBrief({
-    topic: '도쿄 7월 날씨와 옷차림 준비물 체크',
+    topic: `${destination} 7월 날씨와 옷차림 준비물 체크`,
     destination,
     primaryKeyword: '도쿄 날씨 옷차림 준비물',
     category: 'preparation',
@@ -328,6 +329,58 @@ describe('blog scheduler queue refill helpers', () => {
     expect(stats.publishableCount).toBe(1);
     expect(stats.researchNotReady).toBe(0);
     expect(stats.demandMissing).toBe(0);
+  });
+
+  it('selects only dispatch-ready rows from a mixed legacy queue pool', () => {
+    const eligibleMeta = researchedTokyoWeatherMeta('삿포로', 'sapporo-weather-packing');
+    const activeRepresentativeMeta = researchedTokyoWeatherMeta('도쿄', 'tokyo-weather-packing');
+    const selection = selectPublishableQueueCandidates({
+      recentPublished: [],
+      activeRepresentativeKeys: new Set(['v1|도쿄|monthly_weather|general|ko-KR']),
+      activeQueue: [
+        {
+          id: 'legacy-unresearched',
+          destination: '오사카',
+          topic: '오사카 7월 날씨와 옷차림 준비물 체크',
+          primary_keyword: '오사카 날씨 옷차림 준비물',
+          category: 'preparation',
+          angle_type: 'value',
+          priority: 99,
+          meta: {
+            writer_type: 'info_writer',
+            micro_angle: 'weather_packing',
+            expected_slug: 'osaka-weather-packing',
+            gsc_impressions: 200,
+          },
+        },
+        {
+          id: 'active-representative',
+          destination: '도쿄',
+          topic: '도쿄 7월 날씨와 옷차림 준비물 체크',
+          primary_keyword: '도쿄 날씨 옷차림 준비물',
+          category: 'preparation',
+          angle_type: 'value',
+          priority: 90,
+          meta: activeRepresentativeMeta,
+        },
+        {
+          id: 'eligible',
+          destination: '삿포로',
+          topic: '삿포로 7월 날씨와 옷차림 준비물 체크',
+          primary_keyword: '삿포로 날씨 옷차림 준비물',
+          category: 'preparation',
+          angle_type: 'value',
+          priority: 80,
+          meta: eligibleMeta,
+        },
+      ],
+      limit: 1,
+    });
+
+    expect(selection.candidates.map((candidate) => candidate.id)).toEqual(['eligible']);
+    expect(selection.publishableCount).toBe(1);
+    expect(selection.researchNotReady).toBe(1);
+    expect(selection.blockedRecentDuplicate).toBe(1);
   });
 
   it('quarantines an old canonical representative before a refill consumes a slot', () => {

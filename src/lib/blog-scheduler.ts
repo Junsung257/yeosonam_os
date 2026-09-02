@@ -192,7 +192,7 @@ export function buildWeatherQueueVariation(destination: string, month: number): 
   };
 }
 
-type QueueCandidateLike = {
+export type QueueCandidateLike = {
   id?: string | null;
   product_id?: string | null;
   content_creative_id?: string | null;
@@ -206,11 +206,28 @@ type QueueCandidateLike = {
   priority?: number | null;
   created_at?: string | null;
   updated_at?: string | null;
+  target_publish_at?: string | null;
   slug_hint?: string | null;
   generation_meta?: any;
   meta?: any;
   monthly_search_volume?: number | null;
   trend_score?: number | null;
+};
+
+export type BlogPublishableQueueStats = {
+  publishableCount: number;
+  blockedRecentDuplicate: number;
+  duplicateQueued: number;
+  evidenceInsufficient: number;
+  productOpenContractBlocked: number;
+  destinationlessInfoBlocked: number;
+  candidateContractBlocked: number;
+  researchNotReady: number;
+  demandMissing: number;
+};
+
+export type BlogPublishableQueueSelection = BlogPublishableQueueStats & {
+  candidates: QueueCandidateLike[];
 };
 
 export async function loadQueueDemandSignalMapV3(
@@ -358,22 +375,13 @@ function publishableRepresentativeKey(row: QueueCandidateLike): string | null {
   });
 }
 
-export function countPublishableQueueCandidates(input: {
+export function selectPublishableQueueCandidates(input: {
   activeQueue: QueueCandidateLike[];
   recentPublished: QueueCandidateLike[];
   activeRepresentativeKeys?: ReadonlySet<string>;
   demandSignalsByQueueId?: ReadonlyMap<string, BlogDemandSignalInput>;
-}): {
-  publishableCount: number;
-  blockedRecentDuplicate: number;
-  duplicateQueued: number;
-  evidenceInsufficient: number;
-  productOpenContractBlocked: number;
-  destinationlessInfoBlocked: number;
-  candidateContractBlocked: number;
-  researchNotReady: number;
-  demandMissing: number;
-} {
+  limit?: number;
+}): BlogPublishableQueueSelection {
   const recentKeys = new Set<string>();
   for (const row of input.recentPublished) {
     const key = publishableQueueKey(row);
@@ -390,6 +398,10 @@ export function countPublishableQueueCandidates(input: {
   let candidateContractBlocked = 0;
   let researchNotReady = 0;
   let demandMissing = 0;
+  const candidates: QueueCandidateLike[] = [];
+  const limit = Number.isFinite(input.limit)
+    ? Math.max(0, Math.trunc(input.limit!))
+    : Number.POSITIVE_INFINITY;
 
   for (const row of [...input.activeQueue].sort(compareBlogDuplicateCandidatePreference)) {
     if (row.source === 'pillar') continue;
@@ -439,9 +451,11 @@ export function countPublishableQueueCandidates(input: {
       continue;
     }
     publishableKeys.add(key);
+    if (candidates.length < limit) candidates.push(row);
   }
 
   return {
+    candidates,
     publishableCount: publishableKeys.size,
     blockedRecentDuplicate,
     duplicateQueued,
@@ -452,6 +466,16 @@ export function countPublishableQueueCandidates(input: {
     researchNotReady,
     demandMissing,
   };
+}
+
+export function countPublishableQueueCandidates(input: {
+  activeQueue: QueueCandidateLike[];
+  recentPublished: QueueCandidateLike[];
+  activeRepresentativeKeys?: ReadonlySet<string>;
+  demandSignalsByQueueId?: ReadonlyMap<string, BlogDemandSignalInput>;
+}): BlogPublishableQueueStats {
+  const { candidates: _candidates, ...stats } = selectPublishableQueueCandidates(input);
+  return stats;
 }
 
 async function quarantineDuplicatePublishableCandidates(input: {
@@ -474,8 +498,7 @@ async function quarantineDuplicatePublishableCandidates(input: {
       hasEvidenceInsufficientFlag(row) ||
       hasProductOpenContractBlock(row) ||
       destinationlessInfoBlocksPublishability(row) ||
-      !inspectBlogCandidatePrepublishContract(row).passed ||
-      (readWriterType(row) === 'info_writer' && !evaluateQueuedInformationResearch(row).passed)
+      !inspectBlogCandidatePrepublishContract(row).passed
     ) continue;
     const key = publishableQueueKey(row);
     if (!key) continue;
@@ -483,16 +506,21 @@ async function quarantineDuplicatePublishableCandidates(input: {
     const meta = row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta)
       ? row.meta as Record<string, unknown>
       : {};
-    if (
-      (
-        representativeKey
-        && input.activeRepresentativeKeys?.has(representativeKey)
-        && !isPublishedBlogQualityUpgradeCandidate(row)
-      )
-      ||
-      (recentKeys.has(key) && !isPublishedBlogQualityUpgradeCandidate(row))
-      || seen.has(key)
-    ) {
+    const duplicatesExistingRepresentative = Boolean(
+      representativeKey
+      && input.activeRepresentativeKeys?.has(representativeKey)
+      && !isPublishedBlogQualityUpgradeCandidate(row),
+    );
+    const duplicatesRecentPublication = recentKeys.has(key)
+      && !isPublishedBlogQualityUpgradeCandidate(row);
+    if (duplicatesExistingRepresentative || duplicatesRecentPublication) {
+      duplicateRows.push({ id: row.id, key, meta });
+      continue;
+    }
+    if (readWriterType(row) === 'info_writer' && !evaluateQueuedInformationResearch(row).passed) {
+      continue;
+    }
+    if (seen.has(key)) {
       duplicateRows.push({ id: row.id, key, meta });
       continue;
     }
