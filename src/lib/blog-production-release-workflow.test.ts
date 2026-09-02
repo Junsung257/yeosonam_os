@@ -96,5 +96,9 @@ describe('blog V4 protected production release workflow', () => {
     expect(source).toContain("payload.durableWorkflow !== 'blog-autopilot-v4'");
     expect(source).toContain('payload.modelCalls !== 0');
     expect(source).toContain('payload.queueIds.length !== 1');
+    expect(source).toContain('Prove private shadow artifacts and zero publication side effects');
+    expect(source).toContain('verify:blog-shadow-generation-v4');
+    expect(source).toContain('--dispatch-summary=.tmp/blog-v4-release/shadow-dispatch-summary.json');
+    expect(source).toContain('--output=.tmp/blog-v4-release/shadow-generation-proof.json');
   });
 });

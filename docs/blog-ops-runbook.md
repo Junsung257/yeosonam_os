@@ -7,6 +7,8 @@
 > 2026-09-02 candidate-refill override: `queued=0`일 때 임의 토픽이나 수동 SQL을 넣지 않는다. `blog-scheduler`가 프로그램형 대기 풀을 날짜별 순환 probe하고 실제 월간 검색량 또는 추세가 양수인 항목만 큐와 `blog_demand_signals`에 함께 기록한다. 일일 스케줄러는 일반 refill → 수요 검증 programmatic refill → 연구 준비 → 슬롯 배정 순서다. `topical-rebuild`는 주 1회 Vercel만 소유하며 GitHub workflow 항목은 수동 복구용이다. 보호 shadow 릴리스가 `no_queued_blog_pipeline_candidate`로 멈추면 먼저 `trend-topic-miner`, `blog-regenerate-zero-click`, 후보 배포의 `blog-scheduler` 응답을 확인하고, 근거가 끝내 0이면 올바른 안전정지로 처리한다.
 >
 > 2026-09-02 research-ready refill override: 검색량/추세가 있어도 곧바로 큐에 넣지 않는다. `promotePendingTopics()`가 프로그램형 angle 계약, 자동발행 위험도, reviewed source coverage, active information representative를 fail-closed로 검사한다. `contract_rejected`, `human_review_rejected`, `coverage_rejected`, `representative_rejected`는 정상적인 상류 차단 지표이며 임의 SQL로 우회하지 않는다. 과거에 큐에 들어간 프로그램형 행은 `programmatic_angle`과 topic에서 `micro_angle`·audience·content key를 복구해 동일 연구/중복 계약으로 정리한다.
+>
+> 2026-09-02 dispatch-proof override: `blog-generate` 응답의 `dispatchReadiness`가 운영 진단과 동일한 발행가능 판정이다. `researchNotReady`, `demandMissing`, `blockedRecentDuplicate`, `candidateContractBlocked`가 남은 행은 Inngest로 보내지 않는다. 보호 릴리스는 `shadow-dispatch-summary.json`만으로 완료가 아니며 `shadow-generation-proof.json`에 승인 run/attempt, 비공개 creative, `published_at=null`, indexing outbox 0건이 모두 기록되어야 성공이다. `no_queued_blog_pipeline_candidate`는 수요·연구 근거를 만들라는 신호이지 임의 큐 INSERT나 발행 잠금 해제 사유가 아니다.
 
 > 2026-08-16 release override: DeepSeek-only 연구 구조화·초안·재작성, 비용 예약, `pilot_3→ramp_10→max_30` 자동 승격/강등, immutable snapshot, 90일 GSC 보강, 분석 canary, 배포·롤백 순서는 `docs/runbooks/blog-orchestrator-v4-production-rollout.md`와 `docs/runbooks/blog-deepseek-orchestrator-v4.md`가 우선한다.
 
@@ -14,7 +16,7 @@
 
 > 2026-08-13 V3 override: `backfill:blog-quality:write` was removed. The legacy backfill creates article text, so `--write` and `--apply` now fail before any database mutation. Commands below that include the old write flag are historical verification records only.
 
-Last updated: 2026-09-01
+Last updated: 2026-09-02
 
 This runbook defines how operators decide whether the Yeosonam blog automation is healthy. The durable publish contract remains `docs/blog-autopublish-contract.md`; this file explains the daily operating workflow shown in `/admin/blog`.
 

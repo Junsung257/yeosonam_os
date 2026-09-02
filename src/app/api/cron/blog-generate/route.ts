@@ -10,13 +10,17 @@ import {
 } from '@/inngest/runtime-policy';
 import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
 import { createBlogPipelineEventId } from '@/lib/blog-autopilot-v4-contract';
-import { getBlogPublishingPolicy } from '@/lib/blog-scheduler';
+import {
+  getBlogPublishingPolicy,
+  loadQueueDemandSignalMapV3,
+  selectPublishableQueueCandidates,
+} from '@/lib/blog-scheduler';
 import { getKstDayRange } from '@/lib/blog-daily-summary-window';
 import {
   quarantineNonRetryableBlogQueueItems,
   shouldQuarantineQueuedBlogItem,
 } from '@/lib/blog-queue-lifecycle';
-import { destinationlessInfoBlocksPublishability } from '@/lib/blog-destinationless-info';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -112,7 +116,7 @@ async function runBlogGenerate(request: NextRequest) {
     });
     let candidateQuery = supabaseAdmin
       .from('blog_topic_queue')
-      .select('id,updated_at,target_publish_at,attempts,last_error,meta,source,product_id,topic,destination,primary_keyword,category')
+      .select('id,updated_at,target_publish_at,attempts,last_error,meta,source,product_id,content_creative_id,topic,destination,primary_keyword,category,angle_type,priority,created_at,monthly_search_volume,trend_score')
       .eq('status', 'queued')
       .or('attempts.is.null,attempts.lt.3');
     if (targetQueueId) {
@@ -122,18 +126,61 @@ async function runBlogGenerate(request: NextRequest) {
         .order('priority', { ascending: false })
         .order('target_publish_at', { ascending: true, nullsFirst: false });
     }
-    const candidatePoolLimit = targetQueueId ? 1 : Math.max(dispatchLimit * 10, 20);
+    const candidatePoolLimit = targetQueueId ? 1 : Math.max(dispatchLimit * 100, 200);
     const { data: candidatePool, error } = await candidateQuery.limit(candidatePoolLimit);
     if (error) throw new Error(`blog_pipeline_dispatch_query_failed:${error.message}`);
-    const candidates = (candidatePool ?? [])
-      .filter((candidate) => !destinationlessInfoBlocksPublishability(candidate))
+
+    const lifecycleCandidates = (candidatePool ?? [])
       .filter((candidate) => !shouldQuarantineQueuedBlogItem({
         attempts: candidate.attempts,
         lastError: candidate.last_error,
         meta: candidate.meta,
         maxAttempts: 3,
-      }).quarantine)
-      .slice(0, targetQueueId ? 1 : dispatchLimit);
+      }).quarantine);
+    const since = new Date();
+    since.setDate(since.getDate() - Math.max(14, policy.multi_angle_gap_days ?? 14));
+    const [recentPublishedResult, activeRepresentativesResult] = await Promise.all([
+      supabaseAdmin
+        .from(PUBLIC_BLOG_READ_SOURCE)
+        .select('destination,angle_type,slug,product_id,generation_meta')
+        .gte('published_at', since.toISOString())
+        .limit(500),
+      supabaseAdmin
+        .from('blog_information_representatives')
+        .select('representative_key')
+        .eq('status', 'active')
+        .limit(2000),
+    ]);
+    if (recentPublishedResult.error || activeRepresentativesResult.error) {
+      return {
+        skipped: true,
+        reason: 'blog_pipeline_dispatch_readiness_unavailable',
+        targetQueueId,
+        errors: [
+          recentPublishedResult.error?.message,
+          activeRepresentativesResult.error?.message,
+        ].filter(Boolean),
+        preflightSettlement,
+      };
+    }
+    const activeRepresentativeKeys = new Set(
+      (activeRepresentativesResult.data ?? [])
+        .map((row) => row.representative_key)
+        .filter((key): key is string => typeof key === 'string' && key.length > 0),
+    );
+    const demandSignalsByQueueId = await loadQueueDemandSignalMapV3(lifecycleCandidates);
+    const dispatchReadiness = selectPublishableQueueCandidates({
+      activeQueue: lifecycleCandidates,
+      recentPublished: recentPublishedResult.data ?? [],
+      activeRepresentativeKeys,
+      demandSignalsByQueueId,
+      limit: targetQueueId ? 1 : dispatchLimit,
+    });
+    const candidates = dispatchReadiness.candidates.filter(
+      (candidate): candidate is typeof candidate & { id: string } => (
+        typeof candidate.id === 'string' && candidate.id.length > 0
+      ),
+    );
     if (!candidates?.length) {
       return {
         skipped: true,
@@ -142,6 +189,7 @@ async function runBlogGenerate(request: NextRequest) {
           : 'no_queued_blog_pipeline_candidate',
         targetQueueId,
         preflightSettlement,
+        dispatchReadiness,
       };
     }
     const requestedAt = new Date().toISOString();
@@ -165,6 +213,7 @@ async function runBlogGenerate(request: NextRequest) {
       forcedManualDispatch: forcedManualRun,
       targetQueueId,
       preflightSettlement,
+      dispatchReadiness,
       dailyTarget,
       generatedToday: Number(generatedToday ?? 0),
       remainingToday,
