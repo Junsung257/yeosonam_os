@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "tier": 3,
+  "status": "active",
+  "owner": "platform-engineering",
+  "baseline_commit": "754f739569d03c65fd8e1c1573e415c389b017f2",
+  "review_file": "review.md",
+  "surface_map_version": 1,
+  "verified_commit": null,
+  "verification": [
+    "npm run check:agent-surfaces -- --spec 20260903-agent-office-v2-pr00 --agent pr00-owner --base 754f739569d03c65fd8e1c1573e415c389b017f2",
+    "npm run check:agent-workflow:ci",
+    "npm run audit:llm-telemetry:ci",
+    "npm run check:harness"
+  ],
+  "evidence_paths": [
+    "review.md",
+    "compatibility-matrix.md",
+    "execution-ledger-inventory.md",
+    "runtime-provider-inventory.md",
+    "business-event-inventory.md",
+    "kpi-lineage.md",
+    "cancellation-approval-state-model.md",
+    "threat-model.md",
+    "eval-baseline-technology-scout.md",
+    "adr.md",
+    "external-research.md",
+    "delta-revalidation.md"
+  ]
+}

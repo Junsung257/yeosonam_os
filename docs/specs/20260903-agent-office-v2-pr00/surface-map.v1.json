@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "taskId": "20260903-agent-office-v2-pr00",
+  "agents": [
+    {
+      "id": "pr00-owner",
+      "role": "implementation",
+      "write": [
+        "docs/specs/20260903-agent-office-v2-pr00/**"
+      ],
+      "readOnly": [
+        "AGENTS.md",
+        "CURRENT_STATUS.md",
+        ".cursor/rules/**",
+        ".claude/CLAUDE.md",
+        "config/**",
+        "docs/agent-workflow-current-ssot.md",
+        "docs/agent-office-current-ssot.md",
+        "docs/ai-ops-current-ssot.md",
+        "docs/blog-autopublish-contract.md",
+        "docs/settlement-current-ssot.md",
+        "docs/product-registration-current-ssot.md",
+        "docs/ai-agent-doc-automation.md",
+        "docs/git-commit-handoff.md",
+        "docs/specs/20260728-agent-operations-office/**",
+        "docs/specs/20260729-agent-runtime-hardening/**",
+        "src/**",
+        "scripts/**",
+        "supabase/migrations/**"
+      ],
+      "forbidden": [
+        ".github/**",
+        ".env*",
+        "package.json",
+        "package-lock.json",
+        "src/**",
+        "scripts/**",
+        "config/**",
+        "supabase/**"
+      ]
+    },
+    {
+      "id": "pr00-reviewer",
+      "role": "review",
+      "write": [],
+      "readOnly": ["**"],
+      "forbidden": []
+    }
+  ]
+}
