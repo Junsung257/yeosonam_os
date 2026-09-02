@@ -22,6 +22,11 @@ on:
         required: true
         default: false
         type: boolean
+      run_shadow_smoke:
+        description: Dispatch exactly one draft-only Inngest generation event after candidate readiness passes.
+        required: true
+        default: false
+        type: boolean
       promote_live:
         description: Enable live pilot_3 and promote only after every readiness gate passes.
         required: true
@@ -65,6 +70,14 @@ jobs:
           fi
           if [ "${{ inputs.promote_live }}" = "true" ] && { [ "${{ inputs.apply_migrations }}" != "true" ] || [ "${{ inputs.deploy_candidate }}" != "true" ]; }; then
             echo "promote_live requires migration apply and candidate deployment" >&2
+            exit 1
+          fi
+          if [ "${{ inputs.run_shadow_smoke }}" = "true" ] && [ "${{ inputs.deploy_candidate }}" != "true" ]; then
+            echo "run_shadow_smoke requires an unaliased candidate deployment" >&2
+            exit 1
+          fi
+          if [ "${{ inputs.run_shadow_smoke }}" = "true" ] && [ "${{ inputs.promote_live }}" = "true" ]; then
+            echo "run_shadow_smoke is draft-only and cannot be combined with live promotion" >&2
             exit 1
           fi
           for key in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID VERCEL_AUTOMATION_BYPASS_SECRET SUPABASE_PROJECT_REF SUPABASE_ACCESS_TOKEN SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY CRON_SECRET; do
@@ -270,6 +283,54 @@ jobs:
             --evidence=.tmp/blog-v4-release/production-evidence.json \
             --expected-commit="${{ inputs.release_commit }}" \
             --output=.tmp/blog-v4-release/readiness-report.json
+
+      - name: Dispatch exactly one draft-only Inngest shadow event
+        if: inputs.run_shadow_smoke
+        shell: bash
+        env:
+          CANDIDATE_URL: ${{ steps.candidate.outputs.url }}
+        run: |
+          set -euo pipefail
+          response_path=.tmp/blog-v4-release/shadow-dispatch-response.json
+          http_status="$(curl --silent --show-error --location --retry 2 --max-time 300 \
+            --output "$response_path" --write-out '%{http_code}' \
+            --header "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            "${CANDIDATE_URL}/api/cron/blog-generate?force=1&limit=1")"
+          test "$http_status" = "200"
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+
+          const path = '.tmp/blog-v4-release/shadow-dispatch-response.json';
+          const payload = JSON.parse(readFileSync(path, 'utf8'));
+          if (payload.dispatched !== 1) {
+            throw new Error(`Expected exactly one dispatched event, received ${JSON.stringify(payload)}`);
+          }
+          if (payload.durableWorkflow !== 'blog-autopilot-v4') {
+            throw new Error(`Unexpected durable workflow: ${String(payload.durableWorkflow)}`);
+          }
+          if (payload.modelCalls !== 0 || payload.forcedManualDispatch !== true) {
+            throw new Error('Shadow dispatch did not remain a model-free, explicitly forced handoff');
+          }
+          if (!Array.isArray(payload.queueIds) || payload.queueIds.length !== 1) {
+            throw new Error('Shadow dispatch must identify exactly one queue row');
+          }
+          writeFileSync(
+            '.tmp/blog-v4-release/shadow-dispatch-summary.json',
+            `${JSON.stringify({
+              accepted: true,
+              dispatched: payload.dispatched,
+              durableWorkflow: payload.durableWorkflow,
+              queueId: payload.queueIds[0],
+              modelCallsAtDispatcher: payload.modelCalls,
+              forcedManualDispatch: payload.forcedManualDispatch,
+              dailyTarget: payload.dailyTarget,
+              remainingTodayBeforeDispatch: payload.remainingToday,
+              dayKey: payload.dayKey,
+            }, null, 2)}\n`,
+          );
+          console.log(`Accepted one draft-only Inngest shadow event for queue ${payload.queueIds[0]}`);
+          NODE
 
       - name: Enable pilot and deploy live candidate
         if: inputs.promote_live

@@ -80,4 +80,16 @@ describe('blog V4 protected production release workflow', () => {
     expect(candidateStep).toContain('npx vercel deploy --prod --skip-domain --yes');
     expect(candidateStep).not.toContain('npm run build');
   });
+
+  it('can dispatch one and only one draft-only Inngest shadow event', () => {
+    expect(source).toContain('run_shadow_smoke:');
+    expect(source).toContain('run_shadow_smoke requires an unaliased candidate deployment');
+    expect(source).toContain('run_shadow_smoke is draft-only and cannot be combined with live promotion');
+    expect(source).toContain('Dispatch exactly one draft-only Inngest shadow event');
+    expect(source).toContain('/api/cron/blog-generate?force=1&limit=1');
+    expect(source).toContain("payload.dispatched !== 1");
+    expect(source).toContain("payload.durableWorkflow !== 'blog-autopilot-v4'");
+    expect(source).toContain('payload.modelCalls !== 0');
+    expect(source).toContain('payload.queueIds.length !== 1');
+  });
 });
