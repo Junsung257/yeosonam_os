@@ -6,6 +6,7 @@ import type { DocumentIR } from '@/lib/product-registration-v4/types';
 import {
   applyDerivedExtractionPatches,
   assertDerivedExtractionChain,
+  bindPersistedDerivedExtractionId,
   createDerivedDocumentExtraction,
   createDerivedExtractionPatch,
   derivedExtractionLineageMetadata,
@@ -127,6 +128,8 @@ describe('derived extraction append-only contract', () => {
     });
     expect(retried.id).toBe(derived.id);
     expect(retried.contentHash).toBe(derived.contentHash);
+    expect(bindPersistedDerivedExtractionId(derived, '00000000-0000-0000-0000-000000000001').id)
+      .toBe('00000000-0000-0000-0000-000000000001');
   });
 
   it('fails closed when ownership evidence is stale or text replacement is ambiguous', () => {
