@@ -8,7 +8,7 @@ This file is generated from the repository. Do not edit it directly.
 |---|---:|
 | API routes | 728 |
 | App pages | 212 |
-| Supabase migrations | 563 |
+| Supabase migrations | 570 |
 | GitHub workflows | 35 |
 | Repository scripts | 337 |
 
@@ -783,13 +783,6 @@ This file is generated from the repository. Do not edit it directly.
 
 ## Recent migrations
 
-- supabase/migrations/20260824033911_clobe_mixed_outflow_allocations.sql
-- supabase/migrations/20260824052738_restrict_bank_transaction_allocation_rpc.sql
-- supabase/migrations/20260824081500_harden_clobe_settlement_command_table.sql
-- supabase/migrations/20260824221515_harden_clobe_sync_reconciliation_and_finalization.sql
-- supabase/migrations/20260825105630_harden_clobe_command_rls_and_fk_indexes.sql
-- supabase/migrations/20260825123855_enforce_clobe_unassigned_outflow_review.sql
-- supabase/migrations/20260825133902_link_9140000_customer_refund_to_booking.sql
 - supabase/migrations/20260828063117_media_assets_v1.sql
 - supabase/migrations/20260828090056_media_codex_worker_v1.sql
 - supabase/migrations/20260828103551_media_assets_rls_and_fk_hardening.sql
@@ -812,6 +805,13 @@ This file is generated from the repository. Do not edit it directly.
 - supabase/migrations/20260901092023_deactivate_orphaned_cron_policies.sql
 - supabase/migrations/20260901114420_blog_autopilot_v4_truth_and_lifecycle.sql
 - supabase/migrations/20260901155821_blog_autopilot_v4_seo_completion.sql
+- supabase/migrations/20260902005251_product_registration_benchmark_real_review_hashes.sql
+- supabase/migrations/20260902191000_product_registration_ai_review_attestation_consumption.sql
+- supabase/migrations/20260902223627_product_registration_image_fallback_evidence.sql
 - supabase/migrations/20260903024748_agent_runs_shadow_ledger.sql
+- supabase/migrations/20260903090000_product_registration_internal_rls_hardening.sql
+- supabase/migrations/20260903100000_product_registration_benchmark_session_rls_policy.sql
+- supabase/migrations/20260903100730_product_registration_image_fallback_rpc_bridge.sql
+- supabase/migrations/20260903102937_product_registration_image_fallback_binding_evidence.sql
 
 The complete deterministic inventory is stored in docs/generated/system-inventory.json.
