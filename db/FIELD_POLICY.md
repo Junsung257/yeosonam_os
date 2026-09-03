@@ -5,6 +5,25 @@
 
 ---
 
+## 🔐 Agent Office Shadow Run 필드
+
+`agent_runs`는 신규 실행 시도에 대한 비권위 관측 원장이다. `agent_tasks`의 업무 상태, `agent_trace_spans`의 기존 관측 증거, 승인·Command 원장을 대체하지 않는다.
+
+| 필드 | 의미 | 허용 | 금지 |
+|---|---|---|---|
+| `input_hash`, `output_hash`, `input_schema_hash` | 내용·스키마 무결성 식별자 | `sha256:<64 hex>` | 원문, URL, 파일 경로 |
+| `actor_id`, `actor_session_id` | 내부 불투명 감사 식별자 | 서비스/세션 ID | 이름, 이메일, 전화번호 등 PII |
+| `lease_token_hash` | 고엔트로피 Lease Secret의 SHA-256 | DB 내부 비교만 | 원문 토큰 저장·RPC 반환 |
+| `policy_snapshot` | 서버가 만든 비콘텐츠 정책 메타데이터 | 위험도·권한 금지·실행 모드 | Prompt, Tool Arguments, 모델 응답, 고객정보, Secret, Signed URL |
+| `budget_snapshot`, `max_*` | 계약 시점의 수치형 실행 한도 | 시간·Turn·Tool·Token·비용 | 자유 텍스트, 업무 내용 |
+| `output_artifact_ref` | 별도 원장을 가리키는 불투명 참조 | 내부 Artifact ID | 공개 URL, 로컬 경로, 결과 원문 |
+| `trace_id` | 기존 Trace와의 관측 연결 | 불투명 Trace ID | Trace 원문 복제 |
+| `authoritative`, `command_access_allowed`, `production_access` | 권위 경계 | 항상 `false` | 승격 또는 우회 |
+
+직접 테이블 권한은 `service_role`에도 부여하지 않는다. 생성·Lease·Heartbeat·상태 전이·완료는 제한된 RPC만 사용하며, Lease 이후 변경에는 Secret과 Fencing Token이 모두 필요하다. 과거 실행 Backfill과 추정 Run 생성은 금지한다.
+
+---
+
 ## 🔐 블로그 오토파읿 V4 운영 필드
 
 블로그 생성·검수·색인 원장은 모두 고객 미노출 `service_role` 전용이다. 원본 공급자 응답은 덮어쓰지 않고, 파생 판정만 추가한다.

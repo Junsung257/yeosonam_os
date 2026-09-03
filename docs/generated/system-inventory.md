@@ -8,7 +8,7 @@ This file is generated from the repository. Do not edit it directly.
 |---|---:|
 | API routes | 728 |
 | App pages | 212 |
-| Supabase migrations | 562 |
+| Supabase migrations | 563 |
 | GitHub workflows | 35 |
 | Repository scripts | 336 |
 
@@ -783,7 +783,6 @@ This file is generated from the repository. Do not edit it directly.
 
 ## Recent migrations
 
-- supabase/migrations/20260823235214_clobe_cash_settlement_commands.sql
 - supabase/migrations/20260824033911_clobe_mixed_outflow_allocations.sql
 - supabase/migrations/20260824052738_restrict_bank_transaction_allocation_rpc.sql
 - supabase/migrations/20260824081500_harden_clobe_settlement_command_table.sql
@@ -813,5 +812,6 @@ This file is generated from the repository. Do not edit it directly.
 - supabase/migrations/20260901092023_deactivate_orphaned_cron_policies.sql
 - supabase/migrations/20260901114420_blog_autopilot_v4_truth_and_lifecycle.sql
 - supabase/migrations/20260901155821_blog_autopilot_v4_seo_completion.sql
+- supabase/migrations/20260903024748_agent_runs_shadow_ledger.sql
 
 The complete deterministic inventory is stored in docs/generated/system-inventory.json.

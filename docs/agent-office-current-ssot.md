@@ -275,3 +275,29 @@ adding a worker or a second control plane.
   version review.
 - No API, migration, Inngest function, Runtime Adapter, or Provider change is
   part of PR-01A. PR-01B remains separately gated.
+
+## 12. Shadow Run Ledger Foundation
+
+PR-01B adds `agent_runs` for newly created execution attempts only. It is an
+audit shadow, not a second task engine.
+
+- `agent_tasks` remains the business-state SSOT and `agent_trace_spans` remains
+  existing execution-observation evidence.
+- `agent_runs` is permanently `shadow`, non-authoritative, command-disabled,
+  Production-disabled, and limited to public-classification input contracts.
+- No historical row is backfilled or inferred from legacy Trace/Action data.
+- Only the PR-01A `research.technology_scout` legacy binding can create a Run.
+  Adding another role requires a reviewed database migration.
+- Run creation serializes attempt allocation by locking the exact Task. Claiming
+  requires a preselected Run ID; there is no dequeue, dispatch, or worker-choice
+  query.
+- The raw Lease Secret is never persisted. Its SHA-256 digest and a monotonically
+  incremented Fencing Token protect heartbeat, transition, and completion calls.
+- Direct table privileges are denied even to `service_role`. Service-only,
+  pinned-search-path RPCs expose safe JSON that excludes the Lease digest.
+- Task/Trace reconciliation is diagnostic only. A result can be matched,
+  pending, or mismatched, but it never repairs Task state or promotes the Run.
+- Office KPI, retry decisions, worker authorization, approvals, and Commands do
+  not read this ledger in PR-01B.
+- The migration is verified only in Local/Preview Supabase. Applying it to the
+  Production database requires a separate approval.

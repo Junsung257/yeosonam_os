@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "taskId": "20260903-agent-office-pr01b-shadow-runs",
+  "agents": [
+    {
+      "id": "pr01b-owner",
+      "role": "implementation",
+      "write": [
+        "supabase/migrations/*_agent_runs_shadow_ledger.sql",
+        "supabase/tests/agent_runs_shadow.sql",
+        "src/lib/agent/run-ledger.ts",
+        "src/lib/agent/run-ledger.test.ts",
+        "db/FIELD_POLICY.md",
+        "docs/agent-office-current-ssot.md",
+        "docs/generated/system-inventory.md",
+        "docs/generated/system-inventory.json",
+        "docs/specs/20260903-agent-office-pr01b-shadow-runs/**"
+      ],
+      "readOnly": [
+        "AGENTS.md",
+        "CURRENT_STATUS.md",
+        ".cursor/rules/**",
+        ".claude/CLAUDE.md",
+        ".claude/rules/db-recipes.md",
+        "docs/agent-workflow-current-ssot.md",
+        "docs/ai-ops-current-ssot.md",
+        "docs/git-commit-handoff.md",
+        "docs/specs/20260903-agent-office-v2-pr00/**",
+        "docs/specs/20260903-agent-office-pr01a-contract-registry/**",
+        "src/lib/agent/contracts/**",
+        "src/lib/agent/envelope.ts",
+        "src/lib/agent/tasking.ts",
+        "src/lib/agent/task-machine.ts",
+        "src/lib/supabase.ts",
+        "supabase/migrations/20260504003000_agent_tasking_core.sql",
+        "supabase/migrations/20260529170000_agent_tasks.sql",
+        "supabase/migrations/20260530103000_agent_tasking_open_ready.sql",
+        "supabase/migrations/20260828090056_media_codex_worker_v1.sql",
+        "supabase/tests/blog_information_rls_matrix.sql",
+        "supabase/tests/blog_information_atomic_runtime.sql",
+        "supabase/tests/r16_privileged_rpc_execute.sql",
+        "scripts/check-agent-surfaces.mjs",
+        "package.json",
+        "tsconfig.json"
+      ],
+      "forbidden": [
+        ".github/**",
+        ".env*",
+        "package.json",
+        "package-lock.json",
+        "src/app/**",
+        "src/inngest/**",
+        "src/lib/ai-provider-policy.ts",
+        "src/lib/agent-action-executor.ts",
+        "src/lib/blog-ai-caller.ts",
+        "src/lib/blog-deepseek-orchestrator-v4.ts"
+      ]
+    },
+    {
+      "id": "pr01b-reviewer",
+      "role": "review",
+      "write": [],
+      "readOnly": ["**"],
+      "forbidden": []
+    }
+  ]
+}
