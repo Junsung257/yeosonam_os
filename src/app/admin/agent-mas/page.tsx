@@ -17,6 +17,7 @@ import {
 import { fmtDateTime, fmtNum } from '@/lib/admin-utils';
 import { EmptyState, PageHeader } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
+import TechnologyScoutPilotPanel from '@/components/admin/TechnologyScoutPilotPanel';
 import type {
   AgentOfficeRisk,
   AgentOfficeSnapshot,
@@ -589,6 +590,8 @@ export default function AgentMasPage() {
               ))}
             </div>
           )}
+
+          <TechnologyScoutPilotPanel />
 
           <div className="mt-5 flex flex-wrap items-center gap-1 border-b border-admin-border-mid">
             {([

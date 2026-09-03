@@ -336,15 +336,18 @@ describe('PR-01C Codex App Server boundary', () => {
       ephemeral: true,
       approvalPolicy: 'never',
       permissions: CODEX_READ_ONLY_PERMISSION_PROFILE,
+      reasoningEffort: 'low',
       runtimeWorkspaceRoots: [WORKSPACE_ROOT],
     });
     expect(turnStart?.params).toMatchObject({
       approvalPolicy: 'never',
       permissions: CODEX_READ_ONLY_PERMISSION_PROFILE,
+      reasoningEffort: 'low',
       runtimeWorkspaceRoots: [WORKSPACE_ROOT],
     });
     expect(threadStart?.params).not.toHaveProperty('sandbox');
     expect(turnStart?.params).not.toHaveProperty('sandboxPolicy');
+    expect(JSON.stringify(turnStart?.params)).not.toContain('"format":"uri"');
     expect(JSON.stringify(fixture.connection.messages)).not.toContain(validStartInput().capabilityToken);
     expect(ROLE_OPERATIONAL_BINDINGS['research.technology_scout']).toMatchObject({
       state: 'contract_only',

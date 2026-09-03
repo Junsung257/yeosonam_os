@@ -61,7 +61,7 @@ export function getAgentOfficeReadiness(): AgentOfficeReadiness {
     phase: safeShadowContract ? 'foundation-shadow' : 'blocked',
     label: safeShadowContract ? 'Foundation · Shadow 읽기 전용' : 'Foundation 계약 확인 필요',
     description: safeShadowContract
-      ? 'Technology Scout 1개 역할만 수동 실행할 수 있는 관찰 전용 Foundation입니다.'
+      ? 'Technology Scout 1개 역할의 계약·차단 상태를 확인하는 관찰 전용 Foundation입니다.'
       : '계약·권한 경계가 확인되지 않아 AI 운영실 실행을 잠갔습니다.',
     canWrite: false,
     autonomousLoop: false,

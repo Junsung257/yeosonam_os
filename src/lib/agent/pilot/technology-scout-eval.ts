@@ -30,6 +30,11 @@ export const TechnologyScoutProtocolAttestationV1Schema = z.object({
   generatedSchemaHash: z.string().regex(SHA256),
   authMode: z.literal('chatgpt'),
   restrictedReadableRootsSupported: z.boolean(),
+  permissionProfileId: z.string().trim().min(1).max(120).nullable().optional(),
+  networkAccessDisabled: z.boolean().optional(),
+  ephemeralThreadSupported: z.boolean().optional(),
+  optionalCapabilitySurfacesDisabled: z.boolean().optional(),
+  errorCode: z.string().trim().min(1).max(120).nullable().optional(),
   checkedAt: z.string().datetime({ offset: true }),
 }).strict();
 

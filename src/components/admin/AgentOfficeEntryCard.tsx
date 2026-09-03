@@ -64,7 +64,7 @@ export default function AgentOfficeEntryCard() {
   const label = state === 'error' ? '상태 확인 필요' : status?.label ?? 'Foundation · Shadow 읽기 전용';
   const description = state === 'error'
     ? '운영실 상태를 확인할 수 없습니다. 페이지에서 다시 확인하세요.'
-    : status?.description ?? 'Technology Scout 1개 역할만 수동 실행할 수 있는 관찰 전용 Foundation입니다.';
+    : status?.description ?? 'Technology Scout 1개 역할의 계약·차단 상태를 확인하는 관찰 전용 Foundation입니다.';
 
   return (
     <Link

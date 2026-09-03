@@ -1,0 +1,7 @@
+- [x] Protocol attestation helper (no model turn)
+- [x] Foundation fixture readiness summary
+- [x] Read-only pilot readiness API
+- [x] Admin Pilot panel
+- [x] Unit/API/UI verification
+- [ ] PR/CI/Vercel verification
+- [ ] Human approval for preview/production `agent_runs` migration
