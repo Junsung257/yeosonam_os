@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "tier": 3,
+  "status": "active",
+  "owner": "platform-engineering",
+  "baseline_commit": "bc3f8949470d75910bd9f2f36ec3747780b2a5bd",
+  "review_file": "review.md",
+  "surface_map_version": 1,
+  "verified_commit": null,
+  "verification": [
+    "npm run check:agent-surfaces -- --spec 20260903-agent-office-pr01b-shadow-runs --agent pr01b-owner --base bc3f8949470d75910bd9f2f36ec3747780b2a5bd",
+    "npx vitest run src/lib/agent/run-ledger.test.ts",
+    "npx supabase test db supabase/tests/agent_runs_shadow.sql",
+    "npm run type-check",
+    "npm run check:agent-workflow:ci",
+    "npm run audit:llm-telemetry:ci",
+    "npm run check:harness"
+  ],
+  "evidence_paths": [
+    "review.md"
+  ]
+}

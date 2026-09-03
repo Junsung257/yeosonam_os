@@ -1507,7 +1507,8 @@
     "supabase/migrations/20260901091853_retire_broken_expire_products_cron.sql",
     "supabase/migrations/20260901092023_deactivate_orphaned_cron_policies.sql",
     "supabase/migrations/20260901114420_blog_autopilot_v4_truth_and_lifecycle.sql",
-    "supabase/migrations/20260901155821_blog_autopilot_v4_seo_completion.sql"
+    "supabase/migrations/20260901155821_blog_autopilot_v4_seo_completion.sql",
+    "supabase/migrations/20260903024748_agent_runs_shadow_ledger.sql"
   ],
   "workflows": [
     ".github/workflows/ai-code-review.yml",
