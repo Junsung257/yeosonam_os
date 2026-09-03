@@ -1,6 +1,13 @@
 # Product Registration Current SSOT
 
-Last updated: 2026-09-03
+Last updated: 2026-09-04
+
+## V6 evidence recovery PR-V6-03 derived extraction boundary (2026-09-04, code-ready / runtime OFF)
+
+- Recovery or review corrections now have an immutable `DerivedDocumentExtractionV1` contract. It applies only an explicitly addressed table cell, updates the matching IR node and quote hash together, and rejects stale evidence, duplicate cell patches, no-op patches, or ambiguous repeated text.
+- The child extraction keeps `parentExtractionId`, `parentExtractionHash`, `supersedesExtractionId`, `patchHash`, `contentHash`, source hash, derivation type, and reviewer/worker identity. It reuses the existing append-only `product_document_extractions` ledger through `quality_diagnostics.derivedExtraction`; the persistence helper verifies the source and parent before insert and never updates the parent row.
+- `normalizeDerivedExtraction` re-runs the canonical compiler against the child IR under `analysis_only`. It returns a shadow normalization for validator/recovery comparison and has no Revision, Snapshot, Publication Pointer, or customer authority.
+- This change does not connect OCR/reviewer decisions to automatic publication. Provider consensus, human receipts, dual review, mobile proof, and source-lane canary gates remain required; global `publication_freeze=true` remains mandatory.
 
 ## V6 evidence recovery PR-V6-01 analysis boundary (2026-09-03, code-ready / runtime OFF)
 
@@ -8,7 +15,7 @@ Last updated: 2026-09-03
 - `RecoveryTargetV1` preserves the source/extraction hash lineage, zero-based page/section/table/cell coordinates, cell quote evidence, candidate source axes/values, reason codes, a deterministic business idempotency key, and the required surrounding render context. A normal native merged cell is authoritative and does not trigger OCR by itself; invalid coordinates, grid overlap, evidence-hash mismatch, parser structural warnings, canonical conflicts, and ambiguous/unbound price ownership do.
 - Canonical required fields with a source signal but no safe normalized value become recovery targets. Required fields with no signal in the source are kept separately as `sourceInsufficientFields`; image/OCR recovery must not invent them.
 - Source price axes bind to canonical variants only through complete compatible price-fact sets and a one-to-one relationship. Equal values in different source tables, grades, carriers, or durations remain ambiguous.
-- `PRODUCT_REGISTRATION_V6_ANALYSIS_RECOVERY_PREVIEW_ENABLED` defaults to `0`. When explicitly enabled, the current PR-V6-01 branch records analysis and recovery targets, then terminates `blocked_action_required` before the existing Revision normalization path. It suppresses review-alert/correction side effects in this preview. PR-V6-02 must add renderer/OCR orchestration before this flag can be used operationally.
+- `PRODUCT_REGISTRATION_V6_ANALYSIS_RECOVERY_PREVIEW_ENABLED` defaults to `0`. When explicitly enabled, the current PR-V6-01 branch records analysis and recovery targets, then terminates `blocked_action_required` before the existing Revision normalization path. It suppresses review-alert/correction side effects in this preview. PR-V6-02 now supplies the local OCR provider boundary, but the feature remains runtime-off until the derived-extraction, review, proof, and canary gates are complete.
 - This change adds no Supabase migration and performs no production database, deployment, Revision, Snapshot, or customer pointer write. Global `publication_freeze=true` remains mandatory.
 
 ## V158 customer read-boundary convergence and production mobile proof (2026-09-01, latest)
