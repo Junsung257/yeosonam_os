@@ -124,13 +124,13 @@ class MigrationChecker {
 
   checkLockHeavyOps() {
     const createdTables = new Set([...this.normalizedContent.matchAll(
-      /create table (?:if not exists )?(?:public\.)?(\w+)\s*\(/g,
+      /create table (?:if not exists )?(?:\w+\.)?(\w+)\s*\(/g,
     )].map((match) => match[1]));
     this.content.split('\n').forEach((line, index, lines) => {
       const cleanLine = line.replace(/--.*$/, '').trim();
       if (/CREATE\s+(?:UNIQUE\s+)?INDEX(?!\s+CONCURRENTLY)/i.test(cleanLine)) {
         const statement = lines.slice(index, index + 8).join(' ').split(';')[0];
-        const table = statement.match(/\bON\s+(?:public\.)?(\w+)\s*\(/i)?.[1]?.toLowerCase();
+        const table = statement.match(/\bON\s+(?:\w+\.)?(\w+)\s*\(/i)?.[1]?.toLowerCase();
         if (!table || !createdTables.has(table)) this.addIssue(SEVERITY.HIGH, 'lock-heavy', 'CREATE INDEX on an existing table must use CONCURRENTLY', index + 1);
       }
       if (/ALTER\s+TABLE[^;]+ADD\s+COLUMN[^;]+NOT\s+NULL(?![^;]*\bDEFAULT\b)/i.test(cleanLine)) {

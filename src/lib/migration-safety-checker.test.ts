@@ -69,6 +69,30 @@ describe('migration safety checker', () => {
       .not.toContainEqual(expect.objectContaining({ type: 'foreign-key-index' }));
   });
 
+  it('recognizes tables created in a custom schema before checking their indexes', () => {
+    const migration = `
+      CREATE TABLE internal_product_registration.image_fallback_runs (
+        id uuid PRIMARY KEY,
+        source_id uuid NOT NULL
+      );
+      ALTER TABLE internal_product_registration.image_fallback_runs ENABLE ROW LEVEL SECURITY;
+      CREATE POLICY image_fallback_runs_service
+        ON internal_product_registration.image_fallback_runs
+        FOR ALL TO service_role USING (true);
+      CREATE INDEX idx_image_fallback_runs_source
+        ON internal_product_registration.image_fallback_runs(source_id);
+    `;
+    const issues = new checker.MigrationChecker('20260101000000_custom_schema.sql', migration).run();
+    expect(issues).not.toContainEqual(expect.objectContaining({ type: 'lock-heavy' }));
+
+    const existingTableIndex = `
+      CREATE INDEX idx_image_fallback_runs_source
+        ON internal_product_registration.image_fallback_runs(source_id);
+    `;
+    expect(new checker.MigrationChecker('20260101000001_existing_custom_schema.sql', existingTableIndex).run())
+      .toContainEqual(expect.objectContaining({ severity: 'high', type: 'lock-heavy' }));
+  });
+
   it('returns nonzero for HIGH and CRITICAL findings', () => {
     expect(checker.determineExitCode({ files: [{ issues: [{ severity: 'high' }] }] })).toBe(1);
     expect(checker.determineExitCode({ files: [{ issues: [{ severity: 'critical' }] }] })).toBe(1);

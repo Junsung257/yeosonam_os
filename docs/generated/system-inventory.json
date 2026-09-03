@@ -1508,7 +1508,14 @@
     "supabase/migrations/20260901092023_deactivate_orphaned_cron_policies.sql",
     "supabase/migrations/20260901114420_blog_autopilot_v4_truth_and_lifecycle.sql",
     "supabase/migrations/20260901155821_blog_autopilot_v4_seo_completion.sql",
-    "supabase/migrations/20260903024748_agent_runs_shadow_ledger.sql"
+    "supabase/migrations/20260902005251_product_registration_benchmark_real_review_hashes.sql",
+    "supabase/migrations/20260902191000_product_registration_ai_review_attestation_consumption.sql",
+    "supabase/migrations/20260902223627_product_registration_image_fallback_evidence.sql",
+    "supabase/migrations/20260903024748_agent_runs_shadow_ledger.sql",
+    "supabase/migrations/20260903090000_product_registration_internal_rls_hardening.sql",
+    "supabase/migrations/20260903100000_product_registration_benchmark_session_rls_policy.sql",
+    "supabase/migrations/20260903100730_product_registration_image_fallback_rpc_bridge.sql",
+    "supabase/migrations/20260903102937_product_registration_image_fallback_binding_evidence.sql"
   ],
   "workflows": [
     ".github/workflows/ai-code-review.yml",
