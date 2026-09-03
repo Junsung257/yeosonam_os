@@ -253,3 +253,25 @@ before backend execution is enabled.
 
 The references and decision comparison are preserved in
 `docs/specs/20260728-agent-operations-office/spec.md`.
+
+## 11. Foundation Contract Registry
+
+PR-01A adds repository-owned contracts under `src/lib/agent/contracts` without
+adding a worker or a second control plane.
+
+- The initial Role and Task are both `research.technology_scout@1.0.0`.
+- Repository definitions and operational bindings are separate. The initial
+  binding is `contract_only` with execution disabled.
+- The compatibility adapter maps this Role to existing
+  `agent_type=system` and `specialist_id=research.technology_scout`; it does not
+  reinterpret other legacy tasks.
+- The initial Tool Profile contains zero tools, credentials, network hosts,
+  Commands, writes, destructive operations, or Production access.
+- Existing `ACTION_REGISTRY` rows are compatibility-only views. The new Office
+  Command Registry is empty, including no `office.cancel_task`.
+- Work Product, Review Receipt, Runtime Result, Reason Code, and design-only
+  Command Receipt schemas are strict and versioned. Schema references carry a
+  generated JSON Schema hash so semantic drift requires an explicit contract
+  version review.
+- No API, migration, Inngest function, Runtime Adapter, or Provider change is
+  part of PR-01A. PR-01B remains separately gated.

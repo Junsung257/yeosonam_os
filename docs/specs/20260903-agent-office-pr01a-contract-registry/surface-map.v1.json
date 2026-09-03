@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "taskId": "20260903-agent-office-pr01a-contract-registry",
+  "agents": [
+    {
+      "id": "pr01a-owner",
+      "role": "implementation",
+      "write": [
+        "src/lib/agent/contracts/**",
+        "docs/agent-office-current-ssot.md",
+        "docs/specs/20260903-agent-office-pr01a-contract-registry/**"
+      ],
+      "readOnly": [
+        "AGENTS.md",
+        "CURRENT_STATUS.md",
+        ".cursor/rules/**",
+        ".claude/CLAUDE.md",
+        "docs/agent-workflow-current-ssot.md",
+        "docs/ai-ops-current-ssot.md",
+        "docs/git-commit-handoff.md",
+        "docs/specs/20260903-agent-office-v2-pr00/**",
+        "src/lib/agent/envelope.ts",
+        "src/lib/agent/tasking.ts",
+        "src/lib/agent/task-machine.ts",
+        "src/lib/agent/task-machine.test.ts",
+        "src/lib/jarvis/**",
+        "src/lib/agent-action-registry.ts",
+        "src/lib/agent-action-registry.test.ts",
+        "scripts/check-agent-surfaces.mjs",
+        "package.json",
+        "tsconfig.json"
+      ],
+      "forbidden": [
+        ".github/**",
+        ".env*",
+        "package.json",
+        "package-lock.json",
+        "supabase/**",
+        "src/app/**",
+        "src/inngest/**",
+        "src/lib/ai-provider-policy.ts",
+        "src/lib/agent-action-registry.ts",
+        "src/lib/agent-action-executor.ts",
+        "src/lib/blog-ai-caller.ts",
+        "src/lib/blog-deepseek-orchestrator-v4.ts"
+      ]
+    },
+    {
+      "id": "pr01a-reviewer",
+      "role": "review",
+      "write": [],
+      "readOnly": ["**"],
+      "forbidden": []
+    }
+  ]
+}
