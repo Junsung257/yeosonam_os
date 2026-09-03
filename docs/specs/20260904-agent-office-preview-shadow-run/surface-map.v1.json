@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "taskId": "20260904-agent-office-preview-shadow-run",
+  "agents": [
+    {
+      "id": "codex",
+      "role": "implementation",
+      "write": [
+        "docs/env-variables-reference.md",
+        "docs/agent-office-current-ssot.md",
+        "docs/specs/20260904-agent-office-preview-shadow-run/**",
+        "docs/generated/system-inventory.json",
+        "docs/generated/system-inventory.md",
+        "src/app/api/admin/agent/office/pilot/shadow/**",
+        "src/app/api/admin/agent/office/pilot-readiness/**",
+        "src/components/admin/TechnologyScoutPilotPanel.tsx",
+        "src/lib/agent/pilot/**"
+      ],
+      "readOnly": ["supabase/migrations/**"],
+      "forbidden": ["src/lib/agent/commands/**", "Production DB migration", "external installation"]
+    }
+  ]
+}

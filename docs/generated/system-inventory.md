@@ -6,7 +6,7 @@ This file is generated from the repository. Do not edit it directly.
 
 | Kind | Count |
 |---|---:|
-| API routes | 735 |
+| API routes | 736 |
 | App pages | 212 |
 | Supabase migrations | 571 |
 | GitHub workflows | 35 |
@@ -119,6 +119,7 @@ This file is generated from the repository. Do not edit it directly.
 - src/app/api/admin/agent/approvals/route.ts
 - src/app/api/admin/agent/incidents/route.ts
 - src/app/api/admin/agent/office/pilot-readiness/route.ts
+- src/app/api/admin/agent/office/pilot/shadow/route.ts
 - src/app/api/admin/agent/office/route.ts
 - src/app/api/admin/agent/office/status/route.ts
 - src/app/api/admin/agent/tasks/route.ts

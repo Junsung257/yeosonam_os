@@ -304,8 +304,9 @@ audit shadow, not a second task engine.
 
 ## 13. Inactive Read-only Runtime Boundary
 
-PR-01C adds an implementation boundary for the Codex subscription Runtime but
-does not enable its operational binding or add a caller.
+PR-01C adds an implementation boundary for the Codex subscription Runtime. The
+operational binding remains disabled; a later Preview-only manual caller may
+exercise the adapter only under the separate Shadow Pilot gates below.
 
 - `AgentRuntimeAdapter` is limited to `health`, `start`, and Runtime-only
   `cancel`; cancellation uses App Server `turn/interrupt` and cannot update a
@@ -330,12 +331,41 @@ does not enable its operational binding or add a caller.
   output token usage above the registered budget interrupts the turn and cannot
   produce a successful Artifact.
 - Successful output must pass the registered Technology Radar payload schema
-  and an injected content-addressed shadow Artifact sink. PR-01C provides no
-  sink, API, workflow, queue selection, or automatic dispatch implementation.
+  and an injected content-addressed shadow Artifact sink. The Preview-only
+  manual pilot route wires this adapter to the existing `agent_tasks.result_payload`
+  field with an explicit `shadowOnly` marker; it is disabled in Production,
+  requires `AGENT_OFFICE_SHADOW_PILOT_ENABLED=1`, and never performs dispatch,
+  Commands, publication, or external writes.
 - The existing Provider-policy wrapper returns only Provider, model, fallback,
   timeout, and policy source. It never returns credentials and accepts only the
   Technology Scout task. `AiProvider` and the Blog DeepSeek-only lane are
   unchanged.
+
+## 15. Preview-only Technology Scout execution
+
+The first operational caller is deliberately one manual, one-case route:
+`POST /api/admin/agent/office/pilot/shadow`. It is not a queue or a Cron.
+
+- The route is platform-admin protected and accepts only one of the 30 pinned
+  fixture case IDs; arbitrary URLs, prompts, tenants, or Tool profiles are not
+  accepted.
+- It checks the deployment environment, Preview Supabase configuration, and the
+  presence of `public.agent_runs` before inserting anything. Production and an
+  unconfigured Preview fail closed before a Task write.
+- The sequence is `agent_tasks` (queued → running → done/failed) → create/claim
+  shadow Run → lease transitions → read-only Codex Runtime → content-addressed
+  result → Run completion → Task completion. A duplicate business idempotency key
+  returns `duplicate` without starting a second Run.
+- The child receives only an ephemeral read-only capability, allowlisted public
+  fixture artifacts, no tools, no MCP/Skill/App/browser/shell surfaces, and an
+  allowlisted environment. The raw capability token and raw model prompt are not
+  persisted.
+- The Admin Pilot panel shows the execution lock, a Preview-only trigger, and
+  recent shadow result metadata. `agent_runs` remains excluded from KPI,
+  retry, authorization, approval, and Command authority.
+- Enabling the Preview toggle is a separate operator action after applying the
+  migration to a non-Production Supabase project. No Production migration or
+  external installation is implied by this route.
 
 ## 14. Technology Scout Foundation Preflight
 

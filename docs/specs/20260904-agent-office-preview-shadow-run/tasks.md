@@ -1,0 +1,8 @@
+- [x] Preview/Production 환경 fail-closed gate
+- [x] 고정 fixture 단일 Case allowlist
+- [x] agent_tasks idempotent create 및 상태 전이
+- [x] shadow agent_runs create/claim/transition/complete 연결
+- [x] Codex read-only capability·artifact sink 연결
+- [x] Admin 수동 실행 버튼·최근 결과 표시
+- [x] Unit·TypeScript·workflow contract 검증
+- [ ] Preview Supabase에 migration 적용 및 20건/3 trial/사람 검토 게이트

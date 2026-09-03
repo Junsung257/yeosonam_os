@@ -1,9 +1,21 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { CheckCircle2, Clock, PauseCircle, RefreshCw, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, Clock, PauseCircle, PlayCircle, RefreshCw, ShieldCheck } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import type { TechnologyScoutPilotReadiness } from '@/lib/agent/pilot';
+
+type RecentScoutCase = {
+  taskId: string | null;
+  caseId: string | null;
+  status: string;
+  shadowOnly: boolean;
+  decision: string | null;
+  projectName: string | null;
+  outputHash: string | null;
+  errorCode: string | null;
+  updatedAt: string | null;
+};
 
 function GateIcon({ state }: { state: 'pass' | 'blocked' | 'not_checked' }) {
   if (state === 'pass') return <CheckCircle2 size={15} className="text-emerald-600" aria-hidden="true" />;
@@ -19,6 +31,9 @@ export default function TechnologyScoutPilotPanel() {
   const [readiness, setReadiness] = useState<TechnologyScoutPilotReadiness | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+  const [runMessage, setRunMessage] = useState<string | null>(null);
+  const [recentCases, setRecentCases] = useState<RecentScoutCase[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -28,12 +43,39 @@ export default function TechnologyScoutPilotPanel() {
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Pilot 상태를 불러오지 못했습니다.');
       setReadiness(data as TechnologyScoutPilotReadiness);
+      const recentResponse = await fetch('/api/admin/agent/office/pilot/shadow', { cache: 'no-store' });
+      if (recentResponse.ok) {
+        const recentData = await recentResponse.json();
+        setRecentCases(Array.isArray(recentData?.recentCases) ? recentData.recentCases as RecentScoutCase[] : []);
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Pilot 상태를 불러오지 못했습니다.');
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const runPreviewPilot = useCallback(async () => {
+    setRunning(true);
+    setRunMessage(null);
+    try {
+      const response = await fetch('/api/admin/agent/office/pilot/shadow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caseId: 'TS-001' }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || 'Preview Pilot을 실행하지 못했습니다.');
+      setRunMessage(data.status === 'succeeded'
+        ? `TS-001 실행 완료 · run ${data.runId ?? '—'}`
+        : data.status === 'duplicate' ? 'TS-001은 이미 실행된 Business Task입니다.' : `실행 결과: ${data.status}`);
+      await load();
+    } catch (runError) {
+      setRunMessage(runError instanceof Error ? runError.message : 'Preview Pilot을 실행하지 못했습니다.');
+    } finally {
+      setRunning(false);
+    }
+  }, [load]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -55,6 +97,52 @@ export default function TechnologyScoutPilotPanel() {
           상태 새로고침
         </Button>
       </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2 rounded-admin-sm border border-slate-700 bg-slate-900/70 px-3 py-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold text-slate-200">수동 Preview 실행</p>
+          <p className="mt-0.5 text-[10px] text-slate-400">TS-001 고정 · 공개 근거만 사용 · 외부 쓰기 0 · Production 영구 차단</p>
+        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => void runPreviewPilot()}
+          loading={running}
+          disabled={!readiness?.execution?.enabled || loading}
+          className="border-emerald-400/30 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <PlayCircle size={13} aria-hidden="true" />
+          {readiness?.execution?.enabled ? 'Preview에서 실행' : 'Preview 잠금'}
+        </Button>
+      </div>
+      {runMessage && <p className="mt-2 rounded-admin-sm border border-slate-700 bg-slate-900/60 px-3 py-2 text-[11px] text-slate-300">{runMessage}</p>}
+
+      {recentCases.length > 0 && (
+        <div className="mt-3 overflow-x-auto rounded-admin-sm border border-slate-700">
+          <table className="min-w-[620px] w-full text-left text-[10px]">
+            <thead className="bg-slate-900 text-slate-400">
+              <tr>
+                <th className="px-3 py-2 font-medium">Case</th>
+                <th className="px-3 py-2 font-medium">Project</th>
+                <th className="px-3 py-2 font-medium">결과</th>
+                <th className="px-3 py-2 font-medium">Hash</th>
+                <th className="px-3 py-2 font-medium">상태</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-700 bg-slate-950 text-slate-300">
+              {recentCases.map((item) => (
+                <tr key={item.taskId ?? `${item.caseId}-${item.updatedAt}`}>
+                  <td className="px-3 py-2 font-mono">{item.caseId ?? '—'}</td>
+                  <td className="px-3 py-2">{item.projectName ?? '—'}</td>
+                  <td className="px-3 py-2 font-semibold">{item.decision ?? item.errorCode ?? '—'}</td>
+                  <td className="max-w-[180px] truncate px-3 py-2 font-mono text-slate-500">{item.outputHash ?? '—'}</td>
+                  <td className="px-3 py-2">{item.shadowOnly ? `SHADOW · ${item.status}` : item.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {error && <p className="mt-3 rounded-admin-sm border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-[11px] text-rose-200">{error}</p>}
       {loading && !readiness ? (
