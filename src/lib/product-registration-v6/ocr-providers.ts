@@ -1,6 +1,14 @@
+import { execFile as execFileCallback } from 'node:child_process';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
+
 import { google } from 'googleapis';
 
 import { getSecret, type SecretKey } from '@/lib/secret-registry';
+
+const execFile = promisify(execFileCallback);
 
 export type OcrLayoutNode = {
   text: string;
@@ -21,7 +29,7 @@ export type OcrTableCell = {
 export type OcrPage = { page: number; text: string; nodes?: OcrLayoutNode[]; tables?: Array<{ cells: OcrTableCell[] }> };
 
 export type OcrProviderOutput = {
-  provider: 'clova' | 'google-document-ai';
+  provider: 'clova' | 'google-document-ai' | 'paddleocr-local' | 'tesseract-local';
   text: string;
   pages: OcrPage[];
   criticalTokens: string[];
@@ -35,19 +43,42 @@ export type CrossValidatedOcrOutput = {
   parserEngine: string;
   parserVersion: string;
   criticalTokens: string[];
-  providerResults: Array<{ provider: string; criticalTokens: string[]; costKrw: number }>;
+  providerResults: Array<{
+    provider: string;
+    criticalTokens: string[];
+    costKrw: number;
+    modelVersion?: string;
+  }>;
   totalCostKrw: number;
 };
 
 export function extractOcrCriticalTokens(text: string): string[] {
-  const prices = text.match(/(?:₩|KRW\s*)?\d{1,3}(?:,\d{3})+(?:\s*원)?/g) ?? [];
+  const prices = text.match(/(?:₩|￦|KRW|USD|\$)?\s*\d{1,3}(?:,\d{3})+(?:\s*(?:원|달러|USD))?/giu) ?? [];
+  const unformattedPrices = text.match(/(?:₩|￦|KRW|USD|\$)\s*\d{4,7}(?:\s*(?:원|달러|USD))?|\d{4,7}\s*원/giu) ?? [];
   const dates = text.match(/(?:20\d{2}[./-])?\d{1,2}[./-]\d{1,2}/g) ?? [];
   const flights = text.match(/\b(?:[A-Z]{2,3}|[A-Z]\d|\d[A-Z])\s?\d{2,4}[A-Z]?\b/g) ?? [];
-  return [...new Set([...prices, ...dates, ...flights].map(value => value.replace(/\s+/g, '').toUpperCase()))].sort();
+  return [...new Set([...prices, ...unformattedPrices, ...dates, ...flights]
+    .map(value => value.replace(/\s+/g, '').toUpperCase()))].sort();
+}
+
+function canonicalCriticalToken(token: string): string {
+  const normalized = token.normalize('NFKC').replace(/\s+/g, '').toUpperCase();
+  if (/^(?:20\d{2}[./-])?\d{1,2}[./-]\d{1,2}$/.test(normalized)) {
+    return `date:${normalized.replace(/[./-]/g, '-')}`;
+  }
+  if (/(?:₩|￦|KRW|USD|\$|원|달러)/.test(normalized) || /^\d{1,3}(?:,\d{3})+$/.test(normalized)) {
+    const digits = normalized.replace(/\D/g, '');
+    if (digits.length >= 4) return `price:${digits}`;
+  }
+  if (/^(?:[A-Z]{2,3}|[A-Z]\d|\d[A-Z])\d{2,4}[A-Z]?$/.test(normalized)) {
+    return `flight:${normalized}`;
+  }
+  return `raw:${normalized}`;
 }
 
 export function ocrCriticalTokensMatch(primary: string[], secondary: string[]): boolean {
-  return [...new Set(primary)].sort().join('|') === [...new Set(secondary)].sort().join('|');
+  return [...new Set(primary.map(canonicalCriticalToken))].sort().join('|')
+    === [...new Set(secondary.map(canonicalCriticalToken))].sort().join('|');
 }
 
 function mimeFormat(filename: string, mime: string): string {
@@ -59,6 +90,202 @@ function mimeFormat(filename: string, mime: string): string {
 function cost(name: SecretKey): number {
   const parsed = Number(getSecret(name) ?? 0);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+export type OcrProviderMode = 'local' | 'cloud';
+
+export function getOcrProviderMode(): OcrProviderMode {
+  return getSecret('PRODUCT_REGISTRATION_OCR_PROVIDER_MODE')?.toLowerCase() === 'cloud'
+    ? 'cloud'
+    : 'local';
+}
+
+type LocalOcrKind = 'paddleocr-local' | 'tesseract-local';
+
+function localOcrSetting(kind: LocalOcrKind): {
+  commandKey: SecretKey;
+  argsKey: SecretKey;
+  versionKey: SecretKey;
+  missingCode: string;
+} {
+  if (kind === 'paddleocr-local') {
+    return {
+      commandKey: 'PADDLEOCR_LOCAL_COMMAND',
+      argsKey: 'PADDLEOCR_LOCAL_ARGS_JSON',
+      versionKey: 'PADDLEOCR_LOCAL_VERSION',
+      missingCode: 'PADDLEOCR_LOCAL_COMMAND_MISSING',
+    };
+  }
+  return {
+    commandKey: 'TESSERACT_LOCAL_COMMAND',
+    argsKey: 'TESSERACT_LOCAL_ARGS_JSON',
+    versionKey: 'TESSERACT_LOCAL_VERSION',
+    missingCode: 'TESSERACT_LOCAL_COMMAND_MISSING',
+  };
+}
+
+function localOcrArgs(kind: LocalOcrKind): string[] {
+  const setting = localOcrSetting(kind);
+  const raw = getSecret(setting.argsKey);
+  if (!raw) return kind === 'tesseract-local'
+    ? ['{input}', 'stdout', '-l', 'kor+eng', '--psm', '6']
+    : ['{input}'];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(`${kind.toUpperCase().replaceAll('-', '_')}_ARGS_JSON_INVALID`);
+  }
+  if (!Array.isArray(parsed) || parsed.length > 32 || parsed.some(value => typeof value !== 'string' || value.length > 2_000)) {
+    throw new Error(`${kind.toUpperCase().replaceAll('-', '_')}_ARGS_JSON_INVALID`);
+  }
+  return parsed as string[];
+}
+
+function localOcrInputExtension(filename: string, mime: string): string {
+  if (mime.includes('pdf') || filename.toLowerCase().endsWith('.pdf')) return 'pdf';
+  if (mime.includes('png') || filename.toLowerCase().endsWith('.png')) return 'png';
+  return 'jpg';
+}
+
+function localOcrPages(value: unknown): OcrPage[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((page, pageIndex) => {
+    const record = page && typeof page === 'object' ? page as Record<string, unknown> : {};
+    const nodes: OcrLayoutNode[] = [];
+    if (Array.isArray(record.nodes)) {
+      for (const node of record.nodes) {
+        const item = node && typeof node === 'object' ? node as Record<string, unknown> : {};
+        const text = String(item.text ?? '').trim();
+        if (!text) continue;
+        nodes.push({
+          text,
+          confidence: Number.isFinite(Number(item.confidence)) ? Number(item.confidence) : null,
+          boundingBox: item.boundingBox ?? null,
+        });
+      }
+    }
+    const tables: Array<{ cells: OcrTableCell[] }> = [];
+    if (Array.isArray(record.tables)) {
+      for (const table of record.tables) {
+        const tableRecord = table && typeof table === 'object' ? table as Record<string, unknown> : {};
+        const cells: OcrTableCell[] = [];
+        if (Array.isArray(tableRecord.cells)) {
+          for (const [cellIndex, cell] of tableRecord.cells.entries()) {
+            const item = cell && typeof cell === 'object' ? cell as Record<string, unknown> : {};
+            const text = String(item.text ?? '').trim();
+            if (!text) continue;
+            const row = Number(item.row ?? 0);
+            const column = Number(item.column ?? cellIndex);
+            const rowSpan = Number(item.rowSpan ?? 1);
+            const colSpan = Number(item.colSpan ?? 1);
+            cells.push({
+              row: Number.isFinite(row) ? Math.max(0, row) : 0,
+              column: Number.isFinite(column) ? Math.max(0, column) : cellIndex,
+              rowSpan: Number.isFinite(rowSpan) ? Math.max(1, rowSpan) : 1,
+              colSpan: Number.isFinite(colSpan) ? Math.max(1, colSpan) : 1,
+              text,
+              confidence: Number.isFinite(Number(item.confidence)) ? Number(item.confidence) : null,
+              boundingBox: item.boundingBox ?? null,
+            });
+          }
+        }
+        if (cells.length > 0) tables.push({ cells });
+      }
+    }
+    const text = String(record.text ?? '').trim() || nodes.map(node => node.text).join(' ').trim();
+    const pageNumber = Number(record.page ?? pageIndex + 1);
+    return { page: Number.isFinite(pageNumber) ? Math.max(1, pageNumber) : pageIndex + 1, text, nodes, tables };
+  }).filter(page => Boolean(page.text || page.nodes.length || page.tables.length));
+}
+
+export function parseLocalOcrOutput(input: {
+  kind: LocalOcrKind;
+  stdout: string;
+  modelVersion?: string | null;
+}): OcrProviderOutput {
+  const stdout = input.stdout.trim();
+  if (stdout.length > 4 * 1024 * 1024) throw new Error('LOCAL_OCR_OUTPUT_TOO_LARGE');
+  let parsed: Record<string, unknown> | null = null;
+  try {
+    const value = JSON.parse(stdout) as unknown;
+    if (value && typeof value === 'object' && !Array.isArray(value)) parsed = value as Record<string, unknown>;
+  } catch {
+    const jsonLine = stdout.split(/\r?\n/).map(line => line.trim()).reverse().find(line => line.startsWith('{') && line.endsWith('}'));
+    if (jsonLine) {
+      try {
+        const value = JSON.parse(jsonLine) as unknown;
+        if (value && typeof value === 'object' && !Array.isArray(value)) parsed = value as Record<string, unknown>;
+      } catch {
+        parsed = null;
+      }
+    }
+  }
+  if (input.kind === 'paddleocr-local' && !parsed) {
+    throw new Error('PADDLEOCR_LOCAL_JSON_REQUIRED');
+  }
+  const pages = localOcrPages(parsed?.pages);
+  const text = String(parsed?.text ?? (input.kind === 'tesseract-local' ? stdout : pages.map(page => page.text).join('\n\n'))).trim();
+  if (text.length < 10) throw new Error(`${input.kind.toUpperCase().replaceAll('-', '_')}_TEXT_TOO_SHORT`);
+  const normalizedPages = pages.length > 0 ? pages : [{
+    page: 1,
+    text,
+    nodes: text.split(/\r?\n/).map(line => ({ text: line.trim(), confidence: null, boundingBox: null })).filter(node => node.text),
+    tables: [],
+  }];
+  return {
+    provider: input.kind,
+    text,
+    pages: normalizedPages,
+    criticalTokens: extractOcrCriticalTokens(text),
+    costKrw: 0,
+    rawModelVersion: String(parsed?.rawModelVersion ?? input.modelVersion ?? 'configured-local'),
+  };
+}
+
+async function runLocalOcr(kind: LocalOcrKind, input: { buffer: Buffer; filename: string; mime: string }): Promise<OcrProviderOutput> {
+  const setting = localOcrSetting(kind);
+  const command = getSecret(setting.commandKey);
+  if (!command) throw new Error(setting.missingCode);
+  // execFile does not invoke a shell, so spaces in a Windows installation path
+  // (for example `C:\\Program Files\\Tesseract-OCR\\tesseract.exe`) are safe.
+  // Reject control characters instead of rejecting valid paths with spaces.
+  if (command.length > 260 || /[\r\n]/.test(command)) throw new Error(`${kind.toUpperCase().replaceAll('-', '_')}_COMMAND_INVALID`);
+  const args = localOcrArgs(kind);
+  const workDir = await mkdtemp(join(tmpdir(), 'yeosonam-ocr-'));
+  const inputPath = join(workDir, `source.${localOcrInputExtension(input.filename, input.mime)}`);
+  try {
+    await writeFile(inputPath, input.buffer, { flag: 'wx' });
+    const finalArgs = args.map(arg => arg === '{input}' ? inputPath : arg);
+    if (!finalArgs.includes(inputPath)) finalArgs.push(inputPath);
+    let stdout: string;
+    try {
+      const result = await execFile(command, finalArgs, {
+        timeout: 60_000,
+        maxBuffer: 4 * 1024 * 1024,
+        windowsHide: true,
+        encoding: 'utf8',
+      });
+      stdout = String(result.stdout ?? '');
+    } catch {
+      throw new Error(`${kind.toUpperCase().replaceAll('-', '_')}_EXECUTION_FAILED`);
+    }
+    return parseLocalOcrOutput({
+      kind,
+      stdout,
+      modelVersion: getSecret(setting.versionKey),
+    });
+  } finally {
+    await rm(workDir, { recursive: true, force: true });
+  }
+}
+
+export function runPaddleOcrLocal(input: { buffer: Buffer; filename: string; mime: string }): Promise<OcrProviderOutput> {
+  return runLocalOcr('paddleocr-local', input);
+}
+
+export function runTesseractLocal(input: { buffer: Buffer; filename: string; mime: string }): Promise<OcrProviderOutput> {
+  return runLocalOcr('tesseract-local', input);
 }
 
 async function postJson(url: string, init: RequestInit, timeoutMs = 45_000): Promise<unknown> {
@@ -220,7 +447,7 @@ export async function runGoogleDocumentAi(input: {
   };
 }
 
-export async function extractOcrWithCrossValidation(input: {
+async function extractWithCloudCrossValidation(input: {
   buffer: Buffer;
   filename: string;
   mime: string;
@@ -264,7 +491,49 @@ export async function extractOcrWithCrossValidation(input: {
       provider: result.provider,
       criticalTokens: result.criticalTokens,
       costKrw: result.costKrw,
+      modelVersion: result.rawModelVersion,
     })),
     totalCostKrw,
   };
+}
+
+async function extractWithLocalCrossValidation(input: {
+  buffer: Buffer;
+  filename: string;
+  mime: string;
+}): Promise<CrossValidatedOcrOutput> {
+  const primary = await runPaddleOcrLocal(input);
+  const secondary = await runTesseractLocal(input);
+  if (!ocrCriticalTokensMatch(primary.criticalTokens, secondary.criticalTokens)) {
+    throw new Error('OCR_CRITICAL_VALUE_MISMATCH:paddleocr-local+tesseract-local');
+  }
+  return {
+    text: primary.text,
+    pages: primary.pages,
+    parserEngine: 'paddleocr-local+tesseract-local',
+    parserVersion: `${primary.rawModelVersion}+${secondary.rawModelVersion}`,
+    criticalTokens: primary.criticalTokens,
+    providerResults: [primary, secondary].map(result => ({
+      provider: result.provider,
+      criticalTokens: result.criticalTokens,
+      costKrw: 0,
+      modelVersion: result.rawModelVersion,
+    })),
+    totalCostKrw: 0,
+  };
+}
+
+export async function extractOcrWithCrossValidation(input: {
+  buffer: Buffer;
+  filename: string;
+  mime: string;
+}): Promise<CrossValidatedOcrOutput> {
+  const ocrEnabled = getSecret('PRODUCT_REGISTRATION_V6_OCR_ENABLED')
+    ?? getSecret('PRODUCT_REGISTRATION_V4_OCR_ENABLED');
+  if (ocrEnabled !== '1') {
+    throw new Error('OCR_PROFILE_DISABLED:PRODUCT_REGISTRATION_V6_OCR_ENABLED is not enabled');
+  }
+  return getOcrProviderMode() === 'cloud'
+    ? extractWithCloudCrossValidation(input)
+    : extractWithLocalCrossValidation(input);
 }

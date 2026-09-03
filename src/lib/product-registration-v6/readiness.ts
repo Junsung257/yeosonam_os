@@ -85,6 +85,9 @@ export type ProductRegistrationV6ReadinessInput = {
     cirium: boolean;
     clova: boolean;
     googleDocumentAi: boolean;
+    localPaddleOcr?: boolean;
+    localTesseract?: boolean;
+    ocrProviderMode?: 'local' | 'cloud';
     ocrEnabled: boolean;
     mediaProvider: boolean;
   };
@@ -293,11 +296,20 @@ export function buildProductRegistrationV6ReadinessReport(
   if (!input.credentials.ocrEnabled) {
     add('V6_OCR_DISABLED', 'pass', 'OCR 문서는 자동 공개 대상에서 제외됩니다.');
   } else {
-    const ocrReady = input.credentials.clova && input.credentials.googleDocumentAi;
+    const providerMode = input.credentials.ocrProviderMode ?? 'local';
+    const ocrReady = providerMode === 'local'
+      ? input.credentials.localPaddleOcr === true && input.credentials.localTesseract === true
+      : input.credentials.clova && input.credentials.googleDocumentAi;
     add(
       ocrReady ? 'V6_OCR_PROVIDERS_READY' : 'V6_OCR_PROVIDERS_INCOMPLETE',
       ocrReady ? 'pass' : 'blocked',
-      ocrReady ? 'CLOVA·Google OCR 교차검증이 연결됐습니다.' : 'OCR은 켜졌지만 두 공급자 교차검증이 완성되지 않았습니다.',
+      ocrReady
+        ? providerMode === 'local'
+          ? '로컬 PaddleOCR·Tesseract 교차검증이 연결됐습니다.'
+          : 'CLOVA·Google OCR 교차검증이 연결됐습니다.'
+        : providerMode === 'local'
+          ? 'OCR은 켜졌지만 로컬 PaddleOCR·Tesseract 실행기가 모두 설정되지 않았습니다.'
+          : 'OCR은 켜졌지만 두 공급자 교차검증이 완성되지 않았습니다.',
     );
   }
 

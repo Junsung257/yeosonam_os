@@ -8,6 +8,7 @@ import { getSecret } from '@/lib/secret-registry';
 import { browserProofRuntimeCapability } from '@/lib/product-registration-v6/browser-runtime';
 import type { ProductRegistrationV6ReadinessDatabase } from '@/lib/product-registration-v6/readiness';
 import { resolveRegistrationTermsPolicy } from '@/lib/standard-terms';
+import { getOcrProviderMode } from '@/lib/product-registration-v6/ocr-providers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -202,6 +203,9 @@ const getHandler = async (_request: NextRequest) => {
       googleDocumentAi: Boolean(getSecret('GOOGLE_DOCUMENT_AI_PROJECT_ID')
         && getSecret('GOOGLE_DOCUMENT_AI_PROCESSOR_ID')
         && getSecret('GOOGLE_SERVICE_ACCOUNT_JSON')),
+      localPaddleOcr: Boolean(getSecret('PADDLEOCR_LOCAL_COMMAND')),
+      localTesseract: Boolean(getSecret('TESSERACT_LOCAL_COMMAND')),
+      ocrProviderMode: getOcrProviderMode(),
       ocrEnabled: getSecret('PRODUCT_REGISTRATION_V6_OCR_ENABLED') === '1',
       mediaProvider: Boolean(getSecret('PEXELS_API_KEY')),
     },
