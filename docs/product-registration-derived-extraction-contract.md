@@ -20,6 +20,9 @@ canonical product normalization.
   `product_document_extractions` ledger. Lineage is stored under
   `quality_diagnostics.derivedExtraction`; no new public table or customer
   pointer is required.
+- The in-memory child starts with a deterministic recovery key. After insert,
+  callers must pass the returned `derived` copy (bound to Supabase's UUID) to
+  normalization so the existing extraction foreign key remains valid.
 - `normalizeDerivedExtraction` re-runs the canonical normalizer with the
   `analysis_only` execution policy. It cannot create a revision, snapshot, or
   publication pointer.
