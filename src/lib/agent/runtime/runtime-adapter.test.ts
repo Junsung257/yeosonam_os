@@ -110,7 +110,7 @@ function validStartInput(): RuntimeStartInput {
     inputArtifactRefs: ['evidence:public-bundle-1'],
     taskInput: taskInput(),
     workspaceRoot: WORKSPACE_ROOT,
-    capabilityToken: 'capability-token-that-never-leaves-the-host',
+    capabilityToken: 'x'.repeat(40),
     budgets: { ...task.budgets },
   };
 }
