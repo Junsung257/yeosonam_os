@@ -107,6 +107,7 @@
     "src/app/api/admin/agent/approvals/route.ts",
     "src/app/api/admin/agent/incidents/route.ts",
     "src/app/api/admin/agent/office/pilot-readiness/route.ts",
+    "src/app/api/admin/agent/office/pilot/shadow/route.ts",
     "src/app/api/admin/agent/office/route.ts",
     "src/app/api/admin/agent/office/status/route.ts",
     "src/app/api/admin/agent/tasks/route.ts",

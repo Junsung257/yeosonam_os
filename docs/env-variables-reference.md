@@ -368,6 +368,16 @@ LLM trace는 원문 prompt/response를 속성에 저장하지 않고 `gen_ai.ope
 | `CLOBE_MCP_URL` | Clobe MCP 엔드포인트. 미설정 시 `https://api.clobe.ai/mcp`. 인증은 `/admin/settings/integrations`의 Clobe OAuth 로그인으로 저장 |
 | `CLOBE_MCP_TRANSACTIONS_TOOL` | 거래 조회 도구 이름을 자동 탐색할 수 없을 때 지정하는 선택값 |
 
+### 🤖 AI 운영실 Preview Shadow Pilot (기본 잠금)
+
+| 키 | 용도 | 기본값 |
+|---|---|---|
+| `AGENT_OFFICE_SHADOW_PILOT_ENABLED` | `1`일 때만 Vercel Preview/로컬에서 수동 Technology Scout 1건 실행 허용. Production에서는 코드로 영구 차단 | 미설정(잠금) |
+| `AGENT_OFFICE_SHADOW_WORKSPACE_ROOT` | Preview Codex read-only Runtime이 읽을 수 있는 격리 workspace 절대 경로. 미설정 시 프로세스 workspace | 미설정 |
+| `CODEX_AGENT_OFFICE_MODEL` | Shadow Pilot에 사용할 Codex 모델 식별자. Provider 정책·Production 업무와 분리 | `gpt-5.4-mini` |
+
+Shadow Pilot은 `agent_runs` Preview migration과 ChatGPT Codex App Server가 모두 확인된 경우에만 실행됩니다. 이 토글은 자동 위임·Command·게시·Production DB migration을 활성화하지 않습니다.
+
 ## 🔍 미매칭 관광지 큐·크론 (선택)
 
 | 키 | 용도 | 기본값 |

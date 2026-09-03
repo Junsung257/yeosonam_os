@@ -29,6 +29,12 @@ export type TechnologyScoutPilotReadiness = {
     };
   };
   nextActions: readonly string[];
+  /** Runtime availability is reported by the API route; the pure projection has no environment access. */
+  execution?: {
+    mode: 'production' | 'preview' | 'local';
+    enabled: boolean;
+    code: string;
+  };
 };
 
 /** Pure, non-I/O readiness projection for the operator surface. */

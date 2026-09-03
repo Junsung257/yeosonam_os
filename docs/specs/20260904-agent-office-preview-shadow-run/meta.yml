@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "tier": 2,
+  "status": "active",
+  "owner": "platform-engineering",
+  "baseline_commit": "5284a231e12e84a90a3e41703f9cd61c9b761be0",
+  "review_file": "review.md",
+  "surface_map_version": 1,
+  "verified_commit": null,
+  "verification": [
+    "node scripts/check-agent-workflow-contract.mjs --strict",
+    "node node_modules/typescript/bin/tsc --noEmit --pretty false",
+    "node node_modules/vitest/dist/cli.js run src/lib/agent/pilot/technology-scout-shadow.test.ts",
+    "npm run build"
+  ],
+  "evidence_paths": ["review.md"]
+}
