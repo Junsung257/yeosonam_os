@@ -2,6 +2,13 @@
 
 Last updated: 2026-09-04
 
+## V6 evidence recovery PR-V6-04 human review boundary (2026-09-04, backend code-ready / runtime OFF)
+
+- 모호한 복구 건은 `product_review_cases` → short-lived reviewer session → append-only first/second Receipt → 필요 시 adjudicator Receipt 순서로 종결한다. 기존 `upload_review_queue`는 terminal alert 용도로 유지하고, 두 개 이상의 불변 판정을 표현할 수 없어 새 내부 review ledger를 추가했다.
+- 모든 케이스는 source document SHA-256, parent extraction UUID/hash, candidate-axis-set hash, packet hash를 고정한다. 서버 RPC는 원문·추출본·정규화 계보가 일치하지 않으면 거부하며, 고객 Snapshot·Revision·Publication Pointer를 만들거나 바꾸지 않는다.
+- 검수 결과는 실제 인증된 Supabase 사용자 UUID와 세션 UUID를 요구한다. first/second는 서로 다른 사용자여야 하고, 불일치하면 자동 선택 없이 `adjudication_required`로 보낸다. 동일 결정·payload·evidence가 이중으로 일치할 때만 `accepted`, `source_insufficient`, `system_quarantined` 중 하나로 종결한다.
+- 검수 완료 이벤트는 append-only 내부 outbox로 기록하며 Receipt·원문·PII·signed URL을 고객 경계로 전달하지 않는다. PR-V6-05 UI와 PR-V6-06 파생 추출본 재개 연결 전까지 runtime과 publication freeze는 유지한다.
+
 ## V6 evidence recovery PR-V6-03 derived extraction boundary (2026-09-04, code-ready / runtime OFF)
 
 - Recovery or review corrections now have an immutable `DerivedDocumentExtractionV1` contract. It applies only an explicitly addressed table cell, updates the matching IR node and quote hash together, and rejects stale evidence, duplicate cell patches, no-op patches, or ambiguous repeated text.
