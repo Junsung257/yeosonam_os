@@ -9,7 +9,7 @@
 - [x] 기본 OFF preview workflow를 연결한다.
 - [x] focused tests, type-check, surface-map, harness를 실행한다.
 - [x] SSOT와 검증 증거를 갱신한다.
-- [ ] 커밋·푸시·PR·CI를 완료한다.
+- [x] 커밋·푸시·PR·CI를 완료한다.
 
 ## Parallel Candidates
 

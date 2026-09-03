@@ -24,6 +24,7 @@ git diff --name-only origin/main -- supabase/migrations
 - DB/schema check: migration 0, 원격 DB write 0
 - Screenshot/browser proof: 고객 UI 변경 없음
 - Audit/eval/readiness result: type-check, production build, touched lint, product contract/authority, surface map, harness all passed
+- GitHub CI: PR #1257, implementation commit `18e748a3cf6dd54d8bb98706a2330b80f9fc6d6d`, all required and downstream checks passed
 
 ## Approval Gates
 

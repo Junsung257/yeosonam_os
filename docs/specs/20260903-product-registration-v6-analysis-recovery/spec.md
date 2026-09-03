@@ -6,12 +6,12 @@
 
 ## Success Criteria
 
-- [ ] `analysis_only` 실행은 canonical normalization만 기록하고 Revision·Snapshot·Publication Pointer 권한을 갖지 않는다.
-- [ ] Recovery Target은 원문 hash, extraction, 표/셀 좌표, 상품축 후보, 값 후보, 사유, context policy를 보존한다.
-- [ ] 병합셀이라는 이유만으로 OCR하지 않고 구조 충돌·근거 불일치·상품축 모호성이 있을 때만 target을 만든다.
-- [ ] 복구 대상과 `SOURCE_INSUFFICIENT` 후보를 구분한다.
-- [ ] 기능 플래그 기본값은 OFF이며 기존 V6 실행은 바뀌지 않는다.
-- [ ] `docs/product-registration-current-ssot.md`의 현재 계약과 일치한다.
+- [x] `analysis_only` 실행은 canonical normalization만 기록하고 Revision·Snapshot·Publication Pointer 권한을 갖지 않는다.
+- [x] Recovery Target은 원문 hash, extraction, 표/셀 좌표, 상품축 후보, 값 후보, 사유, context policy를 보존한다.
+- [x] 병합셀이라는 이유만으로 OCR하지 않고 구조 충돌·근거 불일치·상품축 모호성이 있을 때만 target을 만든다.
+- [x] 복구 대상과 `SOURCE_INSUFFICIENT` 후보를 구분한다.
+- [x] 기능 플래그 기본값은 OFF이며 기존 V6 실행은 바뀌지 않는다.
+- [x] `docs/product-registration-current-ssot.md`의 현재 계약과 일치한다.
 
 ## In Scope
 
