@@ -7,6 +7,7 @@ import { fmtNum as fmtComma } from '@/lib/admin-utils';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { trackEngagement } from '@/lib/tracker';
 import { getKstCurrentAndPreviousMonthKeys } from '@/lib/admin-dashboard-kpi-basis';
+import AgentOfficeEntryCard from '@/components/admin/AgentOfficeEntryCard';
 const ScoringKpiWidget = nextDynamic(() => import('@/components/admin/ScoringKpiWidget'), { ssr: false });
 const AdKpiWidget = nextDynamic(() => import('@/components/admin/AdKpiWidget'), { ssr: false });
 
@@ -1769,6 +1770,9 @@ export default function AdminPage({
         </button>
       </div>
 
+      {/* Platform-admin-only, backend-attested entry to the read-only Office. */}
+      <AgentOfficeEntryCard />
+
       <OwnerFinanceCommandCenter
         stats={stats}
         settlement={settlement}
@@ -2003,6 +2007,7 @@ export default function AdminPage({
               { href: '/admin/destinations', label: '출발지 관리' },
             ]},
             { title: 'AI/마케팅', links: [
+              { href: '/admin/agent-mas', label: 'AI 운영실' },
               { href: '/admin/marketing', label: '마케팅 대시' },
               { href: '/admin/marketing/card-news', label: '카드뉴스' },
               { href: '/admin/content-hub', label: '콘텐츠 허브' },

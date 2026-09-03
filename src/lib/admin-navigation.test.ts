@@ -90,4 +90,12 @@ describe('admin navigation registry', () => {
     expect(attractions.primaryAction).toBe('DB 연결');
     expect(attractions.searchKeywords).toContain('미매칭 관광지');
   });
+
+  it('exposes the read-only AI Office route for platform administrators', () => {
+    const office = findItem('/admin/agent-mas');
+    expect(office.label).toBe('AI 운영실');
+    expect(office.minRole).toBe('platform_admin');
+    expect(office.searchKeywords).toContain('Agent Office');
+    expect(office.searchKeywords).toContain('MAS 관제');
+  });
 });

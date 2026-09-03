@@ -10,6 +10,7 @@ import {
 import {
   buildCodexAppServerArguments,
   buildCodexWorkerEnvironment,
+  CODEX_READ_ONLY_PERMISSION_PROFILE,
   createCodexSubscriptionRuntimeAdapter,
   createExistingProviderPolicyAdapter,
   type CodexAppServerConnection,
@@ -305,7 +306,7 @@ describe('PR-01C Codex App Server boundary', () => {
     });
   });
 
-  it('uses ephemeral, read-only, no-network execution and returns schema-checked output', async () => {
+  it('uses the named read-only profile and returns schema-checked output', async () => {
     const fixture = adapterFixture();
     const result = await fixture.adapter.start(validStartInput());
 
@@ -334,16 +335,16 @@ describe('PR-01C Codex App Server boundary', () => {
     expect(threadStart?.params).toMatchObject({
       ephemeral: true,
       approvalPolicy: 'never',
-      sandbox: 'read-only',
+      permissions: CODEX_READ_ONLY_PERMISSION_PROFILE,
+      runtimeWorkspaceRoots: [WORKSPACE_ROOT],
     });
     expect(turnStart?.params).toMatchObject({
       approvalPolicy: 'never',
-      sandboxPolicy: {
-        type: 'readOnly',
-        networkAccess: false,
-        access: { type: 'restricted', readableRoots: [WORKSPACE_ROOT] },
-      },
+      permissions: CODEX_READ_ONLY_PERMISSION_PROFILE,
+      runtimeWorkspaceRoots: [WORKSPACE_ROOT],
     });
+    expect(threadStart?.params).not.toHaveProperty('sandbox');
+    expect(turnStart?.params).not.toHaveProperty('sandboxPolicy');
     expect(JSON.stringify(fixture.connection.messages)).not.toContain(validStartInput().capabilityToken);
     expect(ROLE_OPERATIONAL_BINDINGS['research.technology_scout']).toMatchObject({
       state: 'contract_only',

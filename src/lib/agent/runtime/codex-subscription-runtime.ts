@@ -39,6 +39,10 @@ import {
 
 const RUNTIME_KEY = 'codex_subscription_worker' as const;
 const RUNTIME_VERSION = '1.0.0' as const;
+// Built-in Codex App Server profile. The profile is selected by id instead of
+// embedding a legacy sandbox object so the adapter stays compatible with the
+// current protocol and cannot silently widen its capability surface.
+export const CODEX_READ_ONLY_PERMISSION_PROFILE = ':read-only' as const;
 const MAX_CAPABILITY_TTL_MS = 15 * 60 * 1_000;
 const SAFE_ITEM_TYPES = new Set([
   'agentMessage',
@@ -147,7 +151,11 @@ async function initializeConnection(connection: CodexAppServerConnection): Promi
       version: RUNTIME_VERSION,
     },
     capabilities: {
-      experimentalApi: false,
+      // `permissions` and `runtimeWorkspaceRoots` are experimental protocol
+      // fields in the current App Server schema. Enabling the schema does not
+      // grant capabilities; the adapter still supplies the named read-only
+      // profile and rejects all tool/server activity below.
+      experimentalApi: true,
       optOutNotificationMethods: [
         'item/agentMessage/delta',
         'item/commandExecution/outputDelta',
@@ -484,8 +492,9 @@ export function createCodexSubscriptionRuntimeAdapter(options: {
       threadId = parseThreadStartResponse(await connection.request('thread/start', {
         model,
         cwd: workspaceRoot,
+        runtimeWorkspaceRoots: [workspaceRoot],
         approvalPolicy: 'never',
-        sandbox: 'read-only',
+        permissions: CODEX_READ_ONLY_PERMISSION_PROFILE,
         serviceName: 'yeosonam_agent_office',
         ephemeral: true,
         baseInstructions: 'Perform one bounded, public-data, read-only structured-output task.',
@@ -507,16 +516,9 @@ export function createCodexSubscriptionRuntimeAdapter(options: {
           text: createTechnologyScoutPrompt(parsedTaskInput.data, publicInputArtifacts),
         }],
         cwd: workspaceRoot,
+        runtimeWorkspaceRoots: [workspaceRoot],
         approvalPolicy: 'never',
-        sandboxPolicy: {
-          type: 'readOnly',
-          networkAccess: false,
-          access: {
-            type: 'restricted',
-            includePlatformDefaults: true,
-            readableRoots: [workspaceRoot],
-          },
-        },
+        permissions: CODEX_READ_ONLY_PERMISSION_PROFILE,
         model,
         outputSchema: technologyRadarJsonSchema(),
       }));

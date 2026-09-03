@@ -114,6 +114,44 @@ export function withAdminGuard(handler: NextHandler): NextHandler {
   };
 }
 
+/**
+ * Platform-only read surfaces must not fall back to tenant-admin access.
+ * The browser role is accepted only from verified JWT claims (app_metadata or
+ * the top-level role claim); user_metadata is intentionally not trusted for
+ * authorization. Server-to-server ADMIN_API_TOKEN remains available for the
+ * read-only internal control surface.
+ */
+export async function requirePlatformAdminRequest(req: NextRequest): Promise<NextResponse | null> {
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+
+  if (isValidAdminApiToken(req) || process.env.NODE_ENV !== 'production') {
+    return null;
+  }
+
+  const token = req.cookies.get('sb-access-token')?.value;
+  if (!token || !legacyJwtExpValid(token)) {
+    return apiResponse(
+      { code: 'PLATFORM_ADMIN_REQUIRED', error: '플랫폼 관리자 권한이 필요합니다.' },
+      { status: 403, headers: { 'Cache-Control': 'private, no-store' } },
+    );
+  }
+
+  const verified = await verifySupabaseAccessToken(token);
+  const payload = verified.ok ? verified.payload as Record<string, unknown> : null;
+  const appMetadata = payload?.app_metadata as Record<string, unknown> | undefined;
+  const rawRole = typeof appMetadata?.role === 'string'
+    ? appMetadata.role
+    : typeof payload?.role === 'string' ? payload.role : '';
+  const role = rawRole.toLowerCase();
+  if (role === 'platform_admin' || role === 'platform' || role === 'admin') return null;
+
+  return apiResponse(
+    { code: 'PLATFORM_ADMIN_REQUIRED', error: '플랫폼 관리자 권한이 필요합니다.' },
+    { status: 403, headers: { 'Cache-Control': 'private, no-store' } },
+  );
+}
+
 export async function resolveAdminActorLabel(req: NextRequest): Promise<string> {
   if (isValidAdminApiToken(req)) {
     return 'admin_api_token';

@@ -1,6 +1,6 @@
 import { type NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
-import { withAdminGuard } from '@/lib/admin-guard';
+import { requirePlatformAdminRequest } from '@/lib/admin-guard';
 import {
   buildAgentOfficeSnapshot,
   type AgentOfficeApprovalRow,
@@ -147,4 +147,8 @@ async function getHandler(_request: NextRequest) {
   }
 }
 
-export const GET = withAdminGuard(getHandler);
+export const GET = async (request: NextRequest) => {
+  const authError = await requirePlatformAdminRequest(request);
+  if (authError) return authError;
+  return getHandler(request);
+};
