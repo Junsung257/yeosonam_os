@@ -12,6 +12,7 @@ const ENV_NAMES = [
   'PRODUCT_REGISTRATION_V6_SHADOW_ENABLED',
   'PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED',
   'PRODUCT_REGISTRATION_PUBLICATION_FREEZE',
+  'PRODUCT_REGISTRATION_V6_ANALYSIS_RECOVERY_PREVIEW_ENABLED',
 ] as const;
 
 const originalEnv = Object.fromEntries(
@@ -36,8 +37,17 @@ describe('product registration V6 runtime config', () => {
       shadowEnabled: true,
       publishEnabled: false,
       publicationFrozen: true,
+      analysisRecoveryPreviewEnabled: false,
     });
     expect(productRegistrationV6PublicationBlocker()).toBe('PUBLICATION_FREEZE_ACTIVE');
+  });
+
+  it('keeps analysis recovery preview off until explicitly enabled', () => {
+    delete process.env.PRODUCT_REGISTRATION_V6_ANALYSIS_RECOVERY_PREVIEW_ENABLED;
+    expect(getProductRegistrationV6RuntimeConfig().analysisRecoveryPreviewEnabled).toBe(false);
+
+    process.env.PRODUCT_REGISTRATION_V6_ANALYSIS_RECOVERY_PREVIEW_ENABLED = '1';
+    expect(getProductRegistrationV6RuntimeConfig().analysisRecoveryPreviewEnabled).toBe(true);
   });
 
   it('publishes only when publish is enabled and freeze is explicitly disabled', () => {

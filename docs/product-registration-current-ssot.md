@@ -1,6 +1,15 @@
 # Product Registration Current SSOT
 
-Last updated: 2026-09-01
+Last updated: 2026-09-03
+
+## V6 evidence recovery PR-V6-01 analysis boundary (2026-09-03, code-ready / runtime OFF)
+
+- Workflow `product-registration-v6-workflow-24` gives the first canonical pass an explicit `analysis_only` execution policy. It persists under a separate `:analysis-only-1` normalization record version, so a later Revision-commit run cannot overwrite its evidence. It has no authority to create an immutable product Revision, Snapshot, compatibility projection, mobile proof, or Publication Pointer. A job already linked to a Revision fails closed instead of being reused as an analysis-only job.
+- `RecoveryTargetV1` preserves the source/extraction hash lineage, zero-based page/section/table/cell coordinates, cell quote evidence, candidate source axes/values, reason codes, a deterministic business idempotency key, and the required surrounding render context. A normal native merged cell is authoritative and does not trigger OCR by itself; invalid coordinates, grid overlap, evidence-hash mismatch, parser structural warnings, canonical conflicts, and ambiguous/unbound price ownership do.
+- Canonical required fields with a source signal but no safe normalized value become recovery targets. Required fields with no signal in the source are kept separately as `sourceInsufficientFields`; image/OCR recovery must not invent them.
+- Source price axes bind to canonical variants only through complete compatible price-fact sets and a one-to-one relationship. Equal values in different source tables, grades, carriers, or durations remain ambiguous.
+- `PRODUCT_REGISTRATION_V6_ANALYSIS_RECOVERY_PREVIEW_ENABLED` defaults to `0`. When explicitly enabled, the current PR-V6-01 branch records analysis and recovery targets, then terminates `blocked_action_required` before the existing Revision normalization path. It suppresses review-alert/correction side effects in this preview. PR-V6-02 must add renderer/OCR orchestration before this flag can be used operationally.
+- This change adds no Supabase migration and performs no production database, deployment, Revision, Snapshot, or customer pointer write. Global `publication_freeze=true` remains mandatory.
 
 ## V158 customer read-boundary convergence and production mobile proof (2026-09-01, latest)
 

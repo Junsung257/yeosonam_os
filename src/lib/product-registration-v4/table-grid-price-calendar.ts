@@ -22,6 +22,26 @@ export type DocumentIrTablePriceCalendar = {
   sourceNodeIds: string[];
 };
 
+/**
+ * Stable identity for one source-owned price axis. Table identity is part of
+ * the key on purpose: two supplier tables may publish the same dates and
+ * prices for different products, and equal values are not ownership proof.
+ */
+export function documentIrTablePriceCalendarAxisKey(
+  calendar: Pick<
+    DocumentIrTablePriceCalendar,
+    'tableId' | 'durationDays' | 'transportCode' | 'gradeLabel' | 'productLabelKind'
+  >,
+): string {
+  return JSON.stringify([
+    calendar.tableId,
+    calendar.durationDays,
+    calendar.transportCode ?? null,
+    calendar.gradeLabel ?? null,
+    calendar.productLabelKind ?? null,
+  ]);
+}
+
 const DATE_TOKEN_RE = /(\d{1,2})\s*\/\s*(\d{1,2})(?:\s*\/?\s*[-~\u301C\u2013\u2014]\s*\/?\s*(?:(\d{1,2})\s*\/\s*)?(\d{1,2}))?/gu;
 const WEEKDAYS: Record<string, number> = {
   '\uC77C': 0,
@@ -2759,6 +2779,10 @@ export function buildDocumentIrTablePriceCalendars(input: {
     // Group by the product identity, then retain the strongest compatible
     // axis label. Keeping parser kind in this key created duplicate calendars
     // and prevented a multi-duration document from expanding into products.
+    // Parser candidates from multiple compatible tables still belong to the
+    // same semantic price axis and must merge here. Recovery ownership uses
+    // documentIrTablePriceCalendarAxisKey(), which additionally retains the
+    // source table identity so equal values cannot prove ownership.
     const key = `${candidate.durationDays}|${candidate.transportCode ?? ''}|${candidate.gradeLabel ?? ''}`;
     const values = grouped.get(key) ?? [];
     values.push(candidate);

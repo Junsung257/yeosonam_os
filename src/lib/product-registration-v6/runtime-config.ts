@@ -4,6 +4,7 @@ export type ProductRegistrationV6RuntimeConfig = {
   shadowEnabled: boolean;
   publishEnabled: boolean;
   publicationFrozen: boolean;
+  analysisRecoveryPreviewEnabled: boolean;
 };
 
 function authorityMode(): ProductRegistrationV6RuntimeConfig['authorityMode'] {
@@ -29,6 +30,7 @@ export function getProductRegistrationV6RuntimeConfig(): ProductRegistrationV6Ru
     shadowEnabled: enabled('PRODUCT_REGISTRATION_V6_SHADOW_ENABLED', true),
     publishEnabled: enabled('PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED'),
     publicationFrozen: enabled('PRODUCT_REGISTRATION_PUBLICATION_FREEZE', true),
+    analysisRecoveryPreviewEnabled: enabled('PRODUCT_REGISTRATION_V6_ANALYSIS_RECOVERY_PREVIEW_ENABLED'),
   };
 }
 

@@ -53,6 +53,11 @@ import {
   resolveQualifiedSupplierLayoutProfile,
   type SupplierProfileResolution,
 } from '@/lib/product-registration-v6/supplier-profile-registry';
+import {
+  buildProductRegistrationAnalysisRecoveryPlan,
+  type AnalysisRecoveryPlanV1,
+} from '@/lib/product-registration-v6/analysis-recovery';
+import { getProductRegistrationV6RuntimeConfig } from '@/lib/product-registration-v6/runtime-config';
 
 type JsonObject = Record<string, unknown>;
 
@@ -450,6 +455,24 @@ function discardedSourceIncompleteDecision(sectionIndexes: number[]): ProductReg
   };
 }
 
+function analysisRecoveryPreviewDecision(plan: AnalysisRecoveryPlanV1): ProductRegistrationV6Decision {
+  return {
+    outcome: 'blocked',
+    terminalOutcome: 'blocked_action_required',
+    degradedReasons: [],
+    blockers: [
+      'ANALYSIS_RECOVERY_PREVIEW_ONLY',
+      `ANALYSIS_RECOVERY_DISPOSITION:${plan.disposition}`,
+      `ANALYSIS_RECOVERY_PLAN_HASH:${plan.planHash}`,
+      `RECOVERY_TARGET_COUNT:${plan.targets.length}`,
+      `SOURCE_INSUFFICIENT_FIELD_COUNT:${plan.sourceInsufficientFields.length}`,
+      ...(plan.selectionTruncated ? ['RECOVERY_TARGET_SELECTION_TRUNCATED'] : []),
+    ],
+    packageIds: [],
+    revisionIds: [],
+  };
+}
+
 function metadataString(metadata: Record<string, unknown>, key: string): string | null {
   const value = metadata[key];
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -552,6 +575,99 @@ async function projectCompatibilityStep(
       projectionCount: packageIds.length,
     },
   };
+}
+
+async function analysisRecoveryPreviewEnabledStep(): Promise<boolean> {
+  'use step';
+  return getProductRegistrationV6RuntimeConfig().analysisRecoveryPreviewEnabled;
+}
+
+async function analyzeUnpublishedStep(
+  input: ProductRegistrationV6WorkflowInput,
+  preflight: { sourceHash: string; sourceTenantId: string | null },
+  supplierProfile: SupplierProfileResolution,
+): Promise<AnalysisRecoveryPlanV1> {
+  'use step';
+  await recordStage({
+    jobId: input.jobId,
+    fencingToken: input.fencingToken,
+    stage: 'analyze_unpublished',
+    status: 'running',
+  });
+  const supabase = db();
+  const job = await getProductRegistrationV4Job({ supabase, jobId: input.jobId });
+  if (!job) throw new FatalError('V6_JOB_NOT_FOUND_FOR_ANALYSIS');
+  const result = await processProductRegistrationV4CanonicalNormalizationJob({
+    supabase,
+    job,
+    supplierProfileHints: supplierProfile.profile?.segmentationHints,
+    allowEvidenceAiSegmentation: true,
+    executionMode: 'analysis_only',
+  });
+  if (result.executionPolicy.commitRevisions
+    || result.executionPolicy.createSnapshots
+    || result.executionPolicy.changePublicationPointer
+    || result.executionPolicy.customerPublicationAuthority) {
+    throw new FatalError('V6_ANALYSIS_ONLY_WRITE_POLICY_VIOLATION');
+  }
+  const { data: extraction, error: extractionError } = await supabase
+    .from('product_document_extractions')
+    .select('id,source_document_id,tenant_id,document_ir')
+    .eq('id', result.normalization.extractionId)
+    .eq('source_document_id', result.normalization.sourceDocumentId)
+    .eq('tenant_id', input.tenantId)
+    .single();
+  if (extractionError || !extraction?.document_ir) {
+    throw extractionError ?? new FatalError('V6_ANALYSIS_DOCUMENT_IR_MISSING');
+  }
+  if (preflight.sourceHash !== input.fileHash) {
+    throw new FatalError('V6_ANALYSIS_SOURCE_HASH_MISMATCH');
+  }
+  await recordStage({
+    jobId: input.jobId,
+    fencingToken: input.fencingToken,
+    stage: 'analyze_unpublished',
+    status: 'succeeded',
+    output: {
+      normalizationId: result.normalizationId,
+      normalizationStatus: result.normalization.status,
+      candidateSectionIndexes: result.candidateSectionIndexes,
+      executionMode: result.executionPolicy.mode,
+      revisionWriteAuthority: false,
+      snapshotWriteAuthority: false,
+      publicationPointerWriteAuthority: false,
+    },
+  });
+  await recordStage({
+    jobId: input.jobId,
+    fencingToken: input.fencingToken,
+    stage: 'detect_recovery_targets',
+    status: 'running',
+  });
+  const plan = buildProductRegistrationAnalysisRecoveryPlan({
+    documentIr: extraction.document_ir as DocumentIR,
+    normalization: result.normalization,
+    normalizationId: result.normalizationId,
+    sourceHash: preflight.sourceHash,
+  });
+  await recordStage({
+    jobId: input.jobId,
+    fencingToken: input.fencingToken,
+    stage: 'detect_recovery_targets',
+    status: 'succeeded',
+    output: {
+      analysisRecoveryPlanVersion: plan.version,
+      analysisRecoveryPlanHash: plan.planHash,
+      disposition: plan.disposition,
+      recoveryTargetCount: plan.targets.length,
+      recoveryTargets: plan.targets,
+      sourceInsufficientFields: plan.sourceInsufficientFields,
+      unresolvedReviewFields: plan.unresolvedReviewFields,
+      selectionTruncated: plan.selectionTruncated,
+      customerPublicationAuthority: false,
+    },
+  });
+  return plan;
 }
 
 async function normalizeStep(
@@ -1099,6 +1215,10 @@ async function terminalStep(
   decision: ProductRegistrationV6Decision,
   publicationState: ProductRegistrationV6PublicationState,
   publicationBlockers: string[] = [],
+  options: {
+    enqueueReviewAlert?: boolean;
+    finalizeCorrection?: boolean;
+  } = {},
 ): Promise<ProductRegistrationV6WorkflowResult> {
   'use step';
   const supabase = db();
@@ -1119,8 +1239,8 @@ async function terminalStep(
   });
   if (error) throw new FatalError(error.message);
   let reviewAlertId: string | null = null;
-  if (decision.terminalOutcome === 'discarded_source_incomplete'
-    || decision.terminalOutcome === 'blocked_action_required') {
+  if (options.enqueueReviewAlert !== false && (decision.terminalOutcome === 'discarded_source_incomplete'
+    || decision.terminalOutcome === 'blocked_action_required')) {
     const resolutionConditions = decision.terminalOutcome === 'discarded_source_incomplete'
       ? [
           '원문에서 성인 판매가와 통화를 확인합니다.',
@@ -1150,7 +1270,7 @@ async function terminalStep(
     if (alertError) throw new FatalError(alertError.message);
     reviewAlertId = typeof alertId === 'string' ? alertId : null;
   }
-  if (input.correctionJobId) {
+  if (options.finalizeCorrection !== false && input.correctionJobId) {
     const { error: correctionError } = await supabase.rpc('finalize_product_registration_correction', {
       p_payload: {
         correction_job_id: input.correctionJobId,
@@ -1373,6 +1493,17 @@ export async function productRegistrationV6Workflow(
     }
     const supplierProfile = await resolveSupplierProfileStep(input);
     await resolveCriticalFactsStep(input, supplierProfile);
+    if (await analysisRecoveryPreviewEnabledStep()) {
+      const analysisPlan = await analyzeUnpublishedStep(input, preflight, supplierProfile);
+      return await terminalStep(
+        input,
+        workflowRunId,
+        analysisRecoveryPreviewDecision(analysisPlan),
+        'not_requested',
+        [],
+        { enqueueReviewAlert: false, finalizeCorrection: false },
+      );
+    }
     const canonical = await normalizeStep(input, preflight, supplierProfile);
     if (canonical.revisionIds.length === 0
       && canonical.discardedMissingSalePriceSectionIndexes.length > 0) {
