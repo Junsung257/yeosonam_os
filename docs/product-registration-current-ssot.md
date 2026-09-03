@@ -1024,7 +1024,7 @@ Customer-facing attraction APIs must hide `customer_publishable=false` records b
 
 ## OCR/PDF Candidate Contract
 
-Docling, Unstructured, Marker, MinerU, Camelot, PaddleOCR, Azure Document Intelligence, and similar tools are benchmark candidates only until text-upload golden corpus and source-span IR are stable. Do not add them as production dependencies in the upload route.
+Docling, Unstructured, Marker, MinerU, Camelot, PaddleOCR, Azure Document Intelligence, and similar tools are benchmark candidates only until text-upload golden corpus and source-span IR are stable. Do not add them as production dependencies in the upload route. When the OCR profile is explicitly enabled for a shadow/recovery worker, the default provider mode is `local`: a separately installed PaddleOCR JSON wrapper is the primary observation and Tesseract is the critical-token challenger. CLOVA and Google Document AI remain optional `cloud` mode escalations; they are never required for normal HWP/HWPX parsing and are not an automatic publication authority.
 
 Any OCR/PDF benchmark must compare candidates offline using the same customer outcomes as the text corpus: product split count, price rows/dates, itinerary days, flight/hotel/meal relocation, evidence spans, and `/packages` + A4 render readiness.
 
@@ -1034,6 +1034,8 @@ Implementation status:
 - `npm run benchmark:product-ocr` runs the offline benchmark. With no input file, it uses the supplier raw golden fixtures, including the noisy OCR fixture, as the text-upload baseline.
 - `npm run benchmark:product-ocr -- --input=path/to/candidates.json --json` can compare extracted text from Docling, Marker, MinerU, PaddleOCR PP-StructureV3, LayoutParser, Azure Document Intelligence, or any other candidate without adding that tool to production.
 - `npm run benchmark:product-ocr:ci` is strict and fails when any candidate is not final-customer-outcome ready.
+
+The local OCR contract is process-isolated and fail-closed. `PADDLEOCR_LOCAL_COMMAND` and `TESSERACT_LOCAL_COMMAND` are executed without a shell, receive a temporary source path through the exact `{input}` argument placeholder, and must return a bounded result. PaddleOCR wrappers must return JSON with `text`, optional `pages[].nodes`/`pages[].tables[].cells`, and `rawModelVersion`; Tesseract may return plain text for the challenger. Both results are retained as observations with model version and zero API cost. Critical price/date/flight tokens are compared after deterministic formatting normalization; disagreement becomes review-required and never overwrites the original source.
 - External-engine candidates fail closed unless they include the exact engine version,
   source SHA-256, extracted-text SHA-256, source basename, and extraction duration.
   The benchmark recomputes the text hash, rejects duplicate engine/version/case/source

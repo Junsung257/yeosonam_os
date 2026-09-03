@@ -107,6 +107,33 @@ describe('product registration V6 readiness', () => {
     }));
   });
 
+  it('evaluates the local OCR pair without requiring cloud credentials', () => {
+    const report = buildProductRegistrationV6ReadinessReport({
+      config: { authorityMode: 'kernel', workflowEnabled: true, shadowEnabled: true, publishEnabled: true, publicationFrozen: false, analysisRecoveryPreviewEnabled: false },
+      credentials: {
+        proofSecret: true,
+        browser: true,
+        oag: false,
+        cirium: false,
+        clova: false,
+        googleDocumentAi: false,
+        localPaddleOcr: true,
+        localTesseract: true,
+        ocrProviderMode: 'local',
+        ocrEnabled: true,
+        mediaProvider: true,
+      },
+      database,
+      currentBuildId: 'test-build',
+    });
+
+    expect(report.checks).toContainEqual(expect.objectContaining({
+      code: 'V6_OCR_PROVIDERS_READY',
+      status: 'pass',
+      detail: expect.stringContaining('로컬 PaddleOCR'),
+    }));
+  });
+
   it('blocks canary while a stale job or corpus defect remains', () => {
     const report = buildProductRegistrationV6ReadinessReport({
       config: { authorityMode: 'kernel', workflowEnabled: true, shadowEnabled: true, publishEnabled: false, publicationFrozen: true, analysisRecoveryPreviewEnabled: false },

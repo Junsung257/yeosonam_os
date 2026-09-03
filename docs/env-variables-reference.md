@@ -84,6 +84,9 @@ V6는 기본적으로 레거시 호환 또는 그림자 처리만 합니다. 운
 | `PRODUCT_REGISTRATION_BROWSER_WS_ENDPOINT` | 운영 Chrome/CDP 원격 엔드포인트. 없으면 proof는 fail-closed | 미설정 |
 | `PRODUCT_REGISTRATION_CHROME_EXECUTABLE_PATH` | 로컬/전용 worker Chrome 경로 | 미설정 |
 | `PRODUCT_REGISTRATION_V6_OCR_ENABLED` | 스캔 PDF·이미지 OCR router 사용 | `0` |
+| `PRODUCT_REGISTRATION_OCR_PROVIDER_MODE` | OCR 실행 모드. `local`은 로컬 PaddleOCR·Tesseract, `cloud`는 기존 CLOVA·Google | `local` |
+| `PADDLEOCR_LOCAL_COMMAND`, `PADDLEOCR_LOCAL_ARGS_JSON`, `PADDLEOCR_LOCAL_VERSION` | PaddleOCR 구조화 JSON wrapper 실행기·버전. `{input}` 자리표시자에 임시 원본 경로가 주입됨 | 미설정 |
+| `TESSERACT_LOCAL_COMMAND`, `TESSERACT_LOCAL_ARGS_JSON`, `TESSERACT_LOCAL_VERSION` | Tesseract 중요값 challenger 실행기·버전. `{input}` 자리표시자 지원 | 미설정 |
 | `CLOVA_OCR_APIGW_URL`, `CLOVA_OCR_SECRET` | 한국어 표 1차 OCR | 미설정 |
 | `CLOVA_OCR_COST_KRW_PER_CALL` | CLOVA 1회 예상 비용 | `0` |
 | `GOOGLE_DOCUMENT_AI_PROJECT_ID`, `GOOGLE_DOCUMENT_AI_LOCATION`, `GOOGLE_DOCUMENT_AI_PROCESSOR_ID` | critical OCR 교차검증 | 미설정 |
