@@ -200,6 +200,10 @@ const nextConfig = {
   ],
   experimental: {
     webpackBuildWorker: enableWebpackBuildWorker,
+    // Next 15's low-risk webpack memory mode reduces peak allocation during
+    // large production compilations. Limit it to Vercel, where the build runs
+    // in a fixed-memory container and has otherwise been killed by SIGKILL.
+    webpackMemoryOptimizations: process.env.VERCEL === '1',
     // Next 15 otherwise derives this from host CPU count. Bound hosted builds
     // more tightly because webpack/SWC workers share Vercel's 8 GB container
     // with the main process; local and CI builders retain the established 4.

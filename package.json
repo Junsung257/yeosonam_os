@@ -50,6 +50,7 @@
     "audit:harness-evals": "npm --prefix tools/harness-evals audit --omit=optional --audit-level=high",
     "eval:harness:promptfoo": "node scripts/run-promptfoo-eval.mjs promptfooconfig.harness.yaml",
     "eval:harness:live": "node scripts/run-harness-live-eval.mjs",
+    "eval:technology-scout:foundation": "tsx scripts/eval-technology-scout-foundation.ts",
     "check:blog-model-eval": "node scripts/check-blog-model-eval-contract.mjs && node --test scripts/lib/blog-model-eval/*.test.mjs",
     "eval:blog-model:preflight": "node scripts/run-blog-model-eval.mjs --preflight",
     "eval:blog-model:live": "node scripts/run-blog-model-eval.mjs",
