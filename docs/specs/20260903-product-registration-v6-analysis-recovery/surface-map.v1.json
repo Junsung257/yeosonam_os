@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "taskId": "20260903-product-registration-v6-analysis-recovery",
+  "agents": [
+    {
+      "id": "pr-v6-01-owner",
+      "role": "implementation",
+      "write": [
+        "src/lib/product-registration-v4/canonical-worker.ts",
+        "src/lib/product-registration-v4/table-grid-price-calendar.ts",
+        "src/lib/product-registration-v4/canonical-table-axis-binding.ts",
+        "src/lib/product-registration-v4/canonical-table-axis-binding.test.ts",
+        "src/lib/product-registration-v6/analysis-recovery.ts",
+        "src/lib/product-registration-v6/analysis-recovery.test.ts",
+        "src/lib/product-registration-v6/analysis-recovery-workflow-contract.test.ts",
+        "src/lib/product-registration-v6/runtime-config.ts",
+        "src/lib/product-registration-v6/runtime-config.test.ts",
+        "src/lib/product-registration-v6/readiness.test.ts",
+        "src/lib/product-registration-v6/types.ts",
+        "src/workflows/product-registration-v6.ts",
+        "docs/product-registration-current-ssot.md",
+        "docs/ai-agent-doc-automation.md",
+        "docs/env-variables-reference.md",
+        "docs/specs/20260903-product-registration-v6-analysis-recovery/**"
+      ],
+      "readOnly": [
+        "AGENTS.md",
+        "CURRENT_STATUS.md",
+        ".claude/CLAUDE.md",
+        ".cursor/rules/**",
+        "docs/agent-workflow-current-ssot.md",
+        "docs/archive/harness/agency-agents-adoption.md",
+        "docs/git-commit-handoff.md",
+        "db/FIELD_POLICY.md",
+        "docs/errors/product-registration.md"
+      ],
+      "forbidden": [
+        ".env*",
+        "supabase/migrations/**",
+        "src/app/**",
+        "src/components/**"
+      ]
+    },
+    {
+      "id": "pr-v6-01-reviewer",
+      "role": "review",
+      "write": [],
+      "readOnly": ["**"],
+      "forbidden": []
+    }
+  ]
+}

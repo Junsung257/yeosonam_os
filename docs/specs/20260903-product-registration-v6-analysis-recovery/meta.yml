@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "tier": 3,
+  "status": "completed",
+  "owner": "product-registration-kernel",
+  "baseline_commit": "26d760f2316347bf2f86cbb8ad9fde932835ce5e",
+  "review_file": "review.md",
+  "surface_map_version": 1,
+  "verified_commit": "18e748a3cf6dd54d8bb98706a2330b80f9fc6d6d",
+  "verification": [
+    "npx vitest run src/lib/product-registration-v4/canonical-table-axis-binding.test.ts src/lib/product-registration-v6/analysis-recovery.test.ts src/lib/product-registration-v6/runtime-config.test.ts src/lib/product-registration-v6/analysis-recovery-workflow-contract.test.ts",
+    "npm run type-check",
+    "npm run check:agent-surfaces -- --spec 20260903-product-registration-v6-analysis-recovery --agent pr-v6-01-owner --base 26d760f2316347bf2f86cbb8ad9fde932835ce5e",
+    "npm run check:harness"
+  ],
+  "evidence_paths": [
+    "review.md",
+    "verification.md"
+  ]
+}

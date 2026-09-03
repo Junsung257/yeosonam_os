@@ -900,6 +900,35 @@ export function canonicalNormalizationJobStatus(input: {
   return input.workflowEnabled ? 'processing' : 'failed';
 }
 
+export type CanonicalNormalizationExecutionMode = 'revision_commit' | 'analysis_only';
+
+export type CanonicalNormalizationExecutionPolicy = {
+  mode: CanonicalNormalizationExecutionMode;
+  persistNormalization: true;
+  commitRevisions: boolean;
+  createSnapshots: false;
+  changePublicationPointer: false;
+  customerPublicationAuthority: false;
+};
+
+/**
+ * One explicit policy controls every write beyond the normalization ledger.
+ * The analysis pass can therefore be reused by recovery workers without
+ * accidentally minting a product revision or customer publication state.
+ */
+export function canonicalNormalizationExecutionPolicy(
+  mode: CanonicalNormalizationExecutionMode = 'revision_commit',
+): CanonicalNormalizationExecutionPolicy {
+  return {
+    mode,
+    persistNormalization: true,
+    commitRevisions: mode === 'revision_commit',
+    createSnapshots: false,
+    changePublicationPointer: false,
+    customerPublicationAuthority: false,
+  };
+}
+
 export type CanonicalSection = {
   index: number;
   sectionKey: string;
@@ -2758,11 +2787,25 @@ export async function processProductRegistrationV4CanonicalNormalizationJob(inpu
   job: ProductRegistrationV4JobRecord;
   supplierProfileHints?: CatalogSegmentationProfileHints;
   allowEvidenceAiSegmentation?: boolean;
-}): Promise<{ job: ProductRegistrationV4JobRecord; normalizationId: string; normalization: CanonicalNormalization }> {
+  executionMode?: CanonicalNormalizationExecutionMode;
+}): Promise<{
+  job: ProductRegistrationV4JobRecord;
+  normalizationId: string;
+  normalization: CanonicalNormalization;
+  candidateSectionIndexes: number[];
+  executionPolicy: CanonicalNormalizationExecutionPolicy;
+}> {
   const job = input.job;
   if (!job.source_document_id || !job.extraction_id) throw new Error('CANONICAL_LINEAGE_REQUIRED');
+  const executionPolicy = canonicalNormalizationExecutionPolicy(input.executionMode);
 
   try {
+    if (!executionPolicy.commitRevisions && (
+      (Array.isArray(job.v4_stage_state.v5RevisionIds) && job.v4_stage_state.v5RevisionIds.length > 0)
+      || typeof job.v4_stage_state.v5RevisionId === 'string'
+    )) {
+      throw new Error('ANALYSIS_ONLY_JOB_ALREADY_HAS_REVISION');
+    }
     const { data: extraction, error: extractionError } = await input.supabase
       .from('product_document_extractions')
       .select('id, source_document_id, document_ir')
@@ -2795,6 +2838,9 @@ export async function processProductRegistrationV4CanonicalNormalizationJob(inpu
       supplierProfileHints: input.supplierProfileHints,
       allowEvidenceAiSegmentation: input.allowEvidenceAiSegmentation,
     });
+    const persistedNormalizationVersion = executionPolicy.mode === 'analysis_only'
+      ? `${normalization.version}:analysis-only-1`
+      : normalization.version;
     const { data, error } = await input.supabase
       .from('product_registration_v4_normalizations')
       .upsert({
@@ -2802,7 +2848,7 @@ export async function processProductRegistrationV4CanonicalNormalizationJob(inpu
         job_id: job.id,
         source_document_id: job.source_document_id,
         extraction_id: job.extraction_id,
-        normalization_version: normalization.version,
+        normalization_version: persistedNormalizationVersion,
         raw_text_hash: normalization.rawTextHash,
         sections: normalization.sections,
         canonical_payload: normalization.canonicalPayload,
@@ -2874,8 +2920,10 @@ export async function processProductRegistrationV4CanonicalNormalizationJob(inpu
     }
     const revisionSectionIndexes = revisionSlices.map(slice => slice.sectionIndex);
     let v5ShadowDiffSummary: Record<string, unknown> | null = null;
-    if (process.env.PRODUCT_REGISTRATION_V5_SHADOW === '1'
-      || getProductRegistrationV6RuntimeConfig().workflowEnabled) {
+    if (executionPolicy.commitRevisions && (
+      process.env.PRODUCT_REGISTRATION_V5_SHADOW === '1'
+      || getProductRegistrationV6RuntimeConfig().workflowEnabled
+    )) {
       const { data: legacyDraft, error: legacyDraftError } = await input.supabase
         .from('product_registration_drafts')
         .select('ledger')
@@ -2957,12 +3005,14 @@ export async function processProductRegistrationV4CanonicalNormalizationJob(inpu
       }),
       state: {
         normalizationId,
-        normalizationVersion: normalization.version,
+        normalizationVersion: persistedNormalizationVersion,
         v5RevisionIds,
         v5RevisionId: v5RevisionIds[0] ?? null,
         catalogProductIds,
         catalogProductId: catalogProductIds[0] ?? null,
-        revisionSectionIndexes,
+        revisionSectionIndexes: executionPolicy.commitRevisions ? revisionSectionIndexes : [],
+        analysisCandidateSectionIndexes: revisionSectionIndexes,
+        canonicalNormalizationMode: executionPolicy.mode,
         pastOnlySectionIndexes: normalization.qualityDiagnostics.departureDatePolicy.pastOnlySectionIndexes,
         discardedMissingSalePriceSectionIndexes,
         sourceSalePriceDispositions: salePricePartition.dispositions,
@@ -2984,7 +3034,13 @@ export async function processProductRegistrationV4CanonicalNormalizationJob(inpu
       errorCode: normalization.status === 'complete' ? null : 'CANONICAL_NORMALIZATION_REVIEW_REQUIRED',
       errorDetail: normalization.status === 'complete' ? null : 'One or more canonical sections failed the V3 gate.',
     });
-    return { job: updatedJob, normalizationId, normalization };
+    return {
+      job: updatedJob,
+      normalizationId,
+      normalization,
+      candidateSectionIndexes: revisionSectionIndexes,
+      executionPolicy,
+    };
   } catch (error) {
     const message = describeRegistrationError(error);
     await transitionProductRegistrationV4Job({

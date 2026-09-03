@@ -75,6 +75,7 @@ V6는 기본적으로 레거시 호환 또는 그림자 처리만 합니다. 운
 | `PRODUCT_REGISTRATION_PLATFORM_TENANT_ID` | 플랫폼 자체 업로드·공개 surface의 명시적 tenant UUID. 신규 kernel 업로드에서는 필수 | 미설정 |
 | `PRODUCT_REGISTRATION_V6_WORKFLOW_ENABLED` | 과거 호환 변수. 현재 workflow 권위는 `PRODUCT_REGISTRATION_AUTHORITY_MODE=shadow|kernel`에서만 결정하며 이 값만으로 켜지지 않음 | `0` |
 | `PRODUCT_REGISTRATION_V6_SHADOW_ENABLED` | revision·검증·snapshot을 비공개로 생성 | `1` |
+| `PRODUCT_REGISTRATION_V6_ANALYSIS_RECOVERY_PREVIEW_ENABLED` | PR-V6-01 분석 전용 정규화와 Recovery Target 탐지만 실행하고 Revision 이전에 안전 차단. PR-V6-02 복구 오케스트레이터 연결 전 운영 활성화 금지 | `0` |
 | `PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED` | verified/degraded 결과의 자동 CAS 공개 | `0` |
 | `PRODUCT_REGISTRATION_PUBLICATION_FREEZE` | `1`이면 모든 신규 V6 공개 차단 | `1` |
 | `PRODUCT_REGISTRATION_V6_BACKFILL_ENABLED` | 기존 `travel_packages`를 같은 Kernel로 비공개 재처리. migration·schema finalizer 이후 shadow에서만 켬 | `0` |

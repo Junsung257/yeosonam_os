@@ -78,6 +78,8 @@ P0·P1과 current·harness 문서 위반은 baseline 예외 없이 차단한다.
 
 ## 평가 구분
 
+Every previous failure becomes a reproducible dataset item when feasible. Never make the document the only fix: pair a policy correction with the narrowest fixture, test, eval, or executable guard that proves the failure cannot silently recur.
+
 - `test:harness-contracts`: 30개 이상의 결정적 구조·정책 계약. 네트워크와 모델 비용 없이 PR에서 실행한다.
 - `eval:harness:promptfoo`: 동일 계약을 고정된 Promptfoo 버전으로 재현한다.
 - `eval:harness:live`: 실제 provider를 사용하는 선택형 행동 평가. 자격증명, 비용, 격리된 read-only 실행 환경이 있을 때만 실행한다.
