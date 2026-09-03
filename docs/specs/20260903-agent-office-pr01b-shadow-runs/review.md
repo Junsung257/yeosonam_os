@@ -29,7 +29,7 @@
 - Reconciliation is a pure diagnostic returning `matched`, `pending`, or
   `mismatch`. It cannot update Task/Trace state or promote a Run.
 
-## Verification So Far
+## Verification
 
 | Check | Result |
 |---|---|
@@ -44,13 +44,34 @@
 | Full repository harness | PASS — zero findings, deterministic contracts 30/30, audit tests 29/29 |
 | Agent risk ratchet | PASS — new violations 0 |
 | Whitespace/error-marker check | PASS |
-| pgTAP shadow ledger suite | PENDING — 61 assertions committed; local Docker service could not be started with the current host permission |
-| Full repository TypeScript compile | PENDING CI — local shared dependency tree lacks existing lockfile packages; scoped compile passed |
+| Isolated Supabase Preview migration | PASS — the actual PR-01B migration applied without SQL errors |
+| Preview executable database assertions | PASS — 35/35, including RLS, privileges, Lease/Fencing, lifecycle, tenant boundary, and Task SSOT non-mutation |
+| pgTAP shadow ledger suite in Preview | PASS — 61/61; zero `not ok` diagnostics |
+| Full repository TypeScript compile | PASS — fresh-dependency GitHub CI |
+| GitHub Build & Test | PASS |
+| GitHub Code Quality | PASS |
+| GitHub Security Scan | PASS |
+| GitHub Next build and bundle budget | PASS |
 
-## Pending Gate and Residual Risk
+## Gate Result and Residual Risk
 
-The migration has not been applied to any remote database. Before this review can
-be marked complete, a fresh-dependency CI run and Local/Supabase Preview must
-execute the pgTAP suite. Any SQL parse, privilege, lifecycle, or concurrency
-failure is a hard stop. PR-01C remains outside this work and must not begin from
-this pending state.
+The migration was applied only to disposable, no-production-data Supabase Preview
+branches. Both branches were deleted after verification. The Production database
+was not changed.
+
+The Supabase query client warned that the minimal Preview-only `tenants` and
+`agent_tasks` fixture tables had no RLS. Those two tables were deliberately
+reduced test fixtures, were not part of the PR migration, and were destroyed with
+the Preview. The `agent_runs` table itself passed enabled and forced RLS checks,
+and the repository's real `tenants` and `agent_tasks` definitions were not
+altered.
+
+The local Docker service remained unavailable, so the committed pgTAP file was
+executed directly against the isolated Preview over one reserved PostgreSQL
+session. Its transaction, `plan(61)`, all assertions, `finish()`, and rollback
+completed with 61 `ok` results and zero failures.
+
+Production application remains a separate approval. Until then this PR provides
+inactive schema/code only. `agent_runs` must not become a KPI, retry, authorization,
+dispatch, or Command source. PR-01C remains outside this work and must not begin
+automatically.

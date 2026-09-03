@@ -52,10 +52,10 @@ Terminal states are `succeeded`, `failed`, `timed_out`, `cancelled`, and `orphan
 
 ## Success Criteria
 
-- [ ] Table, constraints, RLS, grants, indexes, and RPC privileges are verified in pgTAP.
-- [ ] Two claim attempts cannot both acquire one Run.
-- [ ] Tenant mismatch, stale fence, wrong token, and expired lease fail closed.
-- [ ] Contract and task identity cannot drift after creation.
+- [x] Table, constraints, RLS, grants, indexes, and RPC privileges are verified in pgTAP.
+- [x] Two claim attempts cannot both acquire one Run.
+- [x] Tenant mismatch, stale fence, wrong token, and expired lease fail closed.
+- [x] Contract and task identity cannot drift after creation.
 - [x] Reconciliation reports mismatches without repairing or mutating Task/Trace state.
 - [x] No existing runtime, worker, provider, event, command, Office KPI, or UI imports the new writer.
 - [x] No Production migration is applied.

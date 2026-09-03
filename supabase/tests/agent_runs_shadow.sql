@@ -212,7 +212,7 @@ AS $$
     '1.0.0',
     NULL,
     NULL,
-    'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    'sha256:eaa48f597e687e7cbd3f10cb93b6440d11828bfc49c43dd75716b7e0453a37dc',
     'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
     'trace.shadow-test',
     900000,

@@ -8,5 +8,5 @@
 - [x] Implement the registry-validating shadow writer.
 - [x] Implement read-only reconciliation diagnostics.
 - [x] Add pgTAP and Vitest coverage.
-- [ ] Run local database and repository verification.
-- [ ] Commit, open PR-01B, confirm CI/Preview evidence, and stop.
+- [x] Run repository and isolated Supabase Preview database verification.
+- [x] Commit, open PR-01B, confirm CI/Preview evidence, and stop.
