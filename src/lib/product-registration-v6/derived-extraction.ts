@@ -385,7 +385,14 @@ export async function persistDerivedDocumentExtraction(input: {
   tenantId: string;
   derived: DerivedDocumentExtractionV1;
   qualityDiagnostics?: Record<string, unknown>;
-}): Promise<{ id: string; extractionHash: string; patchHash: string; contentHash: string }> {
+}): Promise<{
+  id: string;
+  extractionHash: string;
+  patchHash: string;
+  contentHash: string;
+  /** Use this copy for the next normalization step so the DB FK uses its UUID. */
+  derived: DerivedDocumentExtractionV1;
+}> {
   assertDerivedExtractionChain([{
     id: input.derived.id,
     sourceDocumentId: input.derived.sourceDocumentId,
@@ -443,6 +450,7 @@ export async function persistDerivedDocumentExtraction(input: {
       extractionHash: String((existingQuery.data as { extraction_hash?: unknown }).extraction_hash),
       patchHash: input.derived.patchHash,
       contentHash: input.derived.contentHash,
+      derived: bindPersistedDerivedExtractionId(input.derived, String((existingQuery.data as { id?: unknown }).id)),
     };
   }
   const { data, error } = await input.supabase
@@ -466,6 +474,18 @@ export async function persistDerivedDocumentExtraction(input: {
     extractionHash: String((data as { extraction_hash?: unknown }).extraction_hash),
     patchHash: input.derived.patchHash,
     contentHash: input.derived.contentHash,
+    derived: bindPersistedDerivedExtractionId(input.derived, String((data as { id?: unknown }).id)),
+  };
+}
+
+/** Replace the deterministic pre-persist key with the UUID assigned by Supabase. */
+export function bindPersistedDerivedExtractionId(
+  derived: DerivedDocumentExtractionV1,
+  persistedId: string,
+): DerivedDocumentExtractionV1 {
+  return {
+    ...derived,
+    id: requireNonEmpty(persistedId, 'DERIVED_EXTRACTION_PERSISTED_ID_REQUIRED'),
   };
 }
 
