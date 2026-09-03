@@ -128,6 +128,7 @@ export const adminNavGroups: NavGroup[] = [
       },
       { href: '/admin/upload', label: '상품 업로드', icon: Upload },
       { href: '/admin/product-registration-drafts', label: 'V3 Draft Ledger', icon: FileSearch },
+      { href: '/admin/product-registration/reviews', label: 'V6 원문 검수', icon: ClipboardCheck, minRole: 'tenant_staff', searchKeywords: ['원문 검수', '사람 검수', 'human review', 'V6 review'] },
       { href: '/admin/land-operators', label: '랜드사 관리', icon: Building2, minRole: 'tenant_admin' },
       { href: '/admin/attractions', label: '여행지/관광지', icon: Mountain },
       {

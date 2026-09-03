@@ -59,4 +59,4 @@ queued → in_review → awaiting_second
 
 ## 다음 단계 연결
 
-PR-V6-05에서 3-pane 검수 UI를 붙이고, PR-V6-06에서 `review_completed` 이벤트와 Receipt를 다시 읽어 `human_review` 파생 추출본을 생성한다. 그 뒤에도 전체 validator와 mobile proof를 통과하기 전에는 공개 포인터를 변경하지 않는다.
+PR-V6-05에서 `/admin/product-registration/reviews` 3-pane 검수 UI와 lineage-bound case read RPC를 붙였다. UI는 원문 텍스트·복원 표·후보 상품축을 보여주고, 세션을 연 뒤 Receipt API만 제출한다. 브라우저는 Supabase를 직접 조회하지 않고 다른 검수자의 Receipt도 볼 수 없다. PR-V6-06에서 `review_completed` 이벤트와 Receipt를 다시 읽어 `human_review` 파생 추출본을 생성한다. 그 뒤에도 전체 validator와 mobile proof를 통과하기 전에는 공개 포인터를 변경하지 않는다.
