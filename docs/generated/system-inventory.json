@@ -232,6 +232,11 @@
     "src/app/api/admin/product-registration/jobs/route.ts",
     "src/app/api/admin/product-registration/learning-report/route.ts",
     "src/app/api/admin/product-registration/products/[catalogProductId]/corrections/route.ts",
+    "src/app/api/admin/product-registration/reviews/[caseId]/adjudicate/route.ts",
+    "src/app/api/admin/product-registration/reviews/[caseId]/receipt/route.ts",
+    "src/app/api/admin/product-registration/reviews/[caseId]/session/route.ts",
+    "src/app/api/admin/product-registration/reviews/cases/route.ts",
+    "src/app/api/admin/product-registration/reviews/queue/route.ts",
     "src/app/api/admin/product-registration/v5/audit/route.ts",
     "src/app/api/admin/product-registration/v5/publish/route.ts",
     "src/app/api/admin/product-registration/v6/readiness/route.ts",
@@ -1516,7 +1521,8 @@
     "supabase/migrations/20260903090000_product_registration_internal_rls_hardening.sql",
     "supabase/migrations/20260903100000_product_registration_benchmark_session_rls_policy.sql",
     "supabase/migrations/20260903100730_product_registration_image_fallback_rpc_bridge.sql",
-    "supabase/migrations/20260903102937_product_registration_image_fallback_binding_evidence.sql"
+    "supabase/migrations/20260903102937_product_registration_image_fallback_binding_evidence.sql",
+    "supabase/migrations/20260903185516_product_registration_human_review_v1.sql"
   ],
   "workflows": [
     ".github/workflows/ai-code-review.yml",
