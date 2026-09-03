@@ -1,6 +1,6 @@
 # AI Operations Office Current SSOT
 
-> Updated: 2026-08-31
+> Updated: 2026-09-03
 >
 > Scope: Yeosonam OS의 에이전트 협업, 실행 원장, 승인, 사고, trace, 운영 화면.
 > Domain-specific booking, settlement, affiliate, marketing, product-registration,
@@ -336,6 +336,33 @@ does not enable its operational binding or add a caller.
   timeout, and policy source. It never returns credentials and accepts only the
   Technology Scout task. `AiProvider` and the Blog DeepSeek-only lane are
   unchanged.
+
+## 14. Technology Scout Foundation Preflight
+
+PR-01D captures 30 immutable public official-source fixtures and adds an offline
+contract and acceptance evaluator. It does not activate the Runtime binding or
+claim that a live Scout ran.
+
+- Repository, commit, README blob, license blob, and release evidence are pinned;
+  mutable branch names are not decision-bearing evidence.
+- The offline corpus produces strict Task inputs, content-addressed public
+  evidence, Technology Radar Work Products, and independent deterministic
+  contract Review Receipts. These receipts are not human review evidence.
+- Contract fixtures pass 30/30. They are baselines, not agent output and not
+  automatic Technology Radar decisions.
+- Community evidence cannot support a decision, and revision, license, Artifact,
+  or Work Product hash drift fails the contract.
+- Pilot acceptance is conjunctive: 20 live official-source cases, three
+  independent identical-input trials, zero hard-gate violations, complete
+  reproducibility/evidence, and human review for every result are all required.
+- The official current App Server documents restricted readable roots, but the
+  locally installed `codex-cli 0.151.0-alpha.7.2` generated schema lacks that
+  read-only policy field. `CODEX_RESTRICTED_READ_ROOTS_UNSUPPORTED` therefore
+  blocks every live turn until a separately reviewed compatible Runtime or
+  equivalent OS sandbox is attested.
+- No package, Skill, MCP, Plugin, binary, Production migration, model call,
+  external write, Command, automatic delegation, Office write, or Blog Provider
+  change is part of this preflight.
 - The repository binding remains `contract_only` with execution disabled.
   A real Technology Scout turn remains part of the separately approved PR-01D
   pilot and requires a compatible restricted-read App Server protocol.

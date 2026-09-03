@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "tier": 3,
+  "status": "blocked",
+  "owner": "platform-engineering",
+  "baseline_commit": "b967cf2e14581be0711ddab19b6e2308028fe43e",
+  "review_file": "review.md",
+  "surface_map_version": 1,
+  "verified_commit": null,
+  "verification": [
+    "npm run check:agent-surfaces -- --spec 20260903-agent-office-pr01d-technology-scout-shadow-pilot --agent pr01d-owner --base b967cf2e14581be0711ddab19b6e2308028fe43e",
+    "npx vitest run src/lib/agent/pilot/technology-scout-pilot.test.ts src/lib/agent/contracts/contracts.test.ts src/lib/agent/runtime/runtime-adapter.test.ts",
+    "npm run eval:technology-scout:foundation",
+    "npm run type-check",
+    "npm run check:agent-workflow:ci",
+    "npm run audit:llm-telemetry:ci",
+    "npm run check:harness"
+  ],
+  "evidence_paths": [
+    "review.md",
+    "protocol-compatibility.md",
+    "report-source.md"
+  ]
+}

@@ -1,6 +1,6 @@
 # 여소남 OS 현재 상태와 권위 색인
 
-> 검증 기준: 2026-09-02 · 현재 사실은 코드·테스트와 [생성 inventory](docs/generated/system-inventory.md)를 우선한다.
+> 검증 기준: 2026-09-03 · 현재 사실은 코드·테스트와 [생성 inventory](docs/generated/system-inventory.md)를 우선한다.
 
 ## 제품 경계
 
@@ -37,6 +37,7 @@
 - 주간 SEO 감사는 공개 카탈로그·Sitemap·HTML·GSC·CrUX·PageSpeed를 append-only로 기록하고 콘텐츠를 자동 변경하지 않는다. Crawl4AI·Docling·한국어 로컬 임베딩은 최신 벤치마크가 임계값을 다시 계산해 통과한 경우에만 활성화한다.
 - 구독형 이미지는 로그인된 Codex built-in ImageGen만 사용한다. Images API 키, Pexels 정상 fallback, 직접 Supabase 쓰기는 금지한다.
 - Research Node는 review-only signal만 intake API로 제출한다. Production DB 키, 발행·예약·결제 권한을 갖지 않는다.
+- Technology Scout PR-01D는 30개 불변 공식 소스의 오프라인 계약 평가만 30/30 통과했다. 현재 Codex App Server가 제한 읽기 루트를 증명하지 못해 live Turn·20건 결과·3회 반복 Trial·인간 검수는 차단 상태이며, 이를 완료로 간주하지 않는다.
 - Research intake는 인증 후 분산 rate-limit 백엔드가 없으면 503으로 실패-폐쇄한다.
 - 외부 조사 결과는 시장 반응·주제 후보이며 가격·일정·취소규정의 최종 사실 근거가 아니다.
 - Supabase MCP는 프로젝트 범위·읽기 전용·최소 feature group이 기본이다. 계정 범위 플러그인은 기본 비활성으로 둔다.

@@ -1677,6 +1677,7 @@
     "scripts/eval-harness-contract.mjs",
     "scripts/eval-jarvis-golden.ts",
     "scripts/eval-product-registration-corpus.ts",
+    "scripts/eval-technology-scout-foundation.ts",
     "scripts/export-upload-review-fixture-candidates.ts",
     "scripts/extract-hwp-inbox.ps1",
     "scripts/fill-attraction-descriptions.ts",

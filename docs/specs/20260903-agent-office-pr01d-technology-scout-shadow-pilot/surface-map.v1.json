@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "taskId": "20260903-agent-office-pr01d-technology-scout-shadow-pilot",
+  "agents": [
+    {
+      "id": "pr01d-owner",
+      "role": "implementation",
+      "write": [
+        "src/lib/agent/pilot/**",
+        "scripts/eval-technology-scout-foundation.ts",
+        "package.json",
+        "docs/agent-office-current-ssot.md",
+        "CURRENT_STATUS.md",
+        "docs/generated/system-inventory.md",
+        "docs/specs/20260903-agent-office-pr01d-technology-scout-shadow-pilot/**"
+      ],
+      "readOnly": [
+        "AGENTS.md",
+        ".claude/CLAUDE.md",
+        ".cursor/rules/**",
+        "docs/agent-workflow-current-ssot.md",
+        "docs/ai-ops-current-ssot.md",
+        "docs/research-node-current-ssot.md",
+        "docs/archive/harness/agency-agents-adoption.md",
+        "docs/git-commit-handoff.md",
+        "docs/specs/20260903-agent-office-v2-pr00/**",
+        "docs/specs/20260903-agent-office-pr01a-contract-registry/**",
+        "docs/specs/20260903-agent-office-pr01b-shadow-runs/**",
+        "docs/specs/20260903-agent-office-pr01c-runtime-adapter/**",
+        "src/lib/agent/contracts/**",
+        "src/lib/agent/runtime/**",
+        "src/lib/agent/run-ledger.ts"
+      ],
+      "forbidden": [
+        ".github/**",
+        ".env*",
+        "package-lock.json",
+        "supabase/**",
+        "src/app/**",
+        "src/inngest/**",
+        "src/lib/agent/contracts/**",
+        "src/lib/agent/runtime/**",
+        "src/lib/agent/run-ledger.ts",
+        "src/lib/ai-provider-policy.ts",
+        "src/lib/agent-action-registry.ts",
+        "src/lib/agent-action-executor.ts",
+        "src/lib/blog-ai-caller.ts",
+        "src/lib/blog-deepseek-orchestrator-v4.ts"
+      ]
+    },
+    {
+      "id": "pr01d-reviewer",
+      "role": "review",
+      "write": [],
+      "readOnly": ["**"],
+      "forbidden": []
+    }
+  ]
+}
