@@ -11,4 +11,10 @@ describe('Vercel build stability contract', () => {
     expect(source).not.toContain("process.env.NEXT_BUILD_WEBPACK_WORKER !== '0'");
     expect(source).toContain('webpackBuildWorker: enableWebpackBuildWorker');
   });
+
+  it('enables webpack peak-memory optimizations only for hosted builds', () => {
+    const source = readFileSync(join(process.cwd(), 'next.config.js'), 'utf8');
+
+    expect(source).toContain("webpackMemoryOptimizations: process.env.VERCEL === '1'");
+  });
 });
