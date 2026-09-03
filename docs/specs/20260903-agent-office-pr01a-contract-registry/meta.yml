@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "tier": 3,
+  "status": "active",
+  "owner": "platform-engineering",
+  "baseline_commit": "5e52ae2fd094b372c933f875c54b8021d8ebd0d8",
+  "review_file": "review.md",
+  "surface_map_version": 1,
+  "verified_commit": null,
+  "verification": [
+    "npm run check:agent-surfaces -- --spec 20260903-agent-office-pr01a-contract-registry --agent pr01a-owner --base 5e52ae2fd094b372c933f875c54b8021d8ebd0d8",
+    "npx vitest run src/lib/agent/contracts/contracts.test.ts",
+    "npm run type-check",
+    "npm run check:agent-workflow:ci",
+    "npm run audit:llm-telemetry:ci",
+    "npm run check:harness"
+  ],
+  "evidence_paths": [
+    "review.md"
+  ]
+}
