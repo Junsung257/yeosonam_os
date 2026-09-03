@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "taskId": "20260904-agent-office-usable-pilot",
+  "agents": [
+    {
+      "id": "codex",
+      "role": "implementation",
+      "write": [
+        "package.json",
+        "docs/generated/system-inventory.json",
+        "docs/generated/system-inventory.md",
+        "docs/specs/20260904-agent-office-usable-pilot/**",
+        "scripts/attest-technology-scout-runtime.ts",
+        "scripts/run-technology-scout-shadow.ts",
+        "src/app/admin/agent-mas/page.tsx",
+        "src/app/api/admin/agent/office/pilot-readiness/**",
+        "src/components/admin/AgentOfficeEntryCard.tsx",
+        "src/components/admin/TechnologyScoutPilotPanel.tsx",
+        "src/lib/agent-office-readiness.ts",
+        "src/lib/agent/pilot/**",
+        "src/lib/agent/runtime/codex-app-server-stdio.ts",
+        "src/lib/agent/runtime/codex-subscription-runtime.ts",
+        "src/lib/agent/runtime/runtime-adapter.test.ts"
+      ],
+      "readOnly": ["src/lib/agent/contracts/**"],
+      "forbidden": ["supabase/migrations/**", "src/lib/agent/commands/**"]
+    }
+  ]
+}

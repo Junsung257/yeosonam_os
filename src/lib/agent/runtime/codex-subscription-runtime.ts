@@ -237,10 +237,23 @@ function validatePublicInputArtifacts(
 }
 
 function technologyRadarJsonSchema(): unknown {
-  return zodToJsonSchema(AGENT_CONTRACT_SCHEMA_REGISTRY.technologyRadarEntry.schema, {
+  const schema = zodToJsonSchema(AGENT_CONTRACT_SCHEMA_REGISTRY.technologyRadarEntry.schema, {
     target: 'jsonSchema7',
     $refStrategy: 'none',
   });
+  // OpenAI structured-output schemas reject JSON Schema annotation formats
+  // such as `uri` even though they are valid JSON Schema. The contract still
+  // validates URLs with Zod after the turn; strip annotations only at this
+  // protocol boundary so validation semantics and evidence URLs remain intact.
+  const stripFormats = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(stripFormats);
+    if (!value || typeof value !== 'object') return value;
+    const record = value as Record<string, unknown>;
+    return Object.fromEntries(Object.entries(record)
+      .filter(([key]) => key !== 'format')
+      .map(([key, child]) => [key, stripFormats(child)]));
+  };
+  return stripFormats(schema);
 }
 
 export function createCodexSubscriptionRuntimeAdapter(options: {
@@ -495,6 +508,7 @@ export function createCodexSubscriptionRuntimeAdapter(options: {
         runtimeWorkspaceRoots: [workspaceRoot],
         approvalPolicy: 'never',
         permissions: CODEX_READ_ONLY_PERMISSION_PROFILE,
+        reasoningEffort: 'low',
         serviceName: 'yeosonam_agent_office',
         ephemeral: true,
         baseInstructions: 'Perform one bounded, public-data, read-only structured-output task.',
@@ -519,6 +533,7 @@ export function createCodexSubscriptionRuntimeAdapter(options: {
         runtimeWorkspaceRoots: [workspaceRoot],
         approvalPolicy: 'never',
         permissions: CODEX_READ_ONLY_PERMISSION_PROFILE,
+        reasoningEffort: 'low',
         model,
         outputSchema: technologyRadarJsonSchema(),
       }));

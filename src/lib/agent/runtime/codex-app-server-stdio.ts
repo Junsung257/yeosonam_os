@@ -181,6 +181,12 @@ class StdioConnection implements CodexAppServerConnection {
     this.listeners.clear();
     this.child.stdin.end();
     if (!this.child.killed) this.child.kill();
+    // Codex may have started auxiliary MCP workers before the control
+    // connection is closed. Detach and destroy the stdio handles so a
+    // no-turn health/attestation probe cannot keep a server process alive.
+    this.child.stdout.destroy();
+    this.child.stderr.destroy();
+    this.child.unref();
   }
 
   private write(message: CodexAppServerMessage): void {

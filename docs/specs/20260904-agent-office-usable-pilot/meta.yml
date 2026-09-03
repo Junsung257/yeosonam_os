@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "tier": 2,
+  "status": "active",
+  "owner": "platform-engineering",
+  "baseline_commit": "e5f0dd94d04e5b35ca3a507ca90e334975e758eb",
+  "review_file": "review.md",
+  "surface_map_version": 1,
+  "verified_commit": null,
+  "verification": [
+    "npm run check:agent-workflow:ci",
+    "npm run check:agent-surfaces -- --spec 20260904-agent-office-usable-pilot --agent codex --base e5f0dd94d04e5b35ca3a507ca90e334975e758eb",
+    "node node_modules/typescript/bin/tsc --noEmit --pretty false",
+    "node node_modules/vitest/dist/cli.js run src/lib/agent/pilot/technology-scout-pilot.test.ts src/lib/agent/pilot/readiness.test.ts src/lib/agent/pilot/runtime-attestation.test.ts src/lib/agent/runtime/runtime-adapter.test.ts src/app/admin/agent-mas/page.test.tsx",
+    "npm run build"
+  ],
+  "evidence_paths": [
+    "review.md",
+    "codex-attestation.md"
+  ]
+}
