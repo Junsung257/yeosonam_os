@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "tier": 3,
+  "status": "active",
+  "owner": "platform-engineering",
+  "baseline_commit": "f390eaa566ecb33bbb35e3225b91f49d0ee1a155",
+  "review_file": "review.md",
+  "surface_map_version": 1,
+  "verified_commit": null,
+  "verification": [
+    "npm run check:agent-surfaces -- --spec 20260903-agent-office-pr01c-runtime-adapter --agent pr01c-owner --base f390eaa566ecb33bbb35e3225b91f49d0ee1a155",
+    "npx vitest run src/lib/agent/runtime/runtime-adapter.test.ts src/lib/agent/contracts/contracts.test.ts src/lib/agent/run-ledger.test.ts",
+    "npm run type-check",
+    "npm run check:agent-workflow:ci",
+    "npm run audit:llm-telemetry:ci",
+    "npm run check:harness"
+  ],
+  "evidence_paths": [
+    "review.md"
+  ]
+}

@@ -301,3 +301,41 @@ audit shadow, not a second task engine.
   not read this ledger in PR-01B.
 - The migration is verified only in Local/Preview Supabase. Applying it to the
   Production database requires a separate approval.
+
+## 13. Inactive Read-only Runtime Boundary
+
+PR-01C adds an implementation boundary for the Codex subscription Runtime but
+does not enable its operational binding or add a caller.
+
+- `AgentRuntimeAdapter` is limited to `health`, `start`, and Runtime-only
+  `cancel`; cancellation uses App Server `turn/interrupt` and cannot update a
+  Task.
+- The Codex child uses stdio JSONL, an ephemeral thread, ChatGPT subscription
+  authentication, `approvalPolicy` set to `never`, read-only sandboxing, disabled
+  network, a restricted readable root, and disabled optional Tool/Skill/Plugin/
+  App surfaces.
+- The child environment is allowlisted. Supabase, Provider, Vercel, payment,
+  publication, booking, customer, and arbitrary inherited secrets are excluded.
+- Start requires a host-verified short-lived capability bound to the exact Run,
+  Task, tenant, Role, public data class, and readable roots. The capability
+  secret never enters the child protocol or artifact callbacks.
+- Input evidence must arrive through exact opaque Artifact references with a
+  matching SHA-256 content hash. URLs alone cannot qualify as evidence while
+  network access is disabled.
+- Any command, file change, Tool, MCP, Skill, App, browser, image, permission,
+  model reroute, subagent activity, unknown server request, or non-allowlisted
+  item type fails closed and interrupts the turn. Turn-scoped events must match
+  the exact active thread and turn.
+- The Runtime deadline starts before App Server startup, and observed input or
+  output token usage above the registered budget interrupts the turn and cannot
+  produce a successful Artifact.
+- Successful output must pass the registered Technology Radar payload schema
+  and an injected content-addressed shadow Artifact sink. PR-01C provides no
+  sink, API, workflow, queue selection, or automatic dispatch implementation.
+- The existing Provider-policy wrapper returns only Provider, model, fallback,
+  timeout, and policy source. It never returns credentials and accepts only the
+  Technology Scout task. `AiProvider` and the Blog DeepSeek-only lane are
+  unchanged.
+- The repository binding remains `contract_only` with execution disabled.
+  A real Technology Scout turn remains part of the separately approved PR-01D
+  pilot and requires a compatible restricted-read App Server protocol.
