@@ -40,6 +40,7 @@ describe('blog public package data boundary', () => {
     expect(text).not.toContain('travel_packages(');
     expect(text).not.toContain('travel_packages?.title');
     expect(text).toContain("const title = escXml(post.seo_title || '여소남 블로그')");
+    expect(text).toContain("export const dynamic = 'force-dynamic'");
   });
 
   it('does not join raw package destinations into blog Open Graph images', () => {
