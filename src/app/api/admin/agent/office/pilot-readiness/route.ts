@@ -2,7 +2,7 @@ import { type NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { requirePlatformAdminRequest } from '@/lib/admin-guard';
 import { buildTechnologyScoutPilotReadiness } from '@/lib/agent/pilot';
-import { resolveTechnologyScoutShadowPilotEnvironment } from '@/lib/agent/pilot/technology-scout-shadow';
+import { resolveTechnologyScoutShadowPilotEnvironment } from '@/lib/agent/pilot/environment';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
