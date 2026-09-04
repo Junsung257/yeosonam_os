@@ -23,10 +23,6 @@ import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 
 export const revalidate = 86400; // 1d
-// The page reads live publication snapshots. Explicitly use a serverless
-// handler so Vercel does not emit an SSG fallback without a corresponding
-// lambda when `generateStaticParams()` intentionally returns an empty list.
-export const dynamic = 'force-dynamic';
 export const dynamicParams = true;
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
