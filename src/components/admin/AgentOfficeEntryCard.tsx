@@ -22,24 +22,18 @@ export default function AgentOfficeEntryCard() {
     const controller = new AbortController();
     const load = async () => {
       try {
-        const sessionResponse = await fetch('/api/admin/session', {
-          cache: 'no-store',
-          signal: controller.signal,
-        });
-        if (!sessionResponse.ok) {
-          setState('hidden');
-          return;
-        }
-        const session = await sessionResponse.json() as { user?: { role?: string } | null };
-        if (session.user?.role !== 'platform_admin') {
-          setState('hidden');
-          return;
-        }
-
+        // The status endpoint is the single authorization boundary. Avoid a
+        // second session lookup here: a transient session response or a role
+        // alias mismatch used to make the entry point disappear even when the
+        // backend would allow the platform administrator to open the Office.
         const response = await fetch('/api/admin/agent/office/status', {
           cache: 'no-store',
           signal: controller.signal,
         });
+        if (response.status === 401 || response.status === 403) {
+          setState('hidden');
+          return;
+        }
         if (!response.ok) {
           setState('error');
           return;
