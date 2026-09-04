@@ -9,11 +9,15 @@ describe('legacy supabase package persistence contract', () => {
     const writerEnd = source.indexOf('// 여행 상품 수정', writerStart);
     const writer = source.slice(writerStart, writerEnd);
 
+    expect(source).not.toMatch(/departure_airport:\s*data\.departure_airport\s*\|\|/);
+    expect(source).not.toMatch(/min_participants:\s*data\.min_participants\s*\|\|\s*4/);
     expect(writerStart).toBeGreaterThanOrEqual(0);
     expect(writerEnd).toBeGreaterThan(writerStart);
     expect(writer).toContain('LEGACY_PACKAGE_WRITER_RETIRED_USE_REGISTRATION_KERNEL');
     expect(writer).toContain('throw new Error');
     expect(writer).not.toContain(".from('travel_packages')");
     expect(writer).not.toContain('.insert(');
+    expect(source).toContain('LEGACY_PACKAGE_WRITER_RETIRED_USE_REGISTRATION_KERNEL');
+    expect(source).toContain('LEGACY_PACKAGE_WRITER_RETIRED_USE_CORRECTION_REVISION');
   });
 });
