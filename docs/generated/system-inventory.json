@@ -1598,6 +1598,7 @@
     "scripts/audit-destinations-full.mjs",
     "scripts/audit-doc-harness.mjs",
     "scripts/audit-event-taxonomy.mjs",
+    "scripts/audit-harness-evals.mjs",
     "scripts/audit-high-severity.mjs",
     "scripts/audit-ignored-unmatched-entities.ts",
     "scripts/audit-jarvis-rag.ts",

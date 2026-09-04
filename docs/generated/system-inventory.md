@@ -10,7 +10,7 @@ This file is generated from the repository. Do not edit it directly.
 | App pages | 212 |
 | Supabase migrations | 571 |
 | GitHub workflows | 35 |
-| Repository scripts | 339 |
+| Repository scripts | 340 |
 
 ## API routes
 
