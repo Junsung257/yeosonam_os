@@ -115,6 +115,21 @@ The source API is read-only and bounded:
 
 These values describe an operator snapshot, not an all-time analytics warehouse.
 
+Period KPI values are served separately by `GET /api/admin/agent/office/kpi`.
+The endpoint calls the versioned `public.get_agent_office_kpi_v1` aggregate RPC
+over the existing task, approval, incident, and trace ledgers. It never derives
+period totals from the bounded detail arrays and never includes shadow Runs.
+The response carries a calculation version, source freshness, and an explicit
+`unavailable` state while the migration is absent or the aggregate cannot be
+read. The migration is read-only, `SECURITY INVOKER`, bounded to a maximum
+366-day window, and grants execution only to `service_role`; applying it to
+Production remains a separately approved database change.
+
+The operator page refreshes its detail snapshot and KPI aggregate every 30
+seconds while the browser tab is visible. Hidden tabs do not poll, and the
+manual refresh controls remain available. This is presentation polling only;
+it does not schedule work or create an agent Run.
+
 The pre-hardening production ledger contained old `running` tasks and pending
 approvals created by request streams that ended before terminal state was persisted.
 The UI must therefore display source freshness and must not equate a stored active

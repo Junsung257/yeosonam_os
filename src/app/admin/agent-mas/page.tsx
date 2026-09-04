@@ -17,6 +17,7 @@ import {
 import { fmtDateTime, fmtNum } from '@/lib/admin-utils';
 import { EmptyState, PageHeader } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
+import AgentOfficeKpiPanel from '@/components/admin/AgentOfficeKpiPanel';
 import TechnologyScoutPilotPanel from '@/components/admin/TechnologyScoutPilotPanel';
 import type {
   AgentOfficeRisk,
@@ -60,6 +61,8 @@ const TASK_STATUS_LABEL: Record<AgentOfficeTaskStatus, string> = {
   expired: '만료',
   cancelled: '취소',
 };
+
+const OFFICE_AUTO_REFRESH_MS = 30_000;
 
 const RISK_LABEL: Record<AgentOfficeRisk, string> = {
   low: '낮음',
@@ -398,6 +401,21 @@ export default function AgentMasPage() {
     void load();
   }, [load]);
 
+  // Keep the operator snapshot useful during a long review without turning
+  // the browser into a polling worker. Refresh only while the tab is visible;
+  // the explicit button remains available for an immediate read.
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void load(true);
+    };
+    const timer = globalThis.setInterval(refreshWhenVisible, OFFICE_AUTO_REFRESH_MS);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      globalThis.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [load]);
+
   const visibleWorkrooms = useMemo(() => {
     const workrooms = snapshot?.workrooms ?? [];
     if (workroomFilter === 'active') {
@@ -464,15 +482,20 @@ export default function AgentMasPage() {
           </span>
         )}
         actions={(
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => void load(true)}
-            loading={refreshing}
-          >
-            <RefreshCw size={14} aria-hidden="true" />
-            새로고침
-          </Button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <span className="text-[10px] text-admin-muted" title="브라우저 탭이 보이는 동안 30초마다 갱신됩니다.">
+              자동 갱신 30초
+            </span>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void load(true)}
+              loading={refreshing}
+            >
+              <RefreshCw size={14} aria-hidden="true" />
+              새로고침
+            </Button>
+          </div>
         )}
       />
 
@@ -592,6 +615,8 @@ export default function AgentMasPage() {
           )}
 
           <TechnologyScoutPilotPanel />
+
+          <AgentOfficeKpiPanel />
 
           <div className="mt-5 flex flex-wrap items-center gap-1 border-b border-admin-border-mid">
             {([
