@@ -15,7 +15,11 @@ jobs:
   quality:
     name: Code Quality
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # The pinned harness evaluator installs a separate lockfile and performs
+    # an npm audit; on clean GitHub runners those network-bound steps can
+    # legitimately exceed the old 15-minute ceiling without indicating a
+    # code failure. Keep every check intact and allow bounded completion.
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
