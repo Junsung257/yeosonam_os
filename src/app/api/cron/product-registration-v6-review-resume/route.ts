@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { NextRequest, NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import type { DocumentIR } from '@/lib/product-registration-v4/types';
 import type { ProductReviewCaseStatus, ReviewPacketV1, ReviewReceiptV1 } from '@/lib/product-registration-v6/human-review';
 import { callProductReviewRpc } from '@/lib/product-registration-v6/human-review-rpc';
@@ -207,13 +208,13 @@ async function processClaim(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>
 async function handler(request: NextRequest): Promise<NextResponse> {
   const config = getProductRegistrationV6RuntimeConfig();
   if (process.env.PRODUCT_REGISTRATION_V6_REVIEW_RESUME_ENABLED !== '1') {
-    return NextResponse.json({ success: false, code: 'V6_REVIEW_RESUME_DISABLED' }, { status: 409 });
+    return apiResponse({ success: false, code: 'V6_REVIEW_RESUME_DISABLED' }, { status: 409 });
   }
   if (config.authorityMode === 'legacy' || !config.workflowEnabled || !config.publicationFrozen) {
-    return NextResponse.json({ success: false, code: 'V6_REVIEW_RESUME_SAFETY_GATE_BLOCKED' }, { status: 409 });
+    return apiResponse({ success: false, code: 'V6_REVIEW_RESUME_SAFETY_GATE_BLOCKED' }, { status: 409 });
   }
   const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ success: false, code: 'SUPABASE_ADMIN_UNAVAILABLE' }, { status: 503 });
+  if (!db) return apiResponse({ success: false, code: 'SUPABASE_ADMIN_UNAVAILABLE' }, { status: 503 });
   const requested = Number(request.nextUrl.searchParams.get('limit') ?? 5);
   const limit = Number.isFinite(requested) ? Math.max(1, Math.min(Math.floor(requested), 10)) : 5;
   const workerId = `v6-review-resume:${randomUUID()}`;
@@ -225,10 +226,10 @@ async function handler(request: NextRequest): Promise<NextResponse> {
     const claims = claimedFromRpc(claimed);
     const results = [] as Array<Record<string, unknown>>;
     for (const claim of claims) results.push(await processClaim(db, claim, workerId));
-    return NextResponse.json({ success: results.every(result => result.status === 'revalidated' || result.status === 'derived_and_revalidated' || result.status === 'skipped'), claimed: claims.length, results }, { headers: { 'Cache-Control': 'no-store' } });
+    return apiResponse({ success: results.every(result => result.status === 'revalidated' || result.status === 'derived_and_revalidated' || result.status === 'skipped'), claimed: claims.length, results }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     console.error('[product-registration-v6-review-resume]', error);
-    return NextResponse.json({ success: false, code: error instanceof Error ? error.message : 'V6_REVIEW_RESUME_FAILED' }, { status: 502, headers: { 'Cache-Control': 'no-store' } });
+    return apiResponse({ success: false, code: error instanceof Error ? error.message : 'V6_REVIEW_RESUME_FAILED' }, { status: 502, headers: { 'Cache-Control': 'no-store' } });
   }
 }
 
