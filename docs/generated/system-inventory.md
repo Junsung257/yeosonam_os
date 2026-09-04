@@ -6,9 +6,9 @@ This file is generated from the repository. Do not edit it directly.
 
 | Kind | Count |
 |---|---:|
-| API routes | 736 |
+| API routes | 737 |
 | App pages | 212 |
-| Supabase migrations | 571 |
+| Supabase migrations | 572 |
 | GitHub workflows | 35 |
 | Repository scripts | 340 |
 
@@ -118,6 +118,7 @@ This file is generated from the repository. Do not edit it directly.
 - src/app/api/admin/affiliates/set-pin/route.ts
 - src/app/api/admin/agent/approvals/route.ts
 - src/app/api/admin/agent/incidents/route.ts
+- src/app/api/admin/agent/office/kpi/route.ts
 - src/app/api/admin/agent/office/pilot-readiness/route.ts
 - src/app/api/admin/agent/office/pilot/shadow/route.ts
 - src/app/api/admin/agent/office/route.ts
@@ -791,7 +792,6 @@ This file is generated from the repository. Do not edit it directly.
 
 ## Recent migrations
 
-- supabase/migrations/20260828090056_media_codex_worker_v1.sql
 - supabase/migrations/20260828103551_media_assets_rls_and_fk_hardening.sql
 - supabase/migrations/20260828120000_oauth_states_and_tenant_memberships.sql
 - supabase/migrations/20260828130000_social_publishing_hardening.sql
@@ -821,5 +821,6 @@ This file is generated from the repository. Do not edit it directly.
 - supabase/migrations/20260903100730_product_registration_image_fallback_rpc_bridge.sql
 - supabase/migrations/20260903102937_product_registration_image_fallback_binding_evidence.sql
 - supabase/migrations/20260903185516_product_registration_human_review_v1.sql
+- supabase/migrations/20260904010000_agent_office_kpi_lineage_v1.sql
 
 The complete deterministic inventory is stored in docs/generated/system-inventory.json.

@@ -106,6 +106,7 @@
     "src/app/api/admin/affiliates/set-pin/route.ts",
     "src/app/api/admin/agent/approvals/route.ts",
     "src/app/api/admin/agent/incidents/route.ts",
+    "src/app/api/admin/agent/office/kpi/route.ts",
     "src/app/api/admin/agent/office/pilot-readiness/route.ts",
     "src/app/api/admin/agent/office/pilot/shadow/route.ts",
     "src/app/api/admin/agent/office/route.ts",
@@ -1524,7 +1525,8 @@
     "supabase/migrations/20260903100000_product_registration_benchmark_session_rls_policy.sql",
     "supabase/migrations/20260903100730_product_registration_image_fallback_rpc_bridge.sql",
     "supabase/migrations/20260903102937_product_registration_image_fallback_binding_evidence.sql",
-    "supabase/migrations/20260903185516_product_registration_human_review_v1.sql"
+    "supabase/migrations/20260903185516_product_registration_human_review_v1.sql",
+    "supabase/migrations/20260904010000_agent_office_kpi_lineage_v1.sql"
   ],
   "workflows": [
     ".github/workflows/ai-code-review.yml",
