@@ -23,6 +23,11 @@ function run(args, env = process.env) {
     env,
     encoding: 'utf8',
     maxBuffer: 10 * 1024 * 1024,
+    // npm can wait several minutes for an unavailable advisory endpoint even
+    // when fetch_timeout is set. Keep this non-authoritative network check
+    // bounded, then let the offline cache decide whether the gate can pass.
+    timeout: 45_000,
+    killSignal: 'SIGTERM',
   });
 }
 
@@ -43,7 +48,8 @@ if (online.status === 0) {
 }
 
 const diagnostic = `${online.stdout || ''}\n${online.stderr || ''}`;
-if (!networkMarkers.some((marker) => diagnostic.includes(marker))) {
+const timedOut = online.error?.code === 'ETIMEDOUT';
+if (!timedOut && !networkMarkers.some((marker) => diagnostic.includes(marker))) {
   emit(online);
   process.exit(online.status ?? 1);
 }
