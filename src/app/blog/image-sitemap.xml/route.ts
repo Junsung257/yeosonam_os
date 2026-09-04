@@ -2,6 +2,10 @@ import { loadPublicBlogCatalog } from '@/lib/blog-public-catalog';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 
 export const revalidate = 3600;
+// Keep the XML feed on a serverless handler so Vercel does not drop the ISR
+// lambda during output conversion. Cache-Control below preserves the public
+// one-hour cache contract.
+export const dynamic = 'force-dynamic';
 
 const xml = (value: string) => value
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')

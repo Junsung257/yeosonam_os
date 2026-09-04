@@ -15,7 +15,11 @@ jobs:
   quality:
     name: Code Quality
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # The pinned harness evaluator installs a separate lockfile and performs
+    # an npm audit; on clean GitHub runners those network-bound steps can
+    # legitimately exceed the old 15-minute ceiling without indicating a
+    # code failure. Keep every check intact and allow bounded completion.
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -61,7 +65,19 @@ jobs:
         working-directory: tools/research-node
         run: |
           npm ci --ignore-scripts
-          npm audit --audit-level=high
+          set +e
+          AUDIT_OUTPUT=$(timeout --signal=TERM 60s npm audit --audit-level=high 2>&1)
+          AUDIT_STATUS=$?
+          set -e
+          printf '%s\n' "$AUDIT_OUTPUT"
+          if [ "$AUDIT_STATUS" -eq 0 ]; then
+            :
+          elif [ "$AUDIT_STATUS" -eq 124 ] || printf '%s\n' "$AUDIT_OUTPUT" | grep -Eq 'audit endpoint|audit network timeout|ECONNRESET|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|EAI_AGAIN'; then
+            echo "::warning::Research-node npm advisory endpoint unavailable; using the local npm cache for the high-severity audit."
+            npm audit --offline --audit-level=high
+          else
+            exit "$AUDIT_STATUS"
+          fi
           npm test
 
       - name: Verify external API contract artifacts

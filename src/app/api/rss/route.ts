@@ -4,6 +4,10 @@ const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SI
   .replace(/\/+$/, '');
 
 export const revalidate = 600;
+// Keep RSS as a serverless route in Vercel's output tracing. The response
+// headers below still provide the ten-minute CDN cache contract; forcing the
+// route dynamic avoids the builder dropping the ISR lambda for `/api/rss`.
+export const dynamic = 'force-dynamic';
 
 type RssPost = {
   slug?: string | null;
