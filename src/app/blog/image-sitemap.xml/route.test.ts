@@ -9,7 +9,7 @@ vi.mock('@/lib/blog-canonical-url', () => ({
   resolveBlogCanonicalOrigin: () => 'https://www.yeosonam.com',
 }));
 
-import { GET } from './route';
+import { GET, dynamic } from './route';
 
 describe('blog image sitemap', () => {
   beforeEach(() => {
@@ -32,5 +32,9 @@ describe('blog image sitemap', () => {
     expect(body).not.toContain('<image:title>');
     expect(body).not.toContain('/blog/relative');
     expect(body).not.toContain('/blog/missing');
+  });
+
+  it('uses a serverless handler for Vercel output conversion', () => {
+    expect(dynamic).toBe('force-dynamic');
   });
 });
