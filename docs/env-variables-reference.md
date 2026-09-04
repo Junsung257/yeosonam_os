@@ -154,8 +154,11 @@ LLM trace는 원문 prompt/response를 속성에 저장하지 않고 `gen_ai.ope
 | `GOOGLE_AI_API_KEY` | Gemini 2.5 Flash (블로그·카드뉴스·Pillar 생성) | `AIza...` |
 | `SUPABASE_JWT_SECRET` | Supabase **JWT 서명용 시크릿** (대시보드 → Project Settings → API → JWT Secret) | Base64 시크릿 |
 | `ADMIN_EMAILS` | **브라우저 쿠키 JWT**로 `/api` 어드민 호출 시 허용 이메일 (쉼표 구분, 대소문자 무시) | `admin@yeosonam.com` |
+| `PLATFORM_ADMIN_EMAILS` | JWT에 플랫폼 역할 claim이 아직 없는 레거시 세션에서 **AI 운영실 읽기 전용 API**를 허용할 명시적 플랫폼 관리자 이메일. `ADMIN_EMAILS`에도 포함되어야 하며, 다중 관리자 allowlist에서는 이 값을 반드시 별도로 설정합니다. | `owner@yeosonam.com` |
 
 `ADMIN_EMAILS`가 비어 있으면 일반 로그인으로는 어드민 API가 거부됩니다. 서버 간 호출은 `Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>` 로 여전히 가능합니다.
+
+`PLATFORM_ADMIN_EMAILS`가 비어 있으면 JWT의 `platform_admin`/`super_admin` claim을 우선 사용합니다. 레거시 호환을 위해 `ADMIN_EMAILS`가 단일 주소일 때만 그 주소를 플랫폼 관리자 이메일로 임시 인정합니다. 다중 주소를 사용하는 운영 환경에서는 반드시 `PLATFORM_ADMIN_EMAILS`를 별도로 설정해야 합니다.
 
 운영 빌드는 `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`(또는 legacy anon 키), `ADMIN_EMAILS`를 `npm run verify:admin-auth-env`로 검사합니다. `NEXT_PUBLIC_*`는 빌드 시 브라우저 번들에 포함되므로 값을 바꾼 뒤에는 반드시 새 Production 배포가 필요합니다.
 

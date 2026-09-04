@@ -120,6 +120,14 @@ export function withAdminGuard(handler: NextHandler): NextHandler {
  * the top-level role claim); user_metadata is intentionally not trusted for
  * authorization. Server-to-server ADMIN_API_TOKEN remains available for the
  * read-only internal control surface.
+ *
+ * `ADMIN_EMAILS` predates the role claim rollout and is still the production
+ * browser-admin boundary for the rest of the admin surface. During that
+ * migration, a single explicitly allowlisted owner email may also open the
+ * read-only Office when the JWT carries no role claim at all. An explicit
+ * tenant/unknown role never receives this fallback, and a multi-address
+ * `ADMIN_EMAILS` list must opt into the narrower `PLATFORM_ADMIN_EMAILS`
+ * variable instead.
  */
 export async function requirePlatformAdminRequest(req: NextRequest): Promise<NextResponse | null> {
   const authError = await requireAdminRequest(req);
@@ -144,7 +152,33 @@ export async function requirePlatformAdminRequest(req: NextRequest): Promise<Nex
     ? appMetadata.role
     : typeof payload?.role === 'string' ? payload.role : '';
   const role = rawRole.toLowerCase();
-  if (role === 'platform_admin' || role === 'platform' || role === 'admin') return null;
+  if (
+    role === 'platform_admin'
+    || role === 'platform'
+    || role === 'admin'
+    || role === 'super_admin'
+  ) return null;
+
+  // Legacy production sessions can be valid admin sessions without a custom
+  // role claim. Keep the compatibility path deliberately narrow: only an
+  // exact match against PLATFORM_ADMIN_EMAILS is preferred; when that variable
+  // is absent, a single-address ADMIN_EMAILS allowlist is treated as the owner
+  // boundary. Never upgrade an explicit non-platform role.
+  if (!role) {
+    const email = typeof payload?.email === 'string' ? payload.email.trim().toLowerCase() : '';
+    const platformEmails = (process.env.PLATFORM_ADMIN_EMAILS ?? '')
+      .split(',')
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean);
+    const legacyEmails = (process.env.ADMIN_EMAILS ?? '')
+      .split(',')
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean);
+    const allowedLegacyOwner = platformEmails.length === 0
+      && legacyEmails.length === 1
+      && email === legacyEmails[0];
+    if (email && (platformEmails.includes(email) || allowedLegacyOwner)) return null;
+  }
 
   return apiResponse(
     { code: 'PLATFORM_ADMIN_REQUIRED', error: '플랫폼 관리자 권한이 필요합니다.' },
