@@ -12,7 +12,10 @@ import {
 import {
   RuntimePublicInputArtifactSchema,
   type RuntimePublicInputArtifact,
-} from '@/lib/agent/runtime';
+} from '@/lib/agent/runtime/types';
+// Keep the fixture corpus on the lightweight contract path. Importing the
+// runtime barrel here would pull the Codex worker and stdio adapter into every
+// route that only needs schema validation.
 
 export const TECHNOLOGY_SCOUT_SOURCE_CAPTURED_AT = '2026-09-03T08:57:44.790Z';
 export const TECHNOLOGY_SCOUT_CORPUS_SHA256 = 'sha256:5727fb5678c047b58b2f70ad948c08008ddee14205c45150dd49bf4f90d801f8';
