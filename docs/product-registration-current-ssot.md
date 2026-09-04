@@ -9,6 +9,20 @@ Last updated: 2026-09-04
 - 검수 결과는 실제 인증된 Supabase 사용자 UUID와 세션 UUID를 요구한다. first/second는 서로 다른 사용자여야 하고, 불일치하면 자동 선택 없이 `adjudication_required`로 보낸다. 동일 결정·payload·evidence가 이중으로 일치할 때만 `accepted`, `source_insufficient`, `system_quarantined` 중 하나로 종결한다.
 - 검수 완료 이벤트는 append-only 내부 outbox로 기록하며 Receipt·원문·PII·signed URL을 고객 경계로 전달하지 않는다. PR-V6-05 UI와 PR-V6-06 파생 추출본 재개 연결 전까지 runtime과 publication freeze는 유지한다.
 
+## V6 evidence recovery PR-V6-05 review UI (2026-09-04, code-ready / runtime OFF)
+
+- `/admin/product-registration/reviews`는 인증된 `tenant_staff` 이상만 접근하는 3-pane 검수 화면이다. 왼쪽은 본인이 아직 처리하지 않은 케이스 대기열, 가운데는 lineage가 다시 확인된 원문 텍스트와 복원 표, 오른쪽은 후보 상품축·판정·근거 이유를 보여준다.
+- UI는 `GET /api/admin/product-registration/reviews/[caseId]`로 source IR을 읽고 `session → receipt` 또는 `adjudicate` API만 호출한다. 브라우저에서 Supabase를 직접 조회하지 않으며, 원문 storage path·signed URL·다른 검수자의 Receipt를 받지 않는다.
+- 판정 제출 전 서버가 실제 사용자 UUID와 단기 세션을 확인하고, Receipt hash/evidence를 다시 계산한다. 조정 화면은 서버에서 adjudicator slot을 강제한다. 이 단계도 Derived Extraction·Revision·Snapshot·Publication Pointer를 만들거나 변경하지 않는다.
+- 새 read RPC와 migration은 아직 운영 Supabase에 적용하지 않았다. migration 적용 및 UI runtime 활성화 전까지 전역 publication freeze는 유지한다.
+
+## V6 evidence recovery PR-V6-06 review resume (2026-09-04, code-ready / runtime OFF)
+
+- `review_completed` 이벤트는 private `product_review_resume_runs` lease/idempotency ledger에서 terminal case(`accepted`, `source_insufficient`, `system_quarantined`)만 claim한다. 최신 이벤트·source SHA·parent extraction SHA·전체 Receipt 집합을 RPC가 함께 고정하며, client role은 테이블과 RPC를 사용할 수 없다.
+- 두 Receipt가 합의했거나 adjudicator가 확정한 값 정정은 `review-resume` plan이 셀 주소·quote hash·상품축·반복 텍스트 occurrence를 다시 검증한 뒤 `human_review` Derived Extraction → analysis-only canonical normalization 순서로 append-only 저장한다. 축 선택만 필요한 판정은 no-op Derived Extraction을 만들지 않고 parent IR shadow normalization에 Receipt hash와 선택 축을 기록한다.
+- 작업 중 저장 결과를 확정할 수 없으면 `unknown_outcome`으로 남겨 재조회·재조정한다. 오류 발생 전은 `failed`, 원문 부족·시스템 결함은 `skipped`로 끝낸다. 이 worker는 Revision·Snapshot·Publication Pointer·고객 URL을 호출하지 않는다.
+- `PRODUCT_REGISTRATION_V6_REVIEW_RESUME_ENABLED` 기본값은 `0`이며, workflow가 legacy이거나 publication freeze가 꺼져 있으면 실행하지 않는다. 새 migration과 cron route는 아직 운영 Supabase에 적용·활성화하지 않았다.
+
 ## V6 evidence recovery PR-V6-03 derived extraction boundary (2026-09-04, code-ready / runtime OFF)
 
 - Recovery or review corrections now have an immutable `DerivedDocumentExtractionV1` contract. It applies only an explicitly addressed table cell, updates the matching IR node and quote hash together, and rejects stale evidence, duplicate cell patches, no-op patches, or ambiguous repeated text.

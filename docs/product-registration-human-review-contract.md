@@ -43,6 +43,7 @@ queued → in_review → awaiting_second
 - `defer_need_more_context`
 
 모든 결정은 최소 하나의 source evidence와 5자 이상의 이유를 가져야 한다. `select_axis`/`accept_auto_candidate`는 `selectedAxisKey`, 정정은 field별 `patches`와 source cell evidence를 추가로 요구한다. Receipt hash는 서버 계약의 canonical JSON으로 계산한 값이며, 재전송 시 같은 hash만 멱등적으로 재사용한다.
+`createdAt`은 감사용 wall-clock metadata이며 Receipt business identity에서는 제외한다. DB가 저장 시 server timestamptz로 표현을 정규화해도 동일 Receipt hash를 재생할 수 있어야 한다.
 
 ## 독립성·조정
 
@@ -59,4 +60,4 @@ queued → in_review → awaiting_second
 
 ## 다음 단계 연결
 
-PR-V6-05에서 3-pane 검수 UI를 붙이고, PR-V6-06에서 `review_completed` 이벤트와 Receipt를 다시 읽어 `human_review` 파생 추출본을 생성한다. 그 뒤에도 전체 validator와 mobile proof를 통과하기 전에는 공개 포인터를 변경하지 않는다.
+PR-V6-05에서 `/admin/product-registration/reviews` 3-pane 검수 UI와 lineage-bound case read RPC를 붙였다. UI는 원문 텍스트·복원 표·후보 상품축을 보여주고, 세션을 연 뒤 Receipt API만 제출한다. 브라우저는 Supabase를 직접 조회하지 않고 다른 검수자의 Receipt도 볼 수 없다. PR-V6-06의 review-resume worker는 terminal `review_completed` 이벤트만 lease로 claim하고, Receipt 집합을 다시 대조한다. 값 정정은 `human_review` 파생 추출본을 append-only로 만들고 재정규화하며, 상품축만 선택한 판정은 no-op child를 만들지 않고 parent 기반 shadow normalization으로 재검증한다. 원문 부족·시스템 격리는 파생본 없이 종결한다. 그 뒤에도 전체 validator와 mobile proof를 통과하기 전에는 공개 포인터를 변경하지 않는다.

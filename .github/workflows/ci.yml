@@ -15,7 +15,10 @@ jobs:
   quality:
     name: Code Quality
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # The pinned harness evaluator installs its own locked dependency tree.
+    # On clean runners the install can take 10+ minutes before the actual
+    # quality checks begin, so keep the gate fail-closed without timing it out.
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -26,6 +29,10 @@ jobs:
         with:
           node-version: "24"
           cache: "npm"
+          cache-dependency-path: |
+            package-lock.json
+            tools/harness-evals/package-lock.json
+            tools/research-node/package-lock.json
 
       - run: npm ci
 
