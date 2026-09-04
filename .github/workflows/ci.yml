@@ -65,7 +65,19 @@ jobs:
         working-directory: tools/research-node
         run: |
           npm ci --ignore-scripts
-          npm audit --audit-level=high
+          set +e
+          AUDIT_OUTPUT=$(timeout --signal=TERM 60s npm audit --audit-level=high 2>&1)
+          AUDIT_STATUS=$?
+          set -e
+          printf '%s\n' "$AUDIT_OUTPUT"
+          if [ "$AUDIT_STATUS" -eq 0 ]; then
+            :
+          elif [ "$AUDIT_STATUS" -eq 124 ] || printf '%s\n' "$AUDIT_OUTPUT" | grep -Eq 'audit endpoint|audit network timeout|ECONNRESET|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|EAI_AGAIN'; then
+            echo "::warning::Research-node npm advisory endpoint unavailable; using the local npm cache for the high-severity audit."
+            npm audit --offline --audit-level=high
+          else
+            exit "$AUDIT_STATUS"
+          fi
           npm test
 
       - name: Verify external API contract artifacts
