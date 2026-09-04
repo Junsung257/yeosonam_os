@@ -47,7 +47,7 @@
     "test:harness-contracts": "node scripts/eval-harness-contract.mjs",
     "test:harness-audit": "node --test scripts/lib/harness/*.test.mjs",
     "setup:harness-evals": "node scripts/setup-harness-evals.mjs",
-    "audit:harness-evals": "npm --prefix tools/harness-evals audit --omit=optional --audit-level=high",
+    "audit:harness-evals": "node scripts/audit-harness-evals.mjs",
     "eval:harness:promptfoo": "node scripts/run-promptfoo-eval.mjs promptfooconfig.harness.yaml",
     "eval:harness:live": "node scripts/run-harness-live-eval.mjs",
     "eval:technology-scout:foundation": "tsx scripts/eval-technology-scout-foundation.ts",
