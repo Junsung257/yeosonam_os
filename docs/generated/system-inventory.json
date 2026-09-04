@@ -489,6 +489,7 @@
     "src/app/api/cron/product-registration-v5-convergence/route.ts",
     "src/app/api/cron/product-registration-v5-outbox/route.ts",
     "src/app/api/cron/product-registration-v6-backfill/route.ts",
+    "src/app/api/cron/product-registration-v6-review-resume/route.ts",
     "src/app/api/cron/product-registration-v6-watchdog/route.ts",
     "src/app/api/cron/programmatic-seo-generator/route.ts",
     "src/app/api/cron/promote-internal-candidates/route.ts",
@@ -1527,7 +1528,8 @@
     "supabase/migrations/20260903100730_product_registration_image_fallback_rpc_bridge.sql",
     "supabase/migrations/20260903102937_product_registration_image_fallback_binding_evidence.sql",
     "supabase/migrations/20260903185516_product_registration_human_review_v1.sql",
-    "supabase/migrations/20260904093000_product_registration_human_review_case_read_v1.sql"
+    "supabase/migrations/20260904093000_product_registration_human_review_case_read_v1.sql",
+    "supabase/migrations/20260904113000_product_registration_human_review_resume_v1.sql"
   ],
   "workflows": [
     ".github/workflows/ai-code-review.yml",

@@ -283,8 +283,12 @@ function decisionPayload(value: unknown, decision: ProductReviewDecision): Recor
   return payload;
 }
 
-function receiptIdentity(receipt: Omit<ReviewReceiptV1, 'receiptHash'>): Omit<ReviewReceiptV1, 'receiptHash'> {
-  return receipt;
+function receiptIdentity(receipt: Omit<ReviewReceiptV1, 'receiptHash'>): Omit<ReviewReceiptV1, 'receiptHash' | 'createdAt'> {
+  // The database assigns its own timestamptz when the immutable row is
+  // inserted.  Wall-clock metadata must therefore not change the business
+  // identity or make a valid receipt impossible to replay after persistence.
+  const { createdAt: _createdAt, ...identity } = receipt;
+  return identity;
 }
 
 export function reviewReceiptHash(receipt: Omit<ReviewReceiptV1, 'receiptHash'>): string {

@@ -6,9 +6,9 @@ This file is generated from the repository. Do not edit it directly.
 
 | Kind | Count |
 |---|---:|
-| API routes | 737 |
+| API routes | 738 |
 | App pages | 213 |
-| Supabase migrations | 572 |
+| Supabase migrations | 573 |
 | GitHub workflows | 35 |
 | Repository scripts | 339 |
 
@@ -501,6 +501,7 @@ This file is generated from the repository. Do not edit it directly.
 - src/app/api/cron/product-registration-v5-convergence/route.ts
 - src/app/api/cron/product-registration-v5-outbox/route.ts
 - src/app/api/cron/product-registration-v6-backfill/route.ts
+- src/app/api/cron/product-registration-v6-review-resume/route.ts
 - src/app/api/cron/product-registration-v6-watchdog/route.ts
 - src/app/api/cron/programmatic-seo-generator/route.ts
 - src/app/api/cron/promote-internal-candidates/route.ts
@@ -792,7 +793,6 @@ This file is generated from the repository. Do not edit it directly.
 
 ## Recent migrations
 
-- supabase/migrations/20260828103551_media_assets_rls_and_fk_hardening.sql
 - supabase/migrations/20260828120000_oauth_states_and_tenant_memberships.sql
 - supabase/migrations/20260828130000_social_publishing_hardening.sql
 - supabase/migrations/20260828140000_sensitive_marketing_access_hardening.sql
@@ -822,5 +822,6 @@ This file is generated from the repository. Do not edit it directly.
 - supabase/migrations/20260903102937_product_registration_image_fallback_binding_evidence.sql
 - supabase/migrations/20260903185516_product_registration_human_review_v1.sql
 - supabase/migrations/20260904093000_product_registration_human_review_case_read_v1.sql
+- supabase/migrations/20260904113000_product_registration_human_review_resume_v1.sql
 
 The complete deterministic inventory is stored in docs/generated/system-inventory.json.

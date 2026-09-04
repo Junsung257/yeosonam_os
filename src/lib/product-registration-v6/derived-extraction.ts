@@ -609,3 +609,123 @@ export function derivedExtractionLineageMetadata(derived: DerivedDocumentExtract
     parserVersion: PRODUCT_REGISTRATION_DERIVED_EXTRACTION_PARSER_VERSION,
   };
 }
+
+export type HumanReviewNormalizationResult = {
+  normalization: CanonicalNormalization;
+  executionPolicy: ReturnType<typeof canonicalNormalizationExecutionPolicy>;
+  parentExtractionId: string;
+  reviewReceiptHash: string;
+};
+
+/**
+ * Re-runs the canonical compiler for an accepted review decision that changed
+ * ownership only (for example, selecting one of two product axes).  There is
+ * deliberately no derived extraction for this case because a no-op child IR
+ * would weaken the append-only contract.  The normalization remains a shadow
+ * artifact and cannot create a revision or customer snapshot.
+ */
+export async function normalizeHumanReviewDecision(input: {
+  parent: Pick<DerivedDocumentExtractionV1, 'id' | 'sourceDocumentId' | 'documentIr'>;
+  reviewReceiptHash: string;
+  attractions?: Parameters<typeof buildCanonicalNormalization>[0]['attractions'];
+  criticalPriceOverrides?: Parameters<typeof buildCanonicalNormalization>[0]['criticalPriceOverrides'];
+  sourceDepartureYearContext?: ProductSourceDepartureYearContext | null;
+  departureDateReference?: Parameters<typeof buildCanonicalNormalization>[0]['departureDateReference'];
+  supplierProfileHints?: Parameters<typeof buildCanonicalNormalization>[0]['supplierProfileHints'];
+  allowEvidenceAiSegmentation?: boolean;
+}): Promise<HumanReviewNormalizationResult> {
+  if (!SHA256_PATTERN.test(input.reviewReceiptHash)) {
+    throw new Error('HUMAN_REVIEW_NORMALIZATION_RECEIPT_HASH_INVALID');
+  }
+  const normalization = await buildCanonicalNormalization({
+    documentIr: input.parent.documentIr,
+    sourceDocumentId: input.parent.sourceDocumentId,
+    extractionId: input.parent.id,
+    attractions: input.attractions,
+    criticalPriceOverrides: input.criticalPriceOverrides,
+    sourceDepartureYearContext: input.sourceDepartureYearContext,
+    departureDateReference: input.departureDateReference,
+    supplierProfileHints: input.supplierProfileHints,
+    allowEvidenceAiSegmentation: input.allowEvidenceAiSegmentation,
+  });
+  const executionPolicy = canonicalNormalizationExecutionPolicy('analysis_only');
+  if (executionPolicy.commitRevisions || executionPolicy.createSnapshots
+    || executionPolicy.changePublicationPointer || executionPolicy.customerPublicationAuthority) {
+    throw new Error('HUMAN_REVIEW_NORMALIZATION_POLICY_VIOLATION');
+  }
+  if (normalization.extractionId !== input.parent.id
+    || normalization.sourceDocumentId !== input.parent.sourceDocumentId) {
+    throw new Error('HUMAN_REVIEW_NORMALIZATION_LINEAGE_MISMATCH');
+  }
+  return {
+    normalization,
+    executionPolicy,
+    parentExtractionId: input.parent.id,
+    reviewReceiptHash: input.reviewReceiptHash,
+  };
+}
+
+/** Persist an ownership-only review revalidation as an append-only shadow row. */
+export async function persistHumanReviewNormalization(input: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  jobId: string;
+  parent: Pick<DerivedDocumentExtractionV1, 'id' | 'sourceDocumentId'>;
+  result: HumanReviewNormalizationResult;
+  selectedAxisKey: string | null;
+}): Promise<{ id: string; normalizationVersion: string }> {
+  if (input.result.parentExtractionId !== input.parent.id
+    || input.result.normalization.extractionId !== input.parent.id
+    || input.result.normalization.sourceDocumentId !== input.parent.sourceDocumentId) {
+    throw new Error('HUMAN_REVIEW_NORMALIZATION_LINEAGE_MISMATCH');
+  }
+  if (input.result.executionPolicy.commitRevisions
+    || input.result.executionPolicy.createSnapshots
+    || input.result.executionPolicy.changePublicationPointer
+    || input.result.executionPolicy.customerPublicationAuthority) {
+    throw new Error('HUMAN_REVIEW_NORMALIZATION_PUBLICATION_POLICY_VIOLATION');
+  }
+  if (!SHA256_PATTERN.test(input.result.reviewReceiptHash)) {
+    throw new Error('HUMAN_REVIEW_NORMALIZATION_RECEIPT_HASH_INVALID');
+  }
+  const normalizationVersion = `${input.result.normalization.version}:human-review:${input.result.reviewReceiptHash.slice(0, 16)}`;
+  const qualityDiagnostics = {
+    humanReview: {
+      receiptHash: input.result.reviewReceiptHash,
+      parentExtractionId: input.parent.id,
+      selectedAxisKey: input.selectedAxisKey,
+      executionMode: input.result.executionPolicy.mode,
+      revisionWriteAuthority: false,
+      snapshotWriteAuthority: false,
+      publicationPointerWriteAuthority: false,
+      customerPublicationAuthority: false,
+    },
+  };
+  const existing = await input.supabase
+    .from('product_registration_v4_normalizations')
+    .select('id')
+    .eq('job_id', input.jobId)
+    .eq('normalization_version', normalizationVersion)
+    .eq('raw_text_hash', input.result.normalization.rawTextHash)
+    .maybeSingle();
+  if (existing.error) throw existing.error;
+  if (existing.data) return { id: String((existing.data as { id?: unknown }).id), normalizationVersion };
+  const { data, error } = await input.supabase
+    .from('product_registration_v4_normalizations')
+    .insert({
+      tenant_id: input.tenantId,
+      job_id: input.jobId,
+      source_document_id: input.parent.sourceDocumentId,
+      extraction_id: input.parent.id,
+      normalization_version: normalizationVersion,
+      raw_text_hash: input.result.normalization.rawTextHash,
+      sections: input.result.normalization.sections,
+      canonical_payload: input.result.normalization.canonicalPayload,
+      quality_diagnostics: qualityDiagnostics,
+      status: input.result.normalization.status,
+    })
+    .select('id')
+    .single();
+  if (error || !data) throw error ?? new Error('HUMAN_REVIEW_NORMALIZATION_PERSIST_EMPTY');
+  return { id: String((data as { id?: unknown }).id), normalizationVersion };
+}
