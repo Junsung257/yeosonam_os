@@ -65,6 +65,26 @@ function inferRoleFromPayload(payload: Record<string, unknown>): AdminRole {
     }
   }
 
+  // Legacy owner sessions predate the role claim rollout. Keep the menu
+  // projection aligned with requirePlatformAdminRequest without upgrading an
+  // explicit tenant role: only an exact PLATFORM_ADMIN_EMAILS match is
+  // accepted, or the single-address ADMIN_EMAILS owner boundary.
+  const email = typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';
+  const platformEmails = (process.env.PLATFORM_ADMIN_EMAILS ?? '')
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  const legacyEmails = (process.env.ADMIN_EMAILS ?? '')
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  if (
+    email &&
+    (platformEmails.includes(email) || (platformEmails.length === 0 && legacyEmails.length === 1 && legacyEmails[0] === email))
+  ) {
+    return 'platform_admin';
+  }
+
   return 'unknown';
 }
 
