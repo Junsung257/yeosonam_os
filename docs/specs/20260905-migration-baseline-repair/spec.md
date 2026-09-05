@@ -44,7 +44,9 @@ reliably distinguish those files.
 8. Restore replay-safe performance indexes to the baseline schema contracts:
    `conversations.customer_id`, `settlements.tenant_id`, legacy card-news
    columns, and guarded optional tables instead of columns introduced later.
-9. Add a repository audit script that fails on duplicate prefixes, missing
+9. Guard the optional `products.land_operator_id` index so the foreign-key
+   index migration remains replayable before that later column exists.
+10. Add a repository audit script that fails on duplicate prefixes, missing
    baseline files, or data-bearing statements in the foundational migration.
 
 ## Safety boundaries
