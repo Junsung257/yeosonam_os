@@ -48,7 +48,10 @@ reliably distinguish those files.
    index migration remains replayable before that later column exists.
 10. Guard internal-function privilege revocations with `to_regprocedure()` so
    optional functions do not abort a clean replay.
-11. Add a repository audit script that fails on duplicate prefixes, missing
+11. Restore the marketing RPC migration's executable dollar-quoting and
+   baseline column contracts (`total_cost`, `snapshot_date`, and the original
+   predictive-insight/archive fields).
+12. Add a repository audit script that fails on duplicate prefixes, missing
    baseline files, or data-bearing statements in the foundational migration.
 
 ## Safety boundaries
