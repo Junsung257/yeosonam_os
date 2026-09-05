@@ -35,7 +35,10 @@ reliably distinguish those files.
    `post_engagement_snapshots` before the tenant-aware analytics view migration.
 5. Drop the obsolete three-argument `update_booking_ledger` overload before
    the Phase 2a migration adds the default-compatible implementation.
-6. Add a repository audit script that fails on duplicate prefixes, missing
+6. Correct the historical Band import foreign key to the repository's actual
+   UUID-keyed `travel_packages` table (`products` uses `internal_code` as its
+   primary key and cannot satisfy the old reference).
+7. Add a repository audit script that fails on duplicate prefixes, missing
    baseline files, or data-bearing statements in the foundational migration.
 
 ## Safety boundaries
