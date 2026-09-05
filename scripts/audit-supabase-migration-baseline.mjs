@@ -12,6 +12,9 @@ const requiredRestores = [
   '20260601194000_restore_affiliate_content_insights.sql',
   '20260603064700_restore_pin_attempts.sql',
 ];
+const requiredReplayBridges = [
+  '20260426000002_post_engagement_snapshots_tenant_baseline.sql',
+];
 
 const fail = (message) => {
   console.error(`❌ ${message}`);
@@ -51,7 +54,7 @@ if (expectedOrder !== baseline) {
   fail(`Foundational baseline must be the first migration; found ${expectedOrder ?? '(none)'}`);
 }
 
-for (const name of [baseline, ...requiredRestores]) {
+for (const name of [baseline, ...requiredRestores, ...requiredReplayBridges]) {
   if (!files.includes(name)) fail(`Required baseline migration is missing: ${name}`);
 }
 

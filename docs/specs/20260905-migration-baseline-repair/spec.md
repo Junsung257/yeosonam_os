@@ -31,7 +31,9 @@ reliably distinguish those files.
 3. Rename the unapplied duplicate migration files to unique timestamp prefixes.
    The production-applied original names remain unchanged where the production
    migration history proves which file owns the original prefix.
-4. Add a repository audit script that fails on duplicate prefixes, missing
+4. Restore the missing tenant column bridge for
+   `post_engagement_snapshots` before the tenant-aware analytics view migration.
+5. Add a repository audit script that fails on duplicate prefixes, missing
    baseline files, or data-bearing statements in the foundational migration.
 
 ## Safety boundaries
