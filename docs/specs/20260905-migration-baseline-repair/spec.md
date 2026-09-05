@@ -38,14 +38,18 @@ reliably distinguish those files.
 6. Correct the historical Band import foreign key to the repository's actual
    UUID-keyed `travel_packages` table (`products` uses `internal_code` as its
    primary key and cannot satisfy the old reference).
-7. Add a repository audit script that fails on duplicate prefixes, missing
+7. Correct the historical PII RLS policies to use UUID-safe `auth.uid()`
+   comparisons (and the current `conversations.customer_id` ownership
+   contract) instead of comparing UUID columns with JWT text claims.
+8. Add a repository audit script that fails on duplicate prefixes, missing
    baseline files, or data-bearing statements in the foundational migration.
 
 ## Safety boundaries
 
 - No seed/demo/production rows are introduced by the baseline or restore files.
-- No old migration file is edited in place; duplicate files are renamed so their
-  SQL content and domain intent remain unchanged.
+- Existing migration SQL is changed only when hosted replay evidence identifies
+  a deterministic schema/type defect; duplicate files are renamed so their
+  original SQL content and domain intent remain attributable.
 - No remote Supabase project is modified.
 - No `supabase migration repair` is run.
 - The AI Office remains observe-only and unrelated runtime/command changes are
