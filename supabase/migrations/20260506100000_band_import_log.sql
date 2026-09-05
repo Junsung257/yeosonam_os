@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS band_import_log (
   post_url    text UNIQUE NOT NULL,
   post_title  text,
   raw_text    text,
-  product_id  uuid REFERENCES products(id) ON DELETE SET NULL,
+  product_id  uuid REFERENCES travel_packages(id) ON DELETE SET NULL,
   status      text NOT NULL DEFAULT 'pending'
               CHECK (status IN ('pending', 'imported', 'skipped', 'failed')),
   error_msg   text,

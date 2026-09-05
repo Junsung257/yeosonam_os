@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS seo_alerts (
 
 -- 동일 타입 + 동일 날짜 중복 알림 방지
 CREATE UNIQUE INDEX IF NOT EXISTS idx_seo_alerts_dedup
-  ON seo_alerts (type, (created_at::date));
+  ON seo_alerts (type, ((created_at AT TIME ZONE 'Asia/Seoul')::date));
 
 ALTER TABLE seo_daily_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE seo_alerts ENABLE ROW LEVEL SECURITY;

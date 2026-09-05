@@ -63,7 +63,7 @@ BEGIN
       ac.first_touch_creative_id,
       ac.last_touch_creative_id,
       COALESCE(b.total_price, 0) AS revenue,
-      COALESCE(b.total_profit, 0) AS profit
+      GREATEST(COALESCE(b.total_price, 0) - COALESCE(b.total_cost, 0), 0) AS profit
     FROM attribution_chains ac
     LEFT JOIN bookings b ON b.id = ac.booking_id
     WHERE ac.created_at >= NOW() - INTERVAL '30 days'
@@ -329,9 +329,13 @@ BEGIN
   GROUP BY b.lead_customer_id;
 
   ALTER TABLE _rfm_agg ADD COLUMN recency_days INT DEFAULT 999;
-  UPDATE _rfm_agg
-  SET recency_days = GREATEST(0, EXTRACT(DAY FROM (NOW() - last_booking_at))::INT)
-  WHERE last_booking_at IS NOT NULL;
+  -- plpgsql_check cannot resolve a temp table created earlier in the same function.
+  -- Keep the operation session-local while making that dependency explicit at runtime.
+  EXECUTE $sql$
+    UPDATE pg_temp._rfm_agg
+    SET recency_days = GREATEST(0, EXTRACT(DAY FROM (NOW() - last_booking_at))::INT)
+    WHERE last_booking_at IS NOT NULL
+  $sql$;
 
   ALTER TABLE _rfm_agg ADD COLUMN customer_email TEXT;
   UPDATE _rfm_agg a
@@ -443,7 +447,7 @@ RETURNS TABLE(
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS \$\$
+AS $$
 DECLARE
   v_scanned INT := 0;
   v_gaps_found INT := 0;
@@ -510,7 +514,7 @@ BEGIN
 
   RETURN QUERY SELECT v_scanned, v_gaps_found, v_already_covered, v_queued, v_skipped;
 END;
-\$\$;
+$$;
 
 -- ============================================================
 -- 4. auto_finalize_ab_experiments()
@@ -524,7 +528,7 @@ RETURNS TABLE(finalized INT)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS \$\$
+AS $$
 DECLARE
   v_finalized INT := 0;
   v_exp RECORD;
@@ -612,8 +616,7 @@ BEGIN
       UPDATE ab_experiments
       SET status = 'completed',
           winner_variant_id = v_winner_variant_id,
-          completed_at = NOW(),
-          updated_at = NOW()
+          completed_at = NOW()
       WHERE id = v_exp.id;
 
       v_finalized := v_finalized + 1;
@@ -622,7 +625,7 @@ BEGIN
 
   RETURN QUERY SELECT v_finalized;
 END;
-\$\$;
+$$;
 
 -- ============================================================
 -- 5. generate_predictive_insights()
@@ -636,7 +639,7 @@ RETURNS TABLE(insights_generated INT)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS \$\$
+AS $$
 DECLARE
   v_insights_generated INT := 0;
   v_kw RECORD;
@@ -655,11 +658,11 @@ BEGIN
       SELECT
         kts.keyword,
         kts.search_volume,
-        kts.recorded_at,
-        ROW_NUMBER() OVER (PARTITION BY kts.keyword ORDER BY kts.recorded_at DESC) AS rn,
-        ROW_NUMBER() OVER (PARTITION BY kts.keyword ORDER BY kts.recorded_at ASC) AS rn_first
+        kts.snapshot_date AS recorded_at,
+        ROW_NUMBER() OVER (PARTITION BY kts.keyword ORDER BY kts.snapshot_date DESC) AS rn,
+        ROW_NUMBER() OVER (PARTITION BY kts.keyword ORDER BY kts.snapshot_date ASC) AS rn_first
       FROM keyword_trend_snapshots kts
-      WHERE kts.recorded_at >= NOW() - INTERVAL '60 days'
+      WHERE kts.snapshot_date >= NOW() - INTERVAL '60 days'
     ),
     current AS (
       SELECT * FROM ranked WHERE rn = 1
@@ -730,9 +733,12 @@ BEGIN
     END;
 
     -- trend_keyword_archive에도 기록
-    INSERT INTO trend_keyword_archive (keyword, search_volume, trend_score, recorded_at)
-    VALUES (v_kw.keyword, ROUND(v_current_volume)::INT, ROUND(v_trend_score::NUMERIC, 4), NOW())
-    ON CONFLICT (keyword, recorded_at) DO NOTHING;
+    INSERT INTO trend_keyword_archive
+      (keyword, source, search_volume, trend_score, observed_at)
+    VALUES
+      (v_kw.keyword, 'predictive_insights', ROUND(v_current_volume)::INT,
+       ROUND(v_trend_score::NUMERIC, 4), NOW())
+    ON CONFLICT (observed_at, source, keyword) DO NOTHING;
 
     -- 중복 인사이트 방지
     IF NOT EXISTS (
@@ -741,14 +747,29 @@ BEGIN
         AND created_at > NOW() - INTERVAL '24 hours'
     ) THEN
       INSERT INTO predictive_insights
-        (keyword, trend_score, forecast_next, action_type, confidence_score,
-         reasoning, suggestion, current_volume, prev_volume, created_at)
+        (insight_type, title, description, keyword, trend_direction,
+         change_percent, recommendation, suggested_action, estimated_impact,
+         priority, created_at, expires_at)
       VALUES
-        (v_kw.keyword, ROUND(v_trend_score::NUMERIC, 4),
-         ROUND(v_forecast_next::NUMERIC, 0)::INT,
-         v_action_type, ROUND(v_confidence_score::NUMERIC, 2),
-         v_reasoning, v_suggestion,
-         ROUND(v_current_volume)::INT, ROUND(v_prev_volume)::INT, NOW());
+        (CASE
+           WHEN v_action_type = 'create_content' THEN 'content_opportunity'
+           ELSE 'trend_alert'
+         END,
+         v_kw.keyword || ' trend insight',
+         v_reasoning,
+         v_kw.keyword,
+         CASE
+           WHEN v_trend_score > 0 THEN 'up'
+           WHEN v_trend_score < 0 THEN 'down'
+           ELSE 'flat'
+         END,
+         ROUND((v_trend_score * 100)::NUMERIC, 2),
+         v_suggestion,
+         v_action_type,
+         'forecast_search_volume=' || ROUND(v_forecast_next)::TEXT,
+         LEAST(100, GREATEST(1, ROUND(v_confidence_score * 100)::INT)),
+         NOW(),
+         NOW() + INTERVAL '7 days');
 
       v_insights_generated := v_insights_generated + 1;
     END IF;
@@ -756,7 +777,7 @@ BEGIN
 
   RETURN QUERY SELECT v_insights_generated;
 END;
-\$\$;
+$$;
 
 -- ============================================================
 -- 종료

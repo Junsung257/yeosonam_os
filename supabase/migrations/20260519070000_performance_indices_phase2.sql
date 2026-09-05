@@ -49,11 +49,8 @@ CREATE INDEX IF NOT EXISTS idx_bank_transactions_amount_range
   WHERE status != 'excluded' AND match_status = 'unmatched';
 
 -- 5. conversations 테이블 — 사용자별 대화 조회
-CREATE INDEX IF NOT EXISTS idx_conversations_participant_created
-  ON conversations(participant_1_id, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_conversations_participant_2_created
-  ON conversations(participant_2_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_conversations_customer_created
+  ON conversations(customer_id, created_at DESC);
 
 -- 6. secure_chats 테이블 — 예약별 채팅 조회
 CREATE INDEX IF NOT EXISTS idx_secure_chats_booking_id_created
@@ -64,12 +61,12 @@ CREATE INDEX IF NOT EXISTS idx_secure_chats_is_unmasked
   WHERE is_unmasked = false;
 
 -- 7. settlements 테이블 — 정산 상태별 조회
-CREATE INDEX IF NOT EXISTS idx_settlements_land_operator_status
-  ON settlements(land_operator_id, status);
+CREATE INDEX IF NOT EXISTS idx_settlements_tenant_status
+  ON settlements(tenant_id, status);
 
 CREATE INDEX IF NOT EXISTS idx_settlements_period_status
   ON settlements(settlement_period, status)
-  WHERE status IN ('draft', 'confirmed');
+  WHERE status IN ('PENDING', 'READY');
 
 -- 8. affiliates 테이블 — 활동 어필리에이트 조회
 CREATE INDEX IF NOT EXISTS idx_affiliates_is_active_created
@@ -83,43 +80,59 @@ CREATE INDEX IF NOT EXISTS idx_affiliates_referral_code
 CREATE INDEX IF NOT EXISTS idx_booking_companions_booking_id
   ON booking_companions(booking_id);
 
--- 10. product_reviews 테이블 — 리뷰 조회 최적화
-CREATE INDEX IF NOT EXISTS idx_product_reviews_product_id_rating
-  ON product_reviews(product_id, rating DESC)
-  WHERE is_verified = true;
-
-CREATE INDEX IF NOT EXISTS idx_product_reviews_created_recent
-  ON product_reviews(created_at DESC)
-  WHERE is_verified = true;
+-- 10. product_reviews: legacy/manual installations only.
+DO $$
+BEGIN
+  IF to_regclass('public.product_reviews') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_product_reviews_product_id_rating
+      ON public.product_reviews(product_id, rating DESC)
+      WHERE is_verified = true';
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_product_reviews_created_recent
+      ON public.product_reviews(created_at DESC)
+      WHERE is_verified = true';
+  END IF;
+END;
+$$;
 
 -- 11. card_news 테이블 — 발행 상태별 조회 및 검색
-CREATE INDEX IF NOT EXISTS idx_card_news_publish_status_created
-  ON card_news(publish_status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_card_news_status_created
+  ON card_news(status, created_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_card_news_product_id_publish_status
-  ON card_news(product_id, publish_status);
+CREATE INDEX IF NOT EXISTS idx_card_news_package_id_status
+  ON card_news(package_id, status);
 
 -- 12. blog_posts 테이블 — SEO 및 발행 최적화
-CREATE INDEX IF NOT EXISTS idx_blog_posts_published_rank
-  ON blog_posts(published_at DESC, serp_rank DESC)
-  WHERE is_published = true;
-
-CREATE INDEX IF NOT EXISTS idx_blog_posts_destination_published
-  ON blog_posts(destination, published_at DESC)
-  WHERE is_published = true;
+DO $$
+BEGIN
+  IF to_regclass('public.blog_posts') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_blog_posts_published_rank
+      ON public.blog_posts(published_at DESC, serp_rank DESC)
+      WHERE is_published = true';
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_blog_posts_destination_published
+      ON public.blog_posts(destination, published_at DESC)
+      WHERE is_published = true';
+  END IF;
+END;
+$$;
 
 -- 13. influencer_links 테이블 — 클릭 및 전환 추적
 CREATE INDEX IF NOT EXISTS idx_influencer_links_affiliate_click_count
   ON influencer_links(affiliate_id, click_count DESC);
 
 -- 14. free_travel_plans 테이블 — 사용자별 플랜 조회
-CREATE INDEX IF NOT EXISTS idx_free_travel_plans_user_created
-  ON free_travel_plans(user_id, created_at DESC)
-  WHERE is_deleted IS NULL;
+DO $$
+BEGIN
+  IF to_regclass('public.free_travel_plans') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_free_travel_plans_user_created
+      ON public.free_travel_plans(user_id, created_at DESC)
+      WHERE is_deleted IS NULL';
+  END IF;
+END;
+$$;
 
 -- 15. llm_prompts 테이블 — 프롬프트 조회 최적화
-CREATE INDEX IF NOT EXISTS idx_llm_prompts_category_active
-  ON llm_prompts(category, is_active)
+CREATE INDEX IF NOT EXISTS idx_llm_prompts_task_type_active
+  ON llm_prompts(task_type, is_active)
   WHERE is_active = true;
 
 -- Analytics: 인덱스 상태 확인용 쿼리

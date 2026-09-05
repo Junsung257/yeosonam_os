@@ -85,5 +85,24 @@ CREATE POLICY affiliate_monthly_usage_service_only ON affiliate_monthly_usage
 -- 5. 인덱스
 CREATE INDEX IF NOT EXISTS idx_card_news_created_by_affiliate ON card_news(created_by_affiliate_id)
   WHERE created_by_affiliate_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_brand_kits_owner ON brand_kits(owner_type, owner_id);
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'brand_kits'
+      AND column_name = 'owner_type'
+  ) AND EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'brand_kits'
+      AND column_name = 'owner_id'
+  ) THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_brand_kits_owner
+      ON public.brand_kits(owner_type, owner_id)';
+  END IF;
+END;
+$$;
 CREATE INDEX IF NOT EXISTS idx_affiliate_monthly_usage_month ON affiliate_monthly_usage(month);

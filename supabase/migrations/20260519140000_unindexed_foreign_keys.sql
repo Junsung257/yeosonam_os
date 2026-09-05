@@ -60,7 +60,20 @@ CREATE INDEX IF NOT EXISTS idx_product_comparison_events_product_a_id ON public.
 CREATE INDEX IF NOT EXISTS idx_product_comparison_events_product_b_id ON public.product_comparison_events (product_b_id);
 CREATE INDEX IF NOT EXISTS idx_product_comparison_events_product_c_id ON public.product_comparison_events (product_c_id);
 CREATE INDEX IF NOT EXISTS idx_products_departing_location_id ON public.products (departing_location_id);
-CREATE INDEX IF NOT EXISTS idx_products_land_operator_id ON public.products (land_operator_id);
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'products'
+      AND column_name = 'land_operator_id'
+  ) THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_products_land_operator_id
+      ON public.products (land_operator_id)';
+  END IF;
+END;
+$$;
 CREATE INDEX IF NOT EXISTS idx_programmatic_seo_topics_topic_queue_id ON public.programmatic_seo_topics (topic_queue_id);
 CREATE INDEX IF NOT EXISTS idx_promotions_campaign_id ON public.promotions (campaign_id);
 CREATE INDEX IF NOT EXISTS idx_qa_negative_examples_source_critique_id ON public.qa_negative_examples (source_critique_id);

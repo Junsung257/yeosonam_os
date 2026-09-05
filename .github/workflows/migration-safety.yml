@@ -34,6 +34,9 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Audit replayable migration baseline
+        run: npm run audit:migration-baseline
+
       - name: Resolve full comparison range
         id: range
         env:
