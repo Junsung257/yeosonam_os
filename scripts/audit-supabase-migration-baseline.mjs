@@ -14,6 +14,7 @@ const requiredRestores = [
 ];
 const requiredReplayBridges = [
   '20260426000002_post_engagement_snapshots_tenant_baseline.sql',
+  '20260430000001_drop_legacy_update_booking_ledger_overload.sql',
 ];
 
 const fail = (message) => {

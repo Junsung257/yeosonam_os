@@ -33,7 +33,9 @@ reliably distinguish those files.
    migration history proves which file owns the original prefix.
 4. Restore the missing tenant column bridge for
    `post_engagement_snapshots` before the tenant-aware analytics view migration.
-5. Add a repository audit script that fails on duplicate prefixes, missing
+5. Drop the obsolete three-argument `update_booking_ledger` overload before
+   the Phase 2a migration adds the default-compatible implementation.
+6. Add a repository audit script that fails on duplicate prefixes, missing
    baseline files, or data-bearing statements in the foundational migration.
 
 ## Safety boundaries
