@@ -57,7 +57,10 @@ reliably distinguish those files.
 13. Make the security-policy migration replay-safe by dropping its named
    policies before recreation; earlier migrations may already have created the
    same policies.
-14. Add a repository audit script that fails on duplicate prefixes, missing
+14. Guard the `brand_kits(owner_type, owner_id)` index because a pre-existing
+   legacy `brand_kits` table may not have those columns even when
+   `CREATE TABLE IF NOT EXISTS` skips creation.
+15. Add a repository audit script that fails on duplicate prefixes, missing
    baseline files, or data-bearing statements in the foundational migration.
 
 ## Safety boundaries
