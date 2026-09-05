@@ -67,7 +67,10 @@ reliably distinguish those files.
 17. Restore paging indexes to the actual baseline entities: use
    `content_creatives` instead of the untracked `blog_posts`, omit absent
    `b2b_packages`/`payments`, and retain `unmatched_activities`.
-18. Add a repository audit script that fails on duplicate prefixes, missing
+18. Make the Threads-column backfill inspect `card_news` through `to_jsonb`
+   before dropping optional legacy columns, so the migration works when those
+   columns were never present.
+19. Add a repository audit script that fails on duplicate prefixes, missing
    baseline files, or data-bearing statements in the foundational migration.
 
 ## Safety boundaries
