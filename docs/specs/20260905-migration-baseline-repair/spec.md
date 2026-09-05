@@ -62,7 +62,9 @@ reliably distinguish those files.
    `CREATE TABLE IF NOT EXISTS` skips creation.
 15. Guard the legacy `blog_posts` cleanup when that optional table is absent;
    retain the baseline `content_creatives.seo_title` cleanup contract.
-16. Add a repository audit script that fails on duplicate prefixes, missing
+16. Use the immutable fixed-timezone date expression for the SEO alert dedupe
+   index; a direct `timestamptz::date` cast is not indexable in PostgreSQL.
+17. Add a repository audit script that fails on duplicate prefixes, missing
    baseline files, or data-bearing statements in the foundational migration.
 
 ## Safety boundaries
