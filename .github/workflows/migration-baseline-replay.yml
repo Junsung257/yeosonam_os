@@ -25,6 +25,9 @@ jobs:
       - name: Audit migration baseline
         run: npm run audit:migration-baseline
 
+      - name: Start local Supabase stack
+        run: npx --yes supabase@latest start
+
       - name: Reset local database (pass 1)
         run: npx --yes supabase@latest db reset --local --no-seed
 
