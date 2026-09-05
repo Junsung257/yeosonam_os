@@ -54,7 +54,10 @@ reliably distinguish those files.
 12. Keep keyword-performance bootstrap rows compatible with the foundational
    `app_settings(key, value)` contract; descriptions are added only by later
    schema migrations.
-13. Add a repository audit script that fails on duplicate prefixes, missing
+13. Make the security-policy migration replay-safe by dropping its named
+   policies before recreation; earlier migrations may already have created the
+   same policies.
+14. Add a repository audit script that fails on duplicate prefixes, missing
    baseline files, or data-bearing statements in the foundational migration.
 
 ## Safety boundaries
