@@ -46,7 +46,9 @@ reliably distinguish those files.
    columns, and guarded optional tables instead of columns introduced later.
 9. Guard the optional `products.land_operator_id` index so the foreign-key
    index migration remains replayable before that later column exists.
-10. Add a repository audit script that fails on duplicate prefixes, missing
+10. Guard internal-function privilege revocations with `to_regprocedure()` so
+   optional functions do not abort a clean replay.
+11. Add a repository audit script that fails on duplicate prefixes, missing
    baseline files, or data-bearing statements in the foundational migration.
 
 ## Safety boundaries
