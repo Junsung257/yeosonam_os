@@ -60,7 +60,9 @@ reliably distinguish those files.
 14. Guard the `brand_kits(owner_type, owner_id)` index because a pre-existing
    legacy `brand_kits` table may not have those columns even when
    `CREATE TABLE IF NOT EXISTS` skips creation.
-15. Add a repository audit script that fails on duplicate prefixes, missing
+15. Guard the legacy `blog_posts` cleanup when that optional table is absent;
+   retain the baseline `content_creatives.seo_title` cleanup contract.
+16. Add a repository audit script that fails on duplicate prefixes, missing
    baseline files, or data-bearing statements in the foundational migration.
 
 ## Safety boundaries
