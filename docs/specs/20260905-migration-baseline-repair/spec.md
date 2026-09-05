@@ -64,7 +64,10 @@ reliably distinguish those files.
    retain the baseline `content_creatives.seo_title` cleanup contract.
 16. Use the immutable fixed-timezone date expression for the SEO alert dedupe
    index; a direct `timestamptz::date` cast is not indexable in PostgreSQL.
-17. Add a repository audit script that fails on duplicate prefixes, missing
+17. Restore paging indexes to the actual baseline entities: use
+   `content_creatives` instead of the untracked `blog_posts`, omit absent
+   `b2b_packages`/`payments`, and retain `unmatched_activities`.
+18. Add a repository audit script that fails on duplicate prefixes, missing
    baseline files, or data-bearing statements in the foundational migration.
 
 ## Safety boundaries
