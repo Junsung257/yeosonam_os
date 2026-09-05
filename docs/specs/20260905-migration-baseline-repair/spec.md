@@ -41,7 +41,10 @@ reliably distinguish those files.
 7. Correct the historical PII RLS policies to use UUID-safe `auth.uid()`
    comparisons (and the current `conversations.customer_id` ownership
    contract) instead of comparing UUID columns with JWT text claims.
-8. Add a repository audit script that fails on duplicate prefixes, missing
+8. Restore replay-safe performance indexes to the baseline schema contracts:
+   `conversations.customer_id`, `settlements.tenant_id`, legacy card-news
+   columns, and guarded optional tables instead of columns introduced later.
+9. Add a repository audit script that fails on duplicate prefixes, missing
    baseline files, or data-bearing statements in the foundational migration.
 
 ## Safety boundaries
