@@ -79,3 +79,11 @@ This repair is ready for a new Preview replay only after:
   migration history before any remote push.
 
 Until those checks pass, this branch is not Production-ready.
+
+## Docker-free local fallback
+
+The repository includes `.github/workflows/migration-baseline-replay.yml` for
+environments where Docker Desktop cannot start. GitHub's Ubuntu runner provides
+the Docker-compatible runtime required by the Supabase CLI and runs the same
+audit plus two clean `db reset --local --no-seed` passes. The workflow has no
+Supabase secrets and never connects to the production project.

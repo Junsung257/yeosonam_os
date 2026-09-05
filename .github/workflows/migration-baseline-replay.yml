@@ -1,0 +1,41 @@
+name: Migration Baseline Replay
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/config.toml'
+      - 'scripts/audit-supabase-migration-baseline.mjs'
+      - '.github/workflows/migration-baseline-replay.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    name: Replay all migrations twice
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe502b1
+        with:
+          node-version: '24'
+
+      - name: Audit migration baseline
+        run: npm run audit:migration-baseline
+
+      - name: Reset local database (pass 1)
+        run: npx --yes supabase@latest db reset --local --no-seed
+
+      - name: Reset local database (pass 2)
+        run: npx --yes supabase@latest db reset --local --no-seed
+
+      - name: Stop local Supabase stack
+        if: always()
+        run: npx --yes supabase@latest stop --no-backup
