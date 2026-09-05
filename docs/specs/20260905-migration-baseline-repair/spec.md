@@ -51,7 +51,10 @@ reliably distinguish those files.
 11. Restore the marketing RPC migration's executable dollar-quoting and
    baseline column contracts (`total_cost`, `snapshot_date`, and the original
    predictive-insight/archive fields).
-12. Add a repository audit script that fails on duplicate prefixes, missing
+12. Keep keyword-performance bootstrap rows compatible with the foundational
+   `app_settings(key, value)` contract; descriptions are added only by later
+   schema migrations.
+13. Add a repository audit script that fails on duplicate prefixes, missing
    baseline files, or data-bearing statements in the foundational migration.
 
 ## Safety boundaries
