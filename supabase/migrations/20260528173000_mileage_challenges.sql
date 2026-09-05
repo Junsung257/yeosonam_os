@@ -44,7 +44,10 @@ CREATE POLICY "challenge_participants_select_own"
 
 CREATE POLICY "challenge_participants_select_admin"
   ON challenge_participants FOR SELECT
-  USING (EXISTS (SELECT 1 FROM admins WHERE id = auth.uid()));
+  USING (EXISTS (
+    SELECT 1 FROM admin_users
+    WHERE user_id = (SELECT auth.uid())
+  ));
 
 -- 활성 챌린지 조회 (customer_id 기준 참여 정보 포함)
 CREATE OR REPLACE VIEW active_customer_challenges AS

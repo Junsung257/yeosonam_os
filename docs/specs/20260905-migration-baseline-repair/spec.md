@@ -70,7 +70,10 @@ reliably distinguish those files.
 18. Make the Threads-column backfill inspect `card_news` through `to_jsonb`
    before dropping optional legacy columns, so the migration works when those
    columns were never present.
-19. Add a repository audit script that fails on duplicate prefixes, missing
+19. Align the mileage challenge admin policy with the foundational
+   `admin_users.user_id` identity table instead of the nonexistent `admins`
+   relation.
+20. Add a repository audit script that fails on duplicate prefixes, missing
    baseline files, or data-bearing statements in the foundational migration.
 
 ## Safety boundaries
