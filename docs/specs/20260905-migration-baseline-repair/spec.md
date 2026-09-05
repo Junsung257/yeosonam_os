@@ -73,7 +73,10 @@ reliably distinguish those files.
 19. Align the mileage challenge admin policy with the foundational
    `admin_users.user_id` identity table instead of the nonexistent `admins`
    relation.
-20. Add a repository audit script that fails on duplicate prefixes, missing
+20. Keep mileage expiration defaults compatible with the foundational
+   `app_settings(key, value)` contract; descriptive text belongs to later
+   schema evolution.
+21. Add a repository audit script that fails on duplicate prefixes, missing
    baseline files, or data-bearing statements in the foundational migration.
 
 ## Safety boundaries
